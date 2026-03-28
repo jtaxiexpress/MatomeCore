@@ -103,7 +103,30 @@ class FetchSitePastArticlesJob implements ShouldQueue
                     $extractedUrls = $this->extractUrlsFromXml($xmlResponse->body());
                 }
 
+                $extractedUrls = array_values(array_unique($extractedUrls));
+
                 Log::info("{$this->site->name} - XMLから ".count($extractedUrls).' 件のURLを抽出しました');
+
+                // トップページURL除外（記事ではないURLを弾く）
+                $normalizedSiteUrl = rtrim($this->site->url, '/');
+                $extractedUrls = array_values(array_filter($extractedUrls, function ($u) use ($normalizedSiteUrl) {
+                    // 完全一致チェック（末尾スラッシュ正規化済み）
+                    if (rtrim($u, '/') === $normalizedSiteUrl) {
+                        Log::info("[Fetch: {$this->site->name}] トップページURLのため除外: {$u}");
+
+                        return false;
+                    }
+
+                    // パスが存在しない or 空（トップページそのもの）は除外
+                    $path = parse_url($u, PHP_URL_PATH);
+                    if (empty($path) || $path === '/') {
+                        Log::info("[Fetch: {$this->site->name}] パスが存在しないため除外: {$u}");
+
+                        return false;
+                    }
+
+                    return true;
+                }));
 
                 // NGワードフィルタリング
                 $ngWords = $this->site->ng_url_keywords ?? [];
@@ -205,7 +228,26 @@ class FetchSitePastArticlesJob implements ShouldQueue
                         }
                     }
 
-                    // 2. NGワードフィルタリング
+                    // 2. トップページURL除外（記事ではないURLを弾く）
+                    $normalizedSiteUrl = rtrim($this->site->url, '/');
+                    $cleanedPageUrls = array_values(array_filter($cleanedPageUrls, function ($u) use ($normalizedSiteUrl) {
+                        if (rtrim($u, '/') === $normalizedSiteUrl) {
+                            Log::info("[Fetch: {$this->site->name}] トップページURLのため除外: {$u}");
+
+                            return false;
+                        }
+
+                        $path = parse_url($u, PHP_URL_PATH);
+                        if (empty($path) || $path === '/') {
+                            Log::info("[Fetch: {$this->site->name}] パスが存在しないため除外: {$u}");
+
+                            return false;
+                        }
+
+                        return true;
+                    }));
+
+                    // 3. NGワードフィルタリング
                     $ngWords = $this->site->ng_url_keywords ?? [];
                     if (! empty($ngWords)) {
                         $filteredUrls = [];
@@ -225,7 +267,7 @@ class FetchSitePastArticlesJob implements ShouldQueue
                         $cleanedPageUrls = $filteredUrls;
                     }
 
-                    // 3. DB重複チェック（純粋な新規URLのみ抽出）
+                    // 4. DB重複チェック（純粋な新規URLのみ抽出）
                     $existingUrls = Article::whereIn('url', $cleanedPageUrls)->pluck('url')->toArray();
                     $newUrls = array_values(array_filter($cleanedPageUrls, fn ($u) => ! in_array($u, $existingUrls)));
                     $skippedCount = count($cleanedPageUrls) - count($newUrls);
