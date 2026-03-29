@@ -30,22 +30,26 @@ class CrawlAllSitesCommand extends Command
     public function handle(): int
     {
         $appId = $this->option('app_id');
+        $query = Site::where('is_active', true);
 
         if ($appId) {
             $app = App::find($appId);
             if (! $app) {
                 $this->error("App ID {$appId} が見つかりません。");
+
                 return 1;
             }
             $this->info("App [{$app->name}] のサイトをクロール開始します...");
-            $sites = Site::where('is_active', true)->where('app_id', $appId)->get();
+            $query->where('app_id', $appId);
         } else {
             $this->info('Starting scheduled crawl for all active sites...');
-            $sites = Site::where('is_active', true)->get();
         }
+
+        $sites = $query->get();
 
         if ($sites->isEmpty()) {
             $this->info('No active sites found. Exiting.');
+
             return 0;
         }
 
@@ -56,8 +60,8 @@ class CrawlAllSitesCommand extends Command
             try {
                 Artisan::call('app:crawl-site', ['site_id' => $site->id], $this->output);
             } catch (\Exception $e) {
-                $this->error("Failed to process Site ID {$site->id}: " . $e->getMessage());
-                Log::error("CrawlAllSitesCommand: Site {$site->id} failed - " . $e->getMessage());
+                $this->error("Failed to process Site ID {$site->id}: ".$e->getMessage());
+                Log::error("CrawlAllSitesCommand: Site {$site->id} failed - ".$e->getMessage());
             }
 
             $this->info('Sleeping for 2 seconds to prevent server overload...');
@@ -66,6 +70,7 @@ class CrawlAllSitesCommand extends Command
 
         $this->info('--------------------------------------------------');
         $this->info('All sites have been successfully processed.');
+
         return 0;
     }
 }
