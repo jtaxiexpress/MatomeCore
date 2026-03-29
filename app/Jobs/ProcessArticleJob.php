@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Article;
 use App\Models\Site;
 use App\Services\ArticleAiService;
+use App\Services\ArticleScraperService;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Bus\Queueable;
@@ -13,9 +14,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Symfony\Component\DomCrawler\Crawler;
 
 class ProcessArticleJob implements ShouldQueue
 {
@@ -90,83 +89,24 @@ class ProcessArticleJob implements ShouldQueue
             if ($needsScraping) {
                 try {
                     Log::info("[Process: {$this->url}] 不足データ(title/thumbnail/date)の補完のためHTMLスクレイピングを開始します");
-                    $response = Http::withHeaders([
-                        'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    ])->timeout(10)->get($this->url);
+                    $scraper = app(ArticleScraperService::class);
+                    $scrapeResult = $scraper->scrape($this->url, $this->site->date_selector ?? null);
 
-                    if ($response->successful()) {
-                        $crawler = new Crawler($response->body(), $this->url);
-
-                        // 1. Title fallback
-                        if (empty($title)) {
-                            $scrapedTitle = null;
-                            if ($crawler->filter('meta[property="og:title"]')->count() > 0) {
-                                $scrapedTitle = $crawler->filter('meta[property="og:title"]')->attr('content');
-                            } elseif ($crawler->filter('title')->count() > 0) {
-                                $scrapedTitle = $crawler->filter('title')->text();
-                            }
-                            $title = ! empty($scrapedTitle) ? trim((string) $scrapedTitle) : null;
+                    if ($scrapeResult['success']) {
+                        if (empty($title) && ! empty($scrapeResult['data']['title'])) {
+                            $title = $scrapeResult['data']['title'];
+                            Log::info("[Process: {$this->url}] スクレイピングでタイトルを補完しました");
                         }
-
-                        // 2. Thumbnail fallback
-                        if (empty($thumbnailUrl)) {
-                            $imgSelectors = [
-                                ['selector' => 'meta[property="og:image"]', 'attr' => 'content'],
-                                ['selector' => 'meta[name="twitter:image"]', 'attr' => 'content'],
-                                ['selector' => 'article img', 'attr' => 'src'],
-                                ['selector' => '.entry-content img', 'attr' => 'src'],
-                                ['selector' => 'img', 'attr' => 'src'],
-                            ];
-                            foreach ($imgSelectors as $img) {
-                                if ($crawler->filter($img['selector'])->count() > 0) {
-                                    $src = $crawler->filter($img['selector'])->first()->attr($img['attr']);
-                                    if (! empty($src)) {
-                                        $thumbnailUrl = trim((string) $src);
-                                        break;
-                                    }
-                                }
-                            }
+                        if (empty($thumbnailUrl) && ! empty($scrapeResult['data']['image'])) {
+                            $thumbnailUrl = $scrapeResult['data']['image'];
+                            Log::info("[Process: {$this->url}] スクレイピングで画像を補完しました");
                         }
-
-                        // 3. Published_at fallback
-                        if (empty($publishedAt)) {
-                            $dateSelectors = [];
-                            if (! empty($this->site->date_selector)) {
-                                $dateSelectors[] = ['selector' => $this->site->date_selector, 'attr' => '_text'];
-                            }
-                            $dateSelectors = array_merge($dateSelectors, [
-                                ['selector' => 'meta[property="article:published_time"]', 'attr' => 'content'],
-                                ['selector' => 'time', 'attr' => 'datetime'],
-                                ['selector' => 'time', 'attr' => '_text'],
-                                ['selector' => '.date', 'attr' => '_text'],
-                                ['selector' => '.time', 'attr' => '_text'],
-                            ]);
-
-                            $extractedVal = null;
-                            foreach ($dateSelectors as $dateInfo) {
-                                if ($crawler->filter($dateInfo['selector'])->count() > 0) {
-                                    $val = $dateInfo['attr'] === '_text'
-                                        ? $crawler->filter($dateInfo['selector'])->first()->text()
-                                        : $crawler->filter($dateInfo['selector'])->first()->attr($dateInfo['attr']);
-                                    if (! empty(trim((string) $val))) {
-                                        $extractedVal = trim((string) $val);
-                                        break;
-                                    }
-                                }
-                            }
-
-                            if (empty($extractedVal) && $crawler->filter('body')->count() > 0) {
-                                $bodyText = $crawler->filter('body')->text();
-                                if (preg_match('/(20\d{2})[年\/\-\s]+(\d{1,2})[月\/\-\s]+(\d{1,2})日?\s*(?:[（\(][日月火水木金土祝][）\)])?\s*(?:(\d{1,2})[:時](\d{1,2})(?::(\d{1,2}))?)?/', $bodyText, $matches)) {
-                                    $extractedVal = $matches[0];
-                                }
-                            }
-
-                            if (! empty($extractedVal)) {
-                                Log::info("[Process: {$this->url}] スクレイピングで取得した日付文字列 [{$extractedVal}] をパースします");
-                                $publishedAt = $this->parseDateString($extractedVal)->toDateTimeString();
-                            }
+                        if (empty($publishedAt) && ! empty($scrapeResult['data']['date'])) {
+                            $publishedAt = $scrapeResult['data']['date'];
+                            Log::info("[Process: {$this->url}] スクレイピングで日付を補完しました [{$publishedAt}]");
                         }
+                    } else {
+                        Log::warning("[Process: {$this->url}] スクレイピング補完に失敗しました: ".($scrapeResult['error_message'] ?? '不明なエラー'));
                     }
                 } catch (Exception $e) {
                     Log::error("ProcessArticleJob: Failed to fetch/parse metadata for URL {$this->url} - ".$e->getMessage());

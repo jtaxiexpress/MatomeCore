@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\SiteResource\Pages;
 use App\Jobs\FetchSitePastArticlesJob;
 use App\Models\Site;
+use App\Services\ArticleScraperService;
 use Carbon\Carbon;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
@@ -339,36 +340,23 @@ class SiteResource extends Resource
                                     $title = '未取得';
                                     $imgUrl = '未取得';
                                     $date = '未取得';
-                                    try {
-                                        $res = Http::withHeaders([
-                                            'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                                        ])->timeout(10)->get($u);
-                                        if ($res->successful()) {
-                                            $sampleCrawler = new Crawler($res->body(), $u);
-                                            if ($sampleCrawler->filter('meta[property="og:title"]')->count() > 0) {
-                                                $title = $sampleCrawler->filter('meta[property="og:title"]')->attr('content');
-                                            } elseif ($sampleCrawler->filter('title')->count() > 0) {
-                                                $title = $sampleCrawler->filter('title')->text();
-                                            }
-                                            if ($sampleCrawler->filter('meta[property="og:image"]')->count() > 0) {
-                                                $imgUrl = $sampleCrawler->filter('meta[property="og:image"]')->attr('content');
-                                            } elseif ($sampleCrawler->filter('meta[name="twitter:image"]')->count() > 0) {
-                                                $imgUrl = $sampleCrawler->filter('meta[name="twitter:image"]')->attr('content');
-                                            } elseif ($sampleCrawler->filter('img')->count() > 0) {
-                                                $imgUrl = $sampleCrawler->filter('img')->first()->image()->getUri();
-                                            }
-                                            if ($sampleCrawler->filter('meta[property="article:published_time"]')->count() > 0) {
-                                                $date = $sampleCrawler->filter('meta[property="article:published_time"]')->attr('content');
-                                            } elseif ($sampleCrawler->filter('time')->count() > 0) {
-                                                $date = $sampleCrawler->filter('time')->first()->attr('datetime') ?? $sampleCrawler->filter('time')->first()->text();
-                                            } elseif ($sampleCrawler->filter('[class*="date"]')->count() > 0) {
-                                                $date = $sampleCrawler->filter('[class*="date"]')->first()->text();
-                                            }
-                                        } else {
-                                            $title = '取得失敗(HTTP '.$res->status().')';
+                                    $scraper = app(ArticleScraperService::class);
+                                    $scrapeResult = $scraper->scrape($u);
+
+                                    if ($scrapeResult['success']) {
+                                        $title = $scrapeResult['data']['title'] ?? '取得失敗(タイトル見つからず)';
+
+                                        $imgUrl = $scrapeResult['data']['image'] ?? null;
+                                        if (empty($imgUrl)) {
+                                            $imgUrl = 'なし ('.($scrapeResult['error_message'] ?? '画像見つからず').')';
                                         }
-                                    } catch (\Exception $e) {
-                                        $title = '取得失敗('.$e->getMessage().')';
+
+                                        $date = $scrapeResult['data']['date'] ?? null;
+                                        if (empty($date)) {
+                                            $date = 'なし ('.($scrapeResult['error_message'] ?? '日付見つからず').')';
+                                        }
+                                    } else {
+                                        $title = '取得失敗('.($scrapeResult['error_message'] ?? '不明なエラー').')';
                                     }
 
                                     $sampleOutput .= "<strong>{$num}件目:</strong><br>";
@@ -534,52 +522,23 @@ class SiteResource extends Resource
                                 // ⑤ 欠損データのスクレイピング補完 (最大5件まで)
                                 if (($imageUrl === 'なし' || $date === 'なし') && $url !== 'なし' && $scrapedCount < 5) {
                                     $scrapedCount++;
-                                    try {
-                                        // タイムアウトを10秒に設定
-                                        $htmlResponse = Http::withHeaders([
-                                            'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                                            'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                                            'Accept-Language' => 'ja,en-US;q=0.9,en;q=0.8',
-                                        ])->withOptions(['verify' => false])->timeout(10)->get($url);
+                                    $scraper = app(ArticleScraperService::class);
+                                    $scrapeResult = $scraper->scrape($url);
 
-                                        if ($htmlResponse->successful()) {
-                                            $crawler = new Crawler($htmlResponse->body(), $url);
-
-                                            // 日付補完 (クローラーテストと同一ロジック)
-                                            if ($date === 'なし') {
-                                                $dateRaw = null;
-                                                if ($crawler->filter('meta[property="article:published_time"]')->count() > 0) {
-                                                    $dateRaw = $crawler->filter('meta[property="article:published_time"]')->attr('content');
-                                                } elseif ($crawler->filter('time')->count() > 0) {
-                                                    $dateRaw = $crawler->filter('time')->first()->attr('datetime') ?? $crawler->filter('time')->first()->text();
-                                                } elseif ($crawler->filter('[class*="date"]')->count() > 0) {
-                                                    $dateRaw = $crawler->filter('[class*="date"]')->first()->text();
-                                                }
-
-                                                if (! empty(trim((string) $dateRaw))) {
-                                                    try {
-                                                        $date = Carbon::parse(trim($dateRaw))->toDateTimeString();
-                                                    } catch (\Exception $e) {
-                                                    }
-                                                }
-                                            }
-
-                                            // 画像URL補完 (クローラーテストと同一ロジック)
-                                            if ($imageUrl === 'なし') {
-                                                if ($crawler->filter('meta[property="og:image"]')->count() > 0) {
-                                                    $imageUrl = trim($crawler->filter('meta[property="og:image"]')->attr('content'));
-                                                } elseif ($crawler->filter('meta[name="twitter:image"]')->count() > 0) {
-                                                    $imageUrl = trim($crawler->filter('meta[name="twitter:image"]')->attr('content'));
-                                                } elseif ($crawler->filter('img')->count() > 0) {
-                                                    try {
-                                                        $imageUrl = trim($crawler->filter('img')->first()->image()->getUri());
-                                                    } catch (\Exception $e) {
-                                                    }
-                                                }
-                                            }
+                                    if ($scrapeResult['success']) {
+                                        if ($date === 'なし') {
+                                            $date = $scrapeResult['data']['date'] ?? 'なし ('.($scrapeResult['error_message'] ?? '日付見つからず').')';
                                         }
-                                    } catch (\Exception $e) {
-                                        // 通信エラー等でも処理は止めない
+                                        if ($imageUrl === 'なし') {
+                                            $imageUrl = $scrapeResult['data']['image'] ?? 'なし ('.($scrapeResult['error_message'] ?? '画像見つからず').')';
+                                        }
+                                    } elseif (! empty($scrapeResult['error_message'])) {
+                                        if ($date === 'なし') {
+                                            $date = 'なし ('.$scrapeResult['error_message'].')';
+                                        }
+                                        if ($imageUrl === 'なし') {
+                                            $imageUrl = 'なし ('.$scrapeResult['error_message'].')';
+                                        }
                                     }
                                 }
 
