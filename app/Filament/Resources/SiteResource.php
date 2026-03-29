@@ -484,22 +484,21 @@ class SiteResource extends Resource
                                 $titleStr = (string) $item->title;
                                 $title = $titleStr !== '' ? trim($titleStr) : 'なし';
 
-                                // ② URL
-                                $url = (string) $item->link;
+                                // ② URL (必ずtrimする)
+                                $urlStr = (string) $item->link;
+                                $url = $urlStr !== '' ? trim($urlStr) : '';
                                 if (! $url && isset($item->link['href'])) {
-                                    $url = (string) $item->link['href']; // Atom対応
+                                    $url = trim((string) $item->link['href']);
                                 }
                                 if (empty($url)) {
                                     $guids = $item->xpath('.//*[local-name()="guid"] | .//*[local-name()="id"]') ?: [];
-                                    if (! empty($guids) && filter_var((string) $guids[0], FILTER_VALIDATE_URL)) {
+                                    if (! empty($guids) && filter_var(trim((string) $guids[0]), FILTER_VALIDATE_URL)) {
                                         $url = trim((string) $guids[0]);
                                     }
                                 }
-                                if (empty($url)) {
-                                    $url = 'なし';
-                                }
+                                $url = empty($url) ? 'なし' : $url;
 
-                                // ③ 公開日
+                                // ③ 公開日 (RSSからの取得)
                                 $publishedAtRaw = (string) $item->pubDate
                                     ?: (string) $item->children('dc', true)->date
                                     ?: (string) $item->updated
@@ -507,28 +506,28 @@ class SiteResource extends Resource
                                     ?: (string) $item->date;
 
                                 $date = 'なし';
-                                if ($publishedAtRaw) {
+                                if (! empty(trim($publishedAtRaw))) {
                                     try {
-                                        $date = Carbon::parse($publishedAtRaw)->toDateTimeString();
+                                        $date = Carbon::parse(trim($publishedAtRaw))->toDateTimeString();
                                     } catch (\Exception $e) {
                                         $date = 'なし';
                                     }
                                 }
 
-                                // ④ 画像URL
+                                // ④ 画像URL (RSSからの取得)
                                 $imageUrl = 'なし';
                                 if (isset($item->enclosure) && isset($item->enclosure['url'])) {
-                                    $imageUrl = (string) $item->enclosure['url'];
+                                    $imageUrl = trim((string) $item->enclosure['url']);
                                 } elseif ($item->children('media', true)->content && isset($item->children('media', true)->content->attributes()->url)) {
-                                    $imageUrl = (string) $item->children('media', true)->content->attributes()->url;
+                                    $imageUrl = trim((string) $item->children('media', true)->content->attributes()->url);
                                 } elseif ($item->children('media', true)->thumbnail && isset($item->children('media', true)->thumbnail->attributes()->url)) {
-                                    $imageUrl = (string) $item->children('media', true)->thumbnail->attributes()->url;
+                                    $imageUrl = trim((string) $item->children('media', true)->thumbnail->attributes()->url);
                                 }
 
                                 if ($imageUrl === 'なし') {
                                     $content = (string) $item->children('content', true)->encoded ?: (string) $item->description;
                                     if (preg_match('/<img[^>]+src=[\'"]([^\'"]+)[\'"]/i', $content, $matches)) {
-                                        $imageUrl = $matches[1];
+                                        $imageUrl = trim($matches[1]);
                                     }
                                 }
 
@@ -536,58 +535,51 @@ class SiteResource extends Resource
                                 if (($imageUrl === 'なし' || $date === 'なし') && $url !== 'なし' && $scrapedCount < 5) {
                                     $scrapedCount++;
                                     try {
+                                        // タイムアウトを10秒に設定
                                         $htmlResponse = Http::withHeaders([
                                             'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                                            'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                                            'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
                                             'Accept-Language' => 'ja,en-US;q=0.9,en;q=0.8',
-                                        ])->withOptions(['verify' => false])->timeout(5)->get($url);
+                                        ])->withOptions(['verify' => false])->timeout(10)->get($url);
 
                                         if ($htmlResponse->successful()) {
                                             $crawler = new Crawler($htmlResponse->body(), $url);
 
-                                            // 日付の補完
+                                            // 日付補完 (クローラーテストと同一ロジック)
                                             if ($date === 'なし') {
-                                                $dateSelectors = [
-                                                    ['selector' => 'meta[property="article:published_time"]', 'attr' => 'content'],
-                                                    ['selector' => 'time', 'attr' => 'datetime'],
-                                                    ['selector' => 'time', 'attr' => '_text'],
-                                                ];
-                                                foreach ($dateSelectors as $ds) {
-                                                    if ($crawler->filter($ds['selector'])->count() > 0) {
-                                                        $val = $ds['attr'] === '_text'
-                                                            ? $crawler->filter($ds['selector'])->first()->text()
-                                                            : $crawler->filter($ds['selector'])->first()->attr($ds['attr']);
-                                                        if (! empty(trim((string) $val))) {
-                                                            try {
-                                                                $date = Carbon::parse(trim((string) $val))->toDateTimeString();
-                                                                break;
-                                                            } catch (\Exception $e) {
-                                                                // 無視
-                                                            }
-                                                        }
+                                                $dateRaw = null;
+                                                if ($crawler->filter('meta[property="article:published_time"]')->count() > 0) {
+                                                    $dateRaw = $crawler->filter('meta[property="article:published_time"]')->attr('content');
+                                                } elseif ($crawler->filter('time')->count() > 0) {
+                                                    $dateRaw = $crawler->filter('time')->first()->attr('datetime') ?? $crawler->filter('time')->first()->text();
+                                                } elseif ($crawler->filter('[class*="date"]')->count() > 0) {
+                                                    $dateRaw = $crawler->filter('[class*="date"]')->first()->text();
+                                                }
+
+                                                if (! empty(trim((string) $dateRaw))) {
+                                                    try {
+                                                        $date = Carbon::parse(trim($dateRaw))->toDateTimeString();
+                                                    } catch (\Exception $e) {
                                                     }
                                                 }
                                             }
 
-                                            // 画像URLの補完
+                                            // 画像URL補完 (クローラーテストと同一ロジック)
                                             if ($imageUrl === 'なし') {
-                                                $imgSelectors = [
-                                                    ['selector' => 'meta[property="og:image"]', 'attr' => 'content'],
-                                                    ['selector' => 'meta[name="twitter:image"]', 'attr' => 'content'],
-                                                ];
-                                                foreach ($imgSelectors as $is) {
-                                                    if ($crawler->filter($is['selector'])->count() > 0) {
-                                                        $val = $crawler->filter($is['selector'])->first()->attr($is['attr']);
-                                                        if (! empty($val)) {
-                                                            $imageUrl = trim((string) $val);
-                                                            break;
-                                                        }
+                                                if ($crawler->filter('meta[property="og:image"]')->count() > 0) {
+                                                    $imageUrl = trim($crawler->filter('meta[property="og:image"]')->attr('content'));
+                                                } elseif ($crawler->filter('meta[name="twitter:image"]')->count() > 0) {
+                                                    $imageUrl = trim($crawler->filter('meta[name="twitter:image"]')->attr('content'));
+                                                } elseif ($crawler->filter('img')->count() > 0) {
+                                                    try {
+                                                        $imageUrl = trim($crawler->filter('img')->first()->image()->getUri());
+                                                    } catch (\Exception $e) {
                                                     }
                                                 }
                                             }
                                         }
                                     } catch (\Exception $e) {
-                                        // 失敗しても全体のプレビューは止めない
+                                        // 通信エラー等でも処理は止めない
                                     }
                                 }
 
