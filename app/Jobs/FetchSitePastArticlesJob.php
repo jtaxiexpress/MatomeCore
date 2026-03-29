@@ -151,7 +151,7 @@ class FetchSitePastArticlesJob implements ShouldQueue
                 Log::info("[Fetch: {$this->site->name}] 新規URL: ".count($newUrls).'件 / 重複スキップ: '.(count($extractedUrls) - count($newUrls)).'件');
 
                 foreach ($newUrls as $newUrl) {
-                    ProcessArticleJob::dispatch($this->site, $newUrl, [], 'ollama', 'RSS一括');
+                    ProcessArticleJob::dispatch($this->site->id, $newUrl, [], 'ollama', 'RSS一括');
                     $dispatchedCount++;
 
                     if ($this->limit > 0 && $dispatchedCount >= $this->limit) {
@@ -282,7 +282,7 @@ class FetchSitePastArticlesJob implements ShouldQueue
 
                     // 4. 純粋な新規URLのみをそのままキューに投入し、純増カウント
                     foreach ($newUrls as $newUrl) {
-                        ProcessArticleJob::dispatch($this->site, $newUrl, [], 'ollama', '過去記事一括');
+                        ProcessArticleJob::dispatch($this->site->id, $newUrl, [], 'ollama', '過去記事一括');
                         $dispatchedCount++;
 
                         if ($this->limit > 0 && $dispatchedCount >= $this->limit) {

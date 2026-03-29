@@ -22,9 +22,11 @@ class ProcessArticleJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 3;
+    public int $tries = 1;
 
-    public int $timeout = 300;
+    public int $maxExceptions = 1;
+
+    public int $timeout = 600;
 
     public ?string $output = null;
 
@@ -32,7 +34,7 @@ class ProcessArticleJob implements ShouldQueue
      * Create a new job instance.
      */
     public function __construct(
-        public Site $site,
+        public int $siteId,
         public string $url,
         public array $metaData = [],
         public string $aiDriver = 'gemini',
@@ -51,14 +53,19 @@ class ProcessArticleJob implements ShouldQueue
             return;
         }
 
-        $this->site->loadMissing('app.categories');
-        if (! $this->site->app) {
-            Log::warning("ProcessArticleJob: App not found for Site ID {$this->site->id}");
+        // ID からモデルを再取得（シリアライズ問題を回避）
+        $site = Site::with('app.categories')->find($this->siteId);
+        if (! $site) {
+            Log::warning("ProcessArticleJob: Site ID {$this->siteId} が見つかりません。");
 
             return;
         }
 
-        $site = $this->site;
+        if (! $site->app) {
+            Log::warning("ProcessArticleJob: App not found for Site ID {$this->siteId}");
+
+            return;
+        }
 
         // 1. Check if article already exists
         if (Article::where('url', $this->url)->exists()) {
@@ -223,7 +230,6 @@ class ProcessArticleJob implements ShouldQueue
             return ['id' => $cat->id, 'name' => $cat->name];
         })->toArray();
 
-        $categoryId = null;
         Log::info("[Process: {$this->url}] AI({$aiDriver})へタイトルリライトとカテゴリ推論をリクエスト中...");
         $aiService = app(ArticleAiService::class);
         $aiResult = $aiService->classifyAndRewrite($title, $categories, $aiDriver, $site->app);
