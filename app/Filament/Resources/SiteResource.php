@@ -459,7 +459,9 @@ class SiteResource extends Resource
                         try {
                             $response = Http::withHeaders([
                                 'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                            ])->timeout(10)->get($rssUrl);
+                                'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                                'Accept-Language' => 'ja,en-US;q=0.9,en;q=0.8',
+                            ])->withOptions(['verify' => false])->timeout(10)->get($rssUrl);
 
                             if (! $response->successful()) {
                                 return view('filament.actions.rss-preview', ['error' => "HTTP通信に失敗しました (ステータスコード: {$response->status()})"]);
@@ -476,64 +478,116 @@ class SiteResource extends Resource
                             }
 
                             $results = [];
+                            $scrapedCount = 0;
                             foreach (array_slice($items, 0, 10) as $item) {
                                 // ① タイトル
-                                $titleNodes = $item->xpath('.//*[local-name()="title"]') ?: [];
-                                $title = ! empty($titleNodes) ? trim((string) $titleNodes[0]) : 'なし';
+                                $titleStr = (string) $item->title;
+                                $title = $titleStr !== '' ? trim($titleStr) : 'なし';
 
                                 // ② URL
-                                $url = 'なし';
-                                $links = $item->xpath('.//*[local-name()="link"]') ?: [];
-                                if (! empty($links)) {
-                                    $linkNode = $links[0];
-                                    $linkText = trim((string) $linkNode);
-                                    if ($linkText !== '') {
-                                        $url = $linkText;
-                                    } elseif (isset($linkNode['href'])) {
-                                        $url = trim((string) $linkNode['href']);
-                                    }
+                                $url = (string) $item->link;
+                                if (! $url && isset($item->link['href'])) {
+                                    $url = (string) $item->link['href']; // Atom対応
                                 }
-                                if ($url === 'なし') {
+                                if (empty($url)) {
                                     $guids = $item->xpath('.//*[local-name()="guid"] | .//*[local-name()="id"]') ?: [];
                                     if (! empty($guids) && filter_var((string) $guids[0], FILTER_VALIDATE_URL)) {
                                         $url = trim((string) $guids[0]);
                                     }
                                 }
+                                if (empty($url)) {
+                                    $url = 'なし';
+                                }
 
                                 // ③ 公開日
+                                $publishedAtRaw = (string) $item->pubDate
+                                    ?: (string) $item->children('dc', true)->date
+                                    ?: (string) $item->updated
+                                    ?: (string) $item->published
+                                    ?: (string) $item->date;
+
                                 $date = 'なし';
-                                $dateNodes = $item->xpath('.//*[local-name()="pubDate" or local-name()="date" or local-name()="published" or local-name()="updated" or local-name()="lastmod" or local-name()="created"]') ?: [];
-                                foreach ($dateNodes as $dateNode) {
-                                    $dateStr = trim((string) $dateNode);
-                                    if ($dateStr !== '') {
-                                        try {
-                                            $date = Carbon::parse($dateStr)->toDateTimeString();
-                                            break;
-                                        } catch (\Exception $e) {
-                                            // Ignore parsing error
-                                        }
+                                if ($publishedAtRaw) {
+                                    try {
+                                        $date = Carbon::parse($publishedAtRaw)->toDateTimeString();
+                                    } catch (\Exception $e) {
+                                        $date = 'なし';
                                     }
                                 }
 
                                 // ④ 画像URL
                                 $imageUrl = 'なし';
-                                $mediaNodes = $item->xpath('.//*[local-name()="enclosure" or local-name()="thumbnail" or local-name()="content"]') ?: [];
-                                foreach ($mediaNodes as $mediaNode) {
-                                    if (isset($mediaNode['url']) && ! empty((string) $mediaNode['url'])) {
-                                        $imageUrl = trim((string) $mediaNode['url']);
-                                        break;
-                                    }
+                                if (isset($item->enclosure) && isset($item->enclosure['url'])) {
+                                    $imageUrl = (string) $item->enclosure['url'];
+                                } elseif ($item->children('media', true)->content && isset($item->children('media', true)->content->attributes()->url)) {
+                                    $imageUrl = (string) $item->children('media', true)->content->attributes()->url;
+                                } elseif ($item->children('media', true)->thumbnail && isset($item->children('media', true)->thumbnail->attributes()->url)) {
+                                    $imageUrl = (string) $item->children('media', true)->thumbnail->attributes()->url;
                                 }
 
                                 if ($imageUrl === 'なし') {
-                                    $htmlContent = '';
-                                    $textNodes = $item->xpath('.//*[local-name()="description" or local-name()="content" or local-name()="encoded"]') ?: [];
-                                    foreach ($textNodes as $textNode) {
-                                        $htmlContent .= (string) $textNode;
+                                    $content = (string) $item->children('content', true)->encoded ?: (string) $item->description;
+                                    if (preg_match('/<img[^>]+src=[\'"]([^\'"]+)[\'"]/i', $content, $matches)) {
+                                        $imageUrl = $matches[1];
                                     }
+                                }
 
-                                    if (preg_match('/<img[^>]+src=[\'"]([^\'"]+)[\'"]/i', $htmlContent, $imgMatches)) {
-                                        $imageUrl = $imgMatches[1];
+                                // ⑤ 欠損データのスクレイピング補完 (最大5件まで)
+                                if (($imageUrl === 'なし' || $date === 'なし') && $url !== 'なし' && $scrapedCount < 5) {
+                                    $scrapedCount++;
+                                    try {
+                                        $htmlResponse = Http::withHeaders([
+                                            'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                                            'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                                            'Accept-Language' => 'ja,en-US;q=0.9,en;q=0.8',
+                                        ])->withOptions(['verify' => false])->timeout(5)->get($url);
+
+                                        if ($htmlResponse->successful()) {
+                                            $crawler = new Crawler($htmlResponse->body(), $url);
+
+                                            // 日付の補完
+                                            if ($date === 'なし') {
+                                                $dateSelectors = [
+                                                    ['selector' => 'meta[property="article:published_time"]', 'attr' => 'content'],
+                                                    ['selector' => 'time', 'attr' => 'datetime'],
+                                                    ['selector' => 'time', 'attr' => '_text'],
+                                                ];
+                                                foreach ($dateSelectors as $ds) {
+                                                    if ($crawler->filter($ds['selector'])->count() > 0) {
+                                                        $val = $ds['attr'] === '_text'
+                                                            ? $crawler->filter($ds['selector'])->first()->text()
+                                                            : $crawler->filter($ds['selector'])->first()->attr($ds['attr']);
+                                                        if (! empty(trim((string) $val))) {
+                                                            try {
+                                                                $date = Carbon::parse(trim((string) $val))->toDateTimeString();
+                                                                break;
+                                                            } catch (\Exception $e) {
+                                                                // 無視
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // 画像URLの補完
+                                            if ($imageUrl === 'なし') {
+                                                $imgSelectors = [
+                                                    ['selector' => 'meta[property="og:image"]', 'attr' => 'content'],
+                                                    ['selector' => 'meta[name="twitter:image"]', 'attr' => 'content'],
+                                                ];
+                                                foreach ($imgSelectors as $is) {
+                                                    if ($crawler->filter($is['selector'])->count() > 0) {
+                                                        $val = $crawler->filter($is['selector'])->first()->attr($is['attr']);
+                                                        if (! empty($val)) {
+                                                            $imageUrl = trim((string) $val);
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } catch (\Exception $e) {
+                                        // 失敗しても全体のプレビューは止めない
                                     }
                                 }
 

@@ -81,24 +81,15 @@ class ProcessArticleJob implements ShouldQueue
 
             $title = $this->metaData['raw_title'] ?? null;
             $thumbnailUrl = $this->metaData['thumbnail_url'] ?? null;
-            $publishedAt = $this->metaData['published_at'] ?? now()->toDateTimeString();
+            $rawPublishedAt = $this->metaData['published_at'] ?? null;
+            $publishedAt = $rawPublishedAt ? $this->parseDateString($rawPublishedAt)->toDateTimeString() : null;
 
-            // raw_title が渡されていればHTMLスクレイピングはスキップ
-            $needsScraping = empty($title) || empty($thumbnailUrl) || empty($this->metaData['published_at']);
-
-            if ($needsScraping && ! empty($title)) {
-                // タイトルはあるが thumbnail / published_at だけが欠けているケース:
-                // スクレイピングはせず、不足分はデフォルト値で補う
-                $publishedAt = $this->metaData['published_at']
-                    ? $this->parseDateString($this->metaData['published_at'])->toDateTimeString()
-                    : now()->toDateTimeString();
-                $needsScraping = false;
-            }
+            // タイトル、サムネイル、公開日時のいずれかが欠損している場合はスクレイピングを実行
+            $needsScraping = empty($title) || empty($thumbnailUrl) || empty($publishedAt);
 
             if ($needsScraping) {
-                // タイトルそのものが取れていない場合のみHTMLスクレイピングを実行
                 try {
-                    Log::info("[Process: {$this->url}] HTMLスクレイピングを開始します");
+                    Log::info("[Process: {$this->url}] 不足データ(title/thumbnail/date)の補完のためHTMLスクレイピングを開始します");
                     $response = Http::withHeaders([
                         'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     ])->timeout(10)->get($this->url);
@@ -106,14 +97,15 @@ class ProcessArticleJob implements ShouldQueue
                     if ($response->successful()) {
                         $crawler = new Crawler($response->body(), $this->url);
 
-                        // 1. Title fallback: og:title を最優先、次に <title> タグ
+                        // 1. Title fallback
                         if (empty($title)) {
+                            $scrapedTitle = null;
                             if ($crawler->filter('meta[property="og:title"]')->count() > 0) {
-                                $title = $crawler->filter('meta[property="og:title"]')->attr('content');
+                                $scrapedTitle = $crawler->filter('meta[property="og:title"]')->attr('content');
                             } elseif ($crawler->filter('title')->count() > 0) {
-                                $title = $crawler->filter('title')->text();
+                                $scrapedTitle = $crawler->filter('title')->text();
                             }
-                            $title = trim($title);
+                            $title = ! empty($scrapedTitle) ? trim((string) $scrapedTitle) : null;
                         }
 
                         // 2. Thumbnail fallback
@@ -129,23 +121,19 @@ class ProcessArticleJob implements ShouldQueue
                                 if ($crawler->filter($img['selector'])->count() > 0) {
                                     $src = $crawler->filter($img['selector'])->first()->attr($img['attr']);
                                     if (! empty($src)) {
-                                        $thumbnailUrl = trim($src);
+                                        $thumbnailUrl = trim((string) $src);
                                         break;
                                     }
                                 }
                             }
                         }
 
-                        // 3. Published_at fallback (override if missing)
-                        if (empty($this->metaData['published_at'])) {
+                        // 3. Published_at fallback
+                        if (empty($publishedAt)) {
                             $dateSelectors = [];
-
-                            // DB設定の優先セレクタがある場合最優先で追加
                             if (! empty($this->site->date_selector)) {
                                 $dateSelectors[] = ['selector' => $this->site->date_selector, 'attr' => '_text'];
                             }
-
-                            // デフォルトのフォールバックセレクタ
                             $dateSelectors = array_merge($dateSelectors, [
                                 ['selector' => 'meta[property="article:published_time"]', 'attr' => 'content'],
                                 ['selector' => 'time', 'attr' => 'datetime'],
@@ -155,20 +143,18 @@ class ProcessArticleJob implements ShouldQueue
                             ]);
 
                             $extractedVal = null;
-
                             foreach ($dateSelectors as $dateInfo) {
                                 if ($crawler->filter($dateInfo['selector'])->count() > 0) {
                                     $val = $dateInfo['attr'] === '_text'
                                         ? $crawler->filter($dateInfo['selector'])->first()->text()
                                         : $crawler->filter($dateInfo['selector'])->first()->attr($dateInfo['attr']);
-                                    if (! empty(trim($val))) {
-                                        $extractedVal = trim($val);
+                                    if (! empty(trim((string) $val))) {
+                                        $extractedVal = trim((string) $val);
                                         break;
                                     }
                                 }
                             }
 
-                            // セレクタで見つからなかった場合、ページ全体のテキストから正規表現で抽出
                             if (empty($extractedVal) && $crawler->filter('body')->count() > 0) {
                                 $bodyText = $crawler->filter('body')->text();
                                 if (preg_match('/(20\d{2})[年\/\-\s]+(\d{1,2})[月\/\-\s]+(\d{1,2})日?\s*(?:[（\(][日月火水木金土祝][）\)])?\s*(?:(\d{1,2})[:時](\d{1,2})(?::(\d{1,2}))?)?/', $bodyText, $matches)) {
@@ -177,28 +163,19 @@ class ProcessArticleJob implements ShouldQueue
                             }
 
                             if (! empty($extractedVal)) {
-                                Log::info("[Process: {$this->url}] 日付文字列 [{$extractedVal}] のパース処理中...");
+                                Log::info("[Process: {$this->url}] スクレイピングで取得した日付文字列 [{$extractedVal}] をパースします");
                                 $publishedAt = $this->parseDateString($extractedVal)->toDateTimeString();
-                            } else {
-                                $publishedAt = now()->toDateTimeString();
                             }
-                        } else {
-                            Log::info("[Process: {$this->url}] 日付文字列 [{$this->metaData['published_at']}] のパース処理中...");
-                            $publishedAt = $this->parseDateString($this->metaData['published_at'])->toDateTimeString();
                         }
                     }
                 } catch (Exception $e) {
-                    Log::error("ProcessArticleJob: Failed to fetch metadata for URL {$this->url} - ".$e->getMessage());
-                    $publishedAt = now()->toDateTimeString();
+                    Log::error("ProcessArticleJob: Failed to fetch/parse metadata for URL {$this->url} - ".$e->getMessage());
                 }
-            } else {
-                // メタデータが揃っている場合は日付パースのみ実行
-                if (! empty($this->metaData['published_at'])) {
-                    Log::info("[Process: {$this->url}] 日付文字列 [{$this->metaData['published_at']}] のパース処理中...");
-                    $publishedAt = $this->parseDateString($this->metaData['published_at'])->toDateTimeString();
-                } else {
-                    $publishedAt = now()->toDateTimeString();
-                }
+            }
+
+            // 最終的に publishedAt が空なら現在時刻をセット
+            if (empty($publishedAt)) {
+                $publishedAt = now()->toDateTimeString();
             }
 
             // 2.5 タイトル洗浄
