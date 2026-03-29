@@ -96,7 +96,7 @@ class CrawlSiteCommand extends Command
 
                 // ── URL ──────────────────────────────────────────────
                 $url = null;
-                $links = $entry->xpath('*[local-name()="link"]') ?: [];
+                $links = $entry->xpath('.//*[local-name()="link"]') ?: [];
                 if (! empty($links)) {
                     $linkNode = $links[0];
                     $linkText = trim((string) $linkNode);
@@ -107,7 +107,7 @@ class CrawlSiteCommand extends Command
                     }
                 }
                 if (empty($url)) {
-                    $guids = $entry->xpath('*[local-name()="guid"] | *[local-name()="id"]') ?: [];
+                    $guids = $entry->xpath('.//*[local-name()="guid"] | .//*[local-name()="id"]') ?: [];
                     if (! empty($guids) && filter_var((string) $guids[0], FILTER_VALIDATE_URL)) {
                         $url = trim((string) $guids[0]);
                     }
@@ -117,23 +117,20 @@ class CrawlSiteCommand extends Command
                 }
 
                 // ── タイトル ─────────────────────────────────────────
-                $titleNodes = $entry->xpath('*[local-name()="title"]') ?: [];
+                $titleNodes = $entry->xpath('.//*[local-name()="title"]') ?: [];
                 $title = ! empty($titleNodes) ? trim((string) $titleNodes[0]) : null;
 
                 // ── 公開日 ───────────────────────────────────────────
                 $publishedAt = null;
-                $dateFields = ['pubDate', 'date', 'updated', 'lastmod', 'published'];
-                foreach ($dateFields as $field) {
-                    $dateNodes = $entry->xpath("*[local-name()=\"{$field}\"]") ?: [];
-                    if (! empty($dateNodes)) {
-                        $dateStr = trim((string) $dateNodes[0]);
-                        if ($dateStr !== '') {
-                            try {
-                                $publishedAt = Carbon::parse($dateStr)->toDateTimeString();
-                            } catch (Exception $e) {
-                                $publishedAt = null;
-                            }
+                $dateNodes = $entry->xpath('.//*[local-name()="pubDate" or local-name()="date" or local-name()="published" or local-name()="updated" or local-name()="lastmod" or local-name()="created"]') ?: [];
+                foreach ($dateNodes as $dateNode) {
+                    $dateStr = trim((string) $dateNode);
+                    if ($dateStr !== '') {
+                        try {
+                            $publishedAt = Carbon::parse($dateStr)->toDateTimeString();
                             break;
+                        } catch (Exception $e) {
+                            $publishedAt = null;
                         }
                     }
                 }
@@ -141,10 +138,8 @@ class CrawlSiteCommand extends Command
                 // ── サムネイル ───────────────────────────────────────
                 $thumbnail = null;
 
-                // ① enclosure / thumbnail / media:content などの url 属性
-                $mediaNodes = $entry->xpath(
-                    '*[local-name()="enclosure"] | *[local-name()="thumbnail"] | *[local-name()="content"]'
-                ) ?: [];
+                // ① enclosure / thumbnail / content などの url 属性
+                $mediaNodes = $entry->xpath('.//*[local-name()="enclosure" or local-name()="thumbnail" or local-name()="content"]') ?: [];
                 foreach ($mediaNodes as $mediaNode) {
                     if (isset($mediaNode['url']) && ! empty((string) $mediaNode['url'])) {
                         $thumbnail = trim((string) $mediaNode['url']);
@@ -154,15 +149,14 @@ class CrawlSiteCommand extends Command
 
                 // ② encoded / description / content テキスト内の <img src="..."> から正規表現で抽出
                 if (empty($thumbnail)) {
-                    $textNodes = $entry->xpath(
-                        '*[local-name()="encoded"] | *[local-name()="description"] | *[local-name()="content"]'
-                    ) ?: [];
+                    $htmlContent = '';
+                    $textNodes = $entry->xpath('.//*[local-name()="description" or local-name()="content" or local-name()="encoded"]') ?: [];
                     foreach ($textNodes as $textNode) {
-                        $html = (string) $textNode;
-                        if (preg_match('/<img[^>]+src=[\'"]([^\'"]+)[\'"][^>]*>/i', $html, $imgMatches)) {
-                            $thumbnail = $imgMatches[1];
-                            break;
-                        }
+                        $htmlContent .= (string) $textNode;
+                    }
+
+                    if (preg_match('/<img[^>]+src=[\'"]([^\'"]+)[\'"]/i', $htmlContent, $imgMatches)) {
+                        $thumbnail = $imgMatches[1];
                     }
                 }
 

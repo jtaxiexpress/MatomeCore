@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\SiteResource\Pages;
 use App\Jobs\FetchSitePastArticlesJob;
 use App\Models\Site;
+use Carbon\Carbon;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -477,41 +478,62 @@ class SiteResource extends Resource
                             $results = [];
                             foreach (array_slice($items, 0, 10) as $item) {
                                 // ① タイトル
-                                $title = isset($item->title) ? (string) $item->title : 'なし';
+                                $titleNodes = $item->xpath('.//*[local-name()="title"]') ?: [];
+                                $title = ! empty($titleNodes) ? trim((string) $titleNodes[0]) : 'なし';
 
                                 // ② URL
                                 $url = 'なし';
-                                if (isset($item->link)) {
-                                    $url = isset($item->link['href']) ? (string) $item->link['href'] : (string) $item->link;
+                                $links = $item->xpath('.//*[local-name()="link"]') ?: [];
+                                if (! empty($links)) {
+                                    $linkNode = $links[0];
+                                    $linkText = trim((string) $linkNode);
+                                    if ($linkText !== '') {
+                                        $url = $linkText;
+                                    } elseif (isset($linkNode['href'])) {
+                                        $url = trim((string) $linkNode['href']);
+                                    }
+                                }
+                                if ($url === 'なし') {
+                                    $guids = $item->xpath('.//*[local-name()="guid"] | .//*[local-name()="id"]') ?: [];
+                                    if (! empty($guids) && filter_var((string) $guids[0], FILTER_VALIDATE_URL)) {
+                                        $url = trim((string) $guids[0]);
+                                    }
                                 }
 
                                 // ③ 公開日
                                 $date = 'なし';
-                                if (isset($item->pubDate)) {
-                                    $date = (string) $item->pubDate;
-                                } elseif (isset($item->updated)) {
-                                    $date = (string) $item->updated;
-                                } elseif ($item->children('dc', true) && $item->children('dc', true)->date) {
-                                    $date = (string) $item->children('dc', true)->date;
-                                } elseif (isset($item->date)) {
-                                    $date = (string) $item->date;
+                                $dateNodes = $item->xpath('.//*[local-name()="pubDate" or local-name()="date" or local-name()="published" or local-name()="updated" or local-name()="lastmod" or local-name()="created"]') ?: [];
+                                foreach ($dateNodes as $dateNode) {
+                                    $dateStr = trim((string) $dateNode);
+                                    if ($dateStr !== '') {
+                                        try {
+                                            $date = Carbon::parse($dateStr)->toDateTimeString();
+                                            break;
+                                        } catch (\Exception $e) {
+                                            // Ignore parsing error
+                                        }
+                                    }
                                 }
 
                                 // ④ 画像URL
                                 $imageUrl = 'なし';
-                                if (isset($item->enclosure) && isset($item->enclosure['url'])) {
-                                    $imageUrl = (string) $item->enclosure['url'];
-                                } elseif ($item->children('media', true) && isset($item->children('media', true)->thumbnail) && isset($item->children('media', true)->thumbnail['url'])) {
-                                    $imageUrl = (string) $item->children('media', true)->thumbnail['url'];
+                                $mediaNodes = $item->xpath('.//*[local-name()="enclosure" or local-name()="thumbnail" or local-name()="content"]') ?: [];
+                                foreach ($mediaNodes as $mediaNode) {
+                                    if (isset($mediaNode['url']) && ! empty((string) $mediaNode['url'])) {
+                                        $imageUrl = trim((string) $mediaNode['url']);
+                                        break;
+                                    }
                                 }
 
                                 if ($imageUrl === 'なし') {
-                                    $description = isset($item->description) ? (string) $item->description : '';
-                                    $content = ($item->children('content', true) && $item->children('content', true)->encoded) ? (string) $item->children('content', true)->encoded : '';
-                                    $html = $description.$content;
+                                    $htmlContent = '';
+                                    $textNodes = $item->xpath('.//*[local-name()="description" or local-name()="content" or local-name()="encoded"]') ?: [];
+                                    foreach ($textNodes as $textNode) {
+                                        $htmlContent .= (string) $textNode;
+                                    }
 
-                                    if (preg_match('/<img[^>]+src=["\']([^"\']+)["\']/i', $html, $matches)) {
-                                        $imageUrl = $matches[1];
+                                    if (preg_match('/<img[^>]+src=[\'"]([^\'"]+)[\'"]/i', $htmlContent, $imgMatches)) {
+                                        $imageUrl = $imgMatches[1];
                                     }
                                 }
 
