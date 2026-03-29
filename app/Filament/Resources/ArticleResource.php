@@ -2,28 +2,31 @@
 
 namespace App\Filament\Resources;
 
+use App\Actions\CategorizeArticleAction;
 use App\Filament\Resources\ArticleResource\Pages;
 use App\Models\Article;
-use App\Actions\CategorizeArticleAction;
-use Filament\Forms\Components\DateTimePicker;
-use Filament\Schemas\Components\Grid;
-use Filament\Schemas\Components\Section;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
-use Filament\Schemas\Schema;
-use Filament\Resources\Resource;
+use App\Models\Category;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Forms\Components\DateTimePicker;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
+use Filament\Resources\Resource;
+use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
+use Filament\Schemas\Schema;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
-use Filament\Notifications\Notification;
 
 class ArticleResource extends Resource
 {
     protected static ?string $model = Article::class;
+
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-document-text';
 
     public static function form(Schema $form): Schema
@@ -52,14 +55,14 @@ class ArticleResource extends Resource
                             ->label('配信アプリ')
                             ->relationship('app', 'name')
                             ->live()
-                            ->afterStateUpdated(fn (\Filament\Schemas\Components\Utilities\Set $set) => $set('category_id', null))
+                            ->afterStateUpdated(fn (Set $set) => $set('category_id', null))
                             ->required()
                             ->searchable()
                             ->preload(),
                         Select::make('category_id')
                             ->label('カテゴリ')
-                            ->options(fn (\Filament\Schemas\Components\Utilities\Get $get) => \App\Models\Category::where('app_id', $get('app_id'))->pluck('name', 'id'))
-                            ->placeholder(fn (\Filament\Schemas\Components\Utilities\Get $get) => $get('app_id') ? 'カテゴリを選択' : 'まずアプリを選択してください')
+                            ->options(fn (Get $get) => Category::where('app_id', $get('app_id'))->pluck('name', 'id'))
+                            ->placeholder(fn (Get $get) => $get('app_id') ? 'カテゴリを選択' : 'まずアプリを選択してください')
                             ->searchable()
                             ->preload(),
                         Select::make('site_id')
@@ -84,7 +87,21 @@ class ArticleResource extends Resource
                 TextColumn::make('app.name')->label('アプリ')->sortable()->badge()->color('info'),
                 TextColumn::make('category.name')->label('カテゴリ')->sortable()->badge(),
                 TextColumn::make('site.name')->label('配信元')->sortable(),
-                TextColumn::make('fetch_source')->label('取得元')->badge()->searchable(),
+                TextColumn::make('fetch_source')->label('取得元')
+                    ->badge()
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'fetch_past_sitemap' => '過去記事一括(サイトマップ)',
+                        'fetch_past_html' => '過去記事一括(HTML解析)',
+                        'rss' => '新規記事取得(RSS)',
+                        default => $state,
+                    })
+                    ->color(fn (string $state): string => match ($state) {
+                        'fetch_past_sitemap' => 'warning',
+                        'fetch_past_html' => 'danger',
+                        'rss' => 'success',
+                        default => 'gray',
+                    })
+                    ->searchable(),
                 TextColumn::make('published_at')->label('公開日時')->dateTime('Y/n/j H:i')->sortable(),
                 TextColumn::make('created_at')->label('作成日')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('updated_at')->label('更新日')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),

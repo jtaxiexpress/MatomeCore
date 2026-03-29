@@ -331,11 +331,10 @@ class CrawlSiteCommand extends Command
 
         $this->info("Dispatching new article: {$url}");
 
-        // Here we dispatch the job to handle Crawl4AI and AI categorization
         ProcessArticleJob::dispatch($site->id, $url, [
             'raw_title' => $data['title'],
             'thumbnail_url' => $data['thumbnail'],
             'published_at' => $data['published_at']?->toDateTimeString(),
-        ], 'gemini', 'RSS定期取得');
+        ], 'gemini', 'rss');
     }
 }
