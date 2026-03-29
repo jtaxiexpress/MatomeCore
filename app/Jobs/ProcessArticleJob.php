@@ -65,14 +65,27 @@ class ProcessArticleJob implements ShouldQueue
             return;
         }
 
+        // AIドライバーをAppの設定から動的に取得（コンストラクタの引数に依存しない）
+        $aiDriver = $site->app->ai_driver ?? config('ai.default', 'gemini');
+
         $title = $this->metaData['raw_title'] ?? null;
         $thumbnailUrl = $this->metaData['thumbnail_url'] ?? null;
         $publishedAt = $this->metaData['published_at'] ?? now()->toDateTimeString();
 
-        // 2. Fetch basic OG metadata if title or thumbnail
+        // raw_title が渡されていればHTMLスクレイピングはスキップ
         $needsScraping = empty($title) || empty($thumbnailUrl) || empty($this->metaData['published_at']);
 
+        if ($needsScraping && ! empty($title)) {
+            // タイトルはあるが thumbnail / published_at だけが欠けているケース:
+            // スクレイピングはせず、不足分はデフォルト値で補う
+            $publishedAt = $this->metaData['published_at']
+                ? $this->parseDateString($this->metaData['published_at'])->toDateTimeString()
+                : now()->toDateTimeString();
+            $needsScraping = false;
+        }
+
         if ($needsScraping) {
+            // タイトルそのものが取れていない場合のみHTMLスクレイピングを実行
             try {
                 Log::info("[Process: {$this->url}] HTMLスクレイピングを開始します");
                 $response = Http::withHeaders([
@@ -164,11 +177,10 @@ class ProcessArticleJob implements ShouldQueue
                 }
             } catch (Exception $e) {
                 Log::error("ProcessArticleJob: Failed to fetch metadata for URL {$this->url} - ".$e->getMessage());
-                // Fallback in case of absolute failure
                 $publishedAt = now()->toDateTimeString();
             }
         } else {
-            // metaDataが存在する場合もパースを確実に行う
+            // メタデータが揃っている場合は日付パースのみ実行
             if (! empty($this->metaData['published_at'])) {
                 Log::info("[Process: {$this->url}] 日付文字列 [{$this->metaData['published_at']}] のパース処理中...");
                 $publishedAt = $this->parseDateString($this->metaData['published_at'])->toDateTimeString();
@@ -211,10 +223,9 @@ class ProcessArticleJob implements ShouldQueue
         })->toArray();
 
         $categoryId = null;
-        // 3. AI Processing
-        Log::info("[Process: {$this->url}] AI({$this->aiDriver})へタイトルリライトとカテゴリ推論をリクエスト中...");
+        Log::info("[Process: {$this->url}] AI({$aiDriver})へタイトルリライトとカテゴリ推論をリクエスト中...");
         $aiService = app(ArticleAiService::class);
-        $aiResult = $aiService->classifyAndRewrite($title, $categories, $this->aiDriver, $site->app);
+        $aiResult = $aiService->classifyAndRewrite($title, $categories, $aiDriver, $site->app);
 
         // Ensure output is valid, otherwise throw exception to trigger explicit failure & logging
         if (empty($aiResult['rewritten_title'])) {
