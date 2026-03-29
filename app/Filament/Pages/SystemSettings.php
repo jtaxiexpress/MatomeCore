@@ -2,23 +2,31 @@
 
 namespace App\Filament\Pages;
 
+use Filament\Actions\Action;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
-use Filament\Schemas\Components\Section;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
+use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 
 class SystemSettings extends Page implements HasForms
 {
     use InteractsWithForms;
 
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-cog-6-tooth';
+
     protected string $view = 'filament.pages.system-settings';
+
     protected static string|\UnitEnum|null $navigationGroup = 'システム管理';
+
     protected static ?string $title = 'システム設定';
 
     public ?array $data = [];
@@ -26,7 +34,7 @@ class SystemSettings extends Page implements HasForms
     protected function getHeaderActions(): array
     {
         return [
-            \Filament\Actions\Action::make('clear_pending_jobs')
+            Action::make('clear_pending_jobs')
                 ->label('Pendingキューの全消去')
                 ->icon('heroicon-o-trash')
                 ->color('danger')
@@ -35,12 +43,12 @@ class SystemSettings extends Page implements HasForms
                 ->modalDescription('本当に待機中のキューをすべて削除しますか？（※現在実行中のジョブは停止されません）')
                 ->modalSubmitActionLabel('全消去する')
                 ->action(function () {
-                    \Illuminate\Support\Facades\Artisan::call('queue:clear');
-                    \Filament\Notifications\Notification::make()
+                    Artisan::call('queue:clear');
+                    Notification::make()
                         ->title('待機中のキューをクリアしました')
                         ->success()
                         ->send();
-                })
+                }),
         ];
     }
 
@@ -71,11 +79,42 @@ class SystemSettings extends Page implements HasForms
                             ->default('qwen3.5:9b')
                             ->helperText('ローカルOllama環境のモデル名。')
                             ->required(),
-                        TextInput::make('gemini_model')
-                            ->label('Geminiモデル名')
-                            ->default('gemini-1.5-flash-lite')
-                            ->helperText('Google Gemini APIのモデル名。')
-                            ->required(),
+                        Select::make('gemini_model')
+                            ->label('Geminiモデル名（デフォルト）')
+                            ->helperText('Google Gemini APIのモデル名。アプリ個別設定がない場合はこちらが使用されます。')
+                            ->searchable()
+                            ->required()
+                            ->options(function (): array {
+                                return Cache::remember('gemini_model_list', 86400, function (): array {
+                                    $apiKey = config('ai.providers.gemini.key', '');
+                                    if (empty($apiKey)) {
+                                        return [];
+                                    }
+
+                                    try {
+                                        $response = Http::timeout(10)
+                                            ->get("https://generativelanguage.googleapis.com/v1beta/models?key={$apiKey}");
+
+                                        if (! $response->successful()) {
+                                            return [];
+                                        }
+
+                                        return collect($response->json('models', []))
+                                            ->filter(fn ($m) => str_contains($m['name'] ?? '', 'gemini'))
+                                            ->filter(fn ($m) => in_array('generateContent', $m['supportedGenerationMethods'] ?? []))
+                                            ->mapWithKeys(function ($m) {
+                                                $name = str_replace('models/', '', $m['name']);
+                                                $label = $m['displayName'] ?? $name;
+
+                                                return [$name => $label];
+                                            })
+                                            ->sortKeys()
+                                            ->toArray();
+                                    } catch (\Exception $e) {
+                                        return [];
+                                    }
+                                });
+                            }),
                     ])->columns(2),
                 Section::make('AIプロンプト設定')
                     ->schema([
@@ -95,8 +134,8 @@ class SystemSettings extends Page implements HasForms
         Cache::put('ollama_model', $state['ollama_model'] ?? 'qwen3.5:9b');
         Cache::put('gemini_model', $state['gemini_model'] ?? 'gemini-1.5-flash-lite');
         Cache::put('ai_prompt_template', $state['ai_prompt_template'] ?? $this->getDefaultPromptTemplate());
-        
-        \Filament\Notifications\Notification::make()
+
+        Notification::make()
             ->title('設定を保存しました')
             ->success()
             ->send();
@@ -104,7 +143,7 @@ class SystemSettings extends Page implements HasForms
 
     private function getDefaultPromptTemplate(): string
     {
-        return <<<PROMPT
+        return <<<'PROMPT'
 あなたは優秀な編集者です。以下の情報を見て推論を行ってください。
 
 ## 利用可能なカテゴリ一覧
@@ -120,5 +159,4 @@ class SystemSettings extends Page implements HasForms
 {"rewritten_title": "新しいタイトル", "category_id": 1}
 PROMPT;
     }
-
 }

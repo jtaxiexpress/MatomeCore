@@ -24,7 +24,7 @@ class ProcessArticleJob implements ShouldQueue
 
     public int $tries = 3;
 
-    public int $timeout = 120;
+    public int $timeout = 300;
 
     public ?string $output = null;
 
@@ -65,8 +65,9 @@ class ProcessArticleJob implements ShouldQueue
             return;
         }
 
-        // AIドライバーをAppの設定から動的に取得（コンストラクタの引数に依存しない）
-        $aiDriver = $site->app->ai_driver ?? config('ai.default', 'gemini');
+        // AIドライバー決定: 呼び出し元の明示指定 → App設定 → グローバルデフォルト の優先順
+        $aiDriver = $this->aiDriver
+            ?: ($site->app->ai_driver ?? config('ai.default', 'gemini'));
 
         $title = $this->metaData['raw_title'] ?? null;
         $thumbnailUrl = $this->metaData['thumbnail_url'] ?? null;

@@ -336,6 +336,6 @@ class CrawlSiteCommand extends Command
             'raw_title' => $data['title'],
             'thumbnail_url' => $data['thumbnail'],
             'published_at' => $data['published_at']?->toDateTimeString(),
-        ]);
+        ], 'gemini', 'RSS定期取得');
     }
 }
