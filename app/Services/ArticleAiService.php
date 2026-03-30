@@ -5,7 +5,8 @@ namespace App\Services;
 use App\Ai\Agents\CategorizeArticleAgent;
 use App\Models\App;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
 class ArticleAiService
@@ -15,7 +16,7 @@ class ArticleAiService
      * AIによる分類とタイトルリライトを1回のリクエストで実行します。
      *
      * @param  string  $originalTitle  記事の元タイトル
-     * @param  array   $categories     カテゴリ一覧 [['id' => int, 'name' => string], ...]
+     * @param  array  $categories  カテゴリ一覧 [['id' => int, 'name' => string], ...]
      * @return array{category_id: int, rewritten_title: string}
      *
      * @throws InvalidArgumentException
@@ -38,30 +39,38 @@ class ArticleAiService
         $prompt = $this->buildPrompt($originalTitle, $categories, $app);
 
         // App別設定があればそれを使用、なければグローバル設定にフォールバック
-        $geminiModel = (!empty($app?->gemini_model))
+        $geminiModel = (! empty($app?->gemini_model))
             ? $app->gemini_model
             : Cache::get('gemini_model', 'gemini-1.5-flash-lite');
 
-        \Illuminate\Support\Facades\Log::info("[デバッグ]AI送信プロンプト:\n" . $prompt);
+        Log::info("[デバッグ]AI送信プロンプト:\n".$prompt);
 
         $response = CategorizeArticleAgent::make()->prompt($prompt, model: $geminiModel);
 
         if (is_string($response)) {
-            if (preg_match('/\{[\s\S]*\}/', $response, $matches)) {
-                $data = json_decode($matches[0], true);
-                if (is_array($data) && isset($data['rewritten_title'], $data['category_id'])) {
-                    return [
-                        'category_id'     => (int) $data['category_id'],
-                        'rewritten_title' => (string) $data['rewritten_title'],
-                    ];
+            preg_match_all('/\{(?:[^{}]|(?R))*\}/x', $response, $matches);
+            if (! empty($matches[0])) {
+                foreach ($matches[0] as $match) {
+                    $data = json_decode($match, true);
+                    if (is_array($data)) {
+                        $rewrittenTitle = $data['rewritten_title'] ?? $data['rewrite'] ?? $data['title'] ?? null;
+                        $categoryId = $data['category_id'] ?? $data['category'] ?? null;
+
+                        if ($rewrittenTitle !== null && $categoryId !== null) {
+                            return [
+                                'category_id' => (int) $categoryId,
+                                'rewritten_title' => (string) $rewrittenTitle,
+                            ];
+                        }
+                    }
                 }
             }
-            \Illuminate\Support\Facades\Log::warning('AI Response Parse Failed (Gemini). Raw Text: ' . $response);
+            Log::warning('AI Response Parse Failed (Gemini). Raw Text: '.$response);
             throw new \RuntimeException('Gemini generation failed or returned invalid JSON structure.');
         }
 
         return [
-            'category_id'     => (int) $response['category_id'],
+            'category_id' => (int) $response['category_id'],
             'rewritten_title' => (string) $response['rewritten_title'],
         ];
     }
@@ -77,46 +86,54 @@ class ArticleAiService
         $ollamaUrl = config('services.ollama.url', 'http://host.docker.internal:11434/api/generate');
 
         // App別設定があればそれを使用、なければグローバル設定にフォールバック
-        $model = (!empty($app?->ollama_model))
+        $model = (! empty($app?->ollama_model))
             ? $app->ollama_model
             : Cache::get('ollama_model', 'qwen3.5:9b');
 
-        \Illuminate\Support\Facades\Log::info("[デバッグ]AI送信プロンプト:\n" . $prompt);
+        Log::info("[デバッグ]AI送信プロンプト:\n".$prompt);
 
         try {
-            $response = \Illuminate\Support\Facades\Http::timeout(120)->post($ollamaUrl, [
+            $response = Http::timeout(120)->post($ollamaUrl, [
                 'model' => $model,
                 'prompt' => $prompt,
                 'stream' => false,
-                'format' => 'json'
+                'format' => 'json',
             ]);
 
             $jsonResponse = $response->json();
 
-            if ($response->failed() || !is_array($jsonResponse)) {
-                \Illuminate\Support\Facades\Log::error('Ollama API Error. Body: ' . $response->body());
+            if ($response->failed() || ! is_array($jsonResponse)) {
+                Log::error('Ollama API Error. Body: '.$response->body());
                 throw new \RuntimeException('Ollama API HTTP error or invalid response mapping.');
             }
 
             // `response` または `thinking` フィールドを結合してテキスト全体を取得
-            $rawText = ($jsonResponse['response'] ?? '') . "\n" . ($jsonResponse['thinking'] ?? '');
-            
-            if (is_string($rawText) && preg_match('/\{[\s\S]*\}/', $rawText, $matches)) {
-                $data = json_decode($matches[0], true);
+            $rawText = ($jsonResponse['response'] ?? '')."\n".($jsonResponse['thinking'] ?? '');
 
-                if (is_array($data) && isset($data['rewritten_title'], $data['category_id'])) {
-                    return [
-                        'category_id'     => (int) $data['category_id'],
-                        'rewritten_title' => (string) $data['rewritten_title'],
-                    ];
+            if (is_string($rawText)) {
+                preg_match_all('/\{(?:[^{}]|(?R))*\}/x', $rawText, $matches);
+                if (! empty($matches[0])) {
+                    foreach ($matches[0] as $match) {
+                        $data = json_decode($match, true);
+                        if (is_array($data)) {
+                            $rewrittenTitle = $data['rewritten_title'] ?? $data['rewrite'] ?? $data['title'] ?? null;
+                            $categoryId = $data['category_id'] ?? $data['category'] ?? null;
+
+                            if ($rewrittenTitle !== null && $categoryId !== null) {
+                                return [
+                                    'category_id' => (int) $categoryId,
+                                    'rewritten_title' => (string) $rewrittenTitle,
+                                ];
+                            }
+                        }
+                    }
                 }
             }
-            
-            \Illuminate\Support\Facades\Log::warning('AI Response Parse Failed (Ollama). Raw Text: ' . $response->body());
+
+            Log::warning('AI Response Parse Failed (Ollama). Raw Text: '.$response->body());
             throw new \RuntimeException('Ollama generation returned unparseable text.');
-        
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('AI推論エラー: ' . $e->getMessage());
+            Log::error('AI推論エラー: '.$e->getMessage());
             throw $e; // Throw back so ProcessArticleJob can catch it and invoke fallbacks
         }
     }
@@ -143,7 +160,7 @@ class ArticleAiService
             ->implode("\n");
 
         // App別設定があればそれを使用、なければグローバル設定にフォールバック
-        $template = (!empty($app?->ai_prompt_template))
+        $template = (! empty($app?->ai_prompt_template))
             ? $app->ai_prompt_template
             : Cache::get('ai_prompt_template', $this->getDefaultPromptTemplate());
 
@@ -157,7 +174,7 @@ class ArticleAiService
      */
     private function getDefaultPromptTemplate(): string
     {
-        return <<<PROMPT
+        return <<<'PROMPT'
 あなたは優秀な編集者です。以下の情報を見て推論を行ってください。
 
 ## 利用可能なカテゴリ一覧
