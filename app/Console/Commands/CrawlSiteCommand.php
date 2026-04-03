@@ -9,6 +9,7 @@ use Carbon\Carbon;
 use Exception;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\DomCrawler\Crawler;
 
 class CrawlSiteCommand extends Command
@@ -25,11 +26,13 @@ class CrawlSiteCommand extends Command
         $site = Site::find($siteId);
         if (! $site) {
             $this->error("Site ID {$siteId} not found.");
+            Log::warning("CrawlSiteCommand: Site ID {$siteId} not found.");
 
             return 1;
         }
 
         $this->info("Starting crawl for site: {$site->name} ({$site->crawler_type} mode)");
+        Log::info("CrawlSiteCommand: Starting crawl for Site ID: {$site->id} ({$site->crawler_type} mode)");
 
         if ($site->crawler_type === 'sitemap') {
             $this->crawlSitemap($site);
@@ -38,6 +41,7 @@ class CrawlSiteCommand extends Command
         }
 
         $this->info('Crawl completed.');
+        Log::info("CrawlSiteCommand: Crawl completed for Site ID: {$site->id}");
 
         return 0;
     }
@@ -311,6 +315,7 @@ class CrawlSiteCommand extends Command
         }
 
         $this->info("Dispatching new article: {$url}");
+        Log::info("CrawlSiteCommand: Dispatching ProcessArticleJob for {$url} (Site ID: {$site->id})");
 
         ProcessArticleJob::dispatch($site->id, $url, [
             'raw_title' => $data['title'],

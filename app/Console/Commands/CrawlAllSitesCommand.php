@@ -36,26 +36,33 @@ class CrawlAllSitesCommand extends Command
             $app = App::find($appId);
             if (! $app) {
                 $this->error("App ID {$appId} が見つかりません。");
+                Log::warning("CrawlAllSitesCommand: App ID {$appId} not found.");
 
                 return 1;
             }
             $this->info("App [{$app->name}] のサイトをクロール開始します...");
+            Log::info("CrawlAllSitesCommand: Starting scheduled crawl for App [{$app->name}] (ID: {$appId})");
             $query->where('app_id', $appId);
         } else {
             $this->info('Starting scheduled crawl for all active sites...');
+            Log::info('CrawlAllSitesCommand: Starting scheduled crawl for all active sites.');
         }
 
         $sites = $query->get();
 
         if ($sites->isEmpty()) {
             $this->info('No active sites found. Exiting.');
+            Log::info('CrawlAllSitesCommand: No active sites found. Exiting.');
 
             return 0;
         }
 
+        Log::info("CrawlAllSitesCommand: Found {$sites->count()} active sites. Processing...");
+
         foreach ($sites as $site) {
             $this->info('--------------------------------------------------');
             $this->info("Processing Site ID: {$site->id} | Name: {$site->name} | Type: {$site->crawler_type}");
+            Log::info("CrawlAllSitesCommand: Processing Site ID: {$site->id} | Name: {$site->name}");
 
             try {
                 Artisan::call('app:crawl-site', ['site_id' => $site->id], $this->output);
@@ -70,6 +77,7 @@ class CrawlAllSitesCommand extends Command
 
         $this->info('--------------------------------------------------');
         $this->info('All sites have been successfully processed.');
+        Log::info('CrawlAllSitesCommand: All sites have been successfully processed.');
 
         return 0;
     }
