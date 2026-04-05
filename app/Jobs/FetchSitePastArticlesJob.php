@@ -50,7 +50,7 @@ class FetchSitePastArticlesJob implements ShouldQueue
             // RSS / Atom / Sitemap モード
             // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             if ($this->site->crawler_type === 'sitemap') {
-                $xmlUrl = $this->site->sitemap_url ?? $this->site->url;
+                $xmlUrl = $this->site->sitemap_url ?? $this->site->rss_url ?? $this->site->url;
                 if (empty($xmlUrl)) {
                     throw new Exception('サイトマップ/RSSのURLが設定されていません。');
                 }

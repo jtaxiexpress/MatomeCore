@@ -48,7 +48,7 @@ class CrawlSiteCommand extends Command
 
     protected function crawlSitemap(Site $site): void
     {
-        $feedUrl = $site->sitemap_url ?? $site->url;
+        $feedUrl = $site->rss_url ?? $site->sitemap_url ?? $site->url;
         if (empty($feedUrl)) {
             $this->error('RSS/Atom フィードのURLが設定されていません。');
 
@@ -83,85 +83,192 @@ class CrawlSiteCommand extends Command
 
             // RSS 1.0 (RDF) / RSS 2.0 / Atom のフォーマット差異を local-name() で吸収
             $entries = $xml->xpath('//*[local-name()="item"] | //*[local-name()="entry"]') ?: [];
+            $isSitemap = false;
 
+            // エントリが空の場合は sitemap.xml（<loc> タグのみ）として再試行
             if (empty($entries)) {
-                $this->warn('フィード内に記事エントリが見つかりませんでした。');
+                $entries = $xml->xpath('//*[local-name()="loc"]') ?: [];
+                if (empty($entries)) {
+                    $this->warn('フィード内に記事エントリが見つかりませんでした。');
 
-                return;
+                    return;
+                }
+                $isSitemap = true;
+                $this->info('sitemap.xml 形式として処理します。');
             }
 
-            $this->info(count($entries).' 件のエントリを検出しました（最大20件を処理）');
+            $totalEntries = count($entries);
+            $this->info("{$totalEntries} 件のエントリを検出しました。重複チェックを行います。");
 
-            $count = 0;
+            // ── パス1: 全URLを先に抽出 ───────────────────────────────────────────
+            $allUrls = [];
             foreach ($entries as $entry) {
-                if ($count >= 20) {
-                    break;
-                }
-
-                // ── URL ──────────────────────────────────────────────
-                $url = (string) $entry->link;
-                if (! $url && isset($entry->link['href'])) {
-                    $url = (string) $entry->link['href']; // Atom対応
-                }
-                if (empty($url)) {
-                    $guids = $entry->xpath('.//*[local-name()="guid"] | .//*[local-name()="id"]') ?: [];
-                    if (! empty($guids) && filter_var((string) $guids[0], FILTER_VALIDATE_URL)) {
-                        $url = trim((string) $guids[0]);
+                if ($isSitemap) {
+                    $url = trim((string) $entry);
+                } else {
+                    $url = (string) $entry->link;
+                    if (! $url && isset($entry->link['href'])) {
+                        $url = (string) $entry->link['href'];
+                    }
+                    if (empty($url)) {
+                        $guids = $entry->xpath('.//*[local-name()="guid"] | .//*[local-name()="id"]') ?: [];
+                        if (! empty($guids) && filter_var((string) $guids[0], FILTER_VALIDATE_URL)) {
+                            $url = trim((string) $guids[0]);
+                        }
                     }
                 }
-                if (empty($url) || ! filter_var($url, FILTER_VALIDATE_URL)) {
-                    continue;
+                if (! empty($url) && filter_var($url, FILTER_VALIDATE_URL)) {
+                    $allUrls[] = $url;
                 }
-
-                // ── タイトル ─────────────────────────────────────────
-                $titleStr = (string) $entry->title;
-                $title = $titleStr !== '' ? trim($titleStr) : null;
-
-                // ── 公開日 ───────────────────────────────────────────
-                $publishedAtRaw = (string) $entry->pubDate
-                    ?: (string) $entry->children('dc', true)->date
-                    ?: (string) $entry->updated
-                    ?: (string) $entry->published
-                    ?: (string) $entry->date;
-
-                $publishedAt = null;
-                if ($publishedAtRaw) {
-                    try {
-                        $publishedAt = Carbon::parse($publishedAtRaw)->toDateTimeString();
-                    } catch (Exception $e) {
-                        $publishedAt = null;
-                    }
-                }
-
-                // ── サムネイル ───────────────────────────────────────
-                $thumbnail = null;
-                if (isset($entry->enclosure) && isset($entry->enclosure['url'])) {
-                    $thumbnail = (string) $entry->enclosure['url'];
-                } elseif ($entry->children('media', true)->content && isset($entry->children('media', true)->content->attributes()->url)) {
-                    $thumbnail = (string) $entry->children('media', true)->content->attributes()->url;
-                } elseif ($entry->children('media', true)->thumbnail && isset($entry->children('media', true)->thumbnail->attributes()->url)) {
-                    $thumbnail = (string) $entry->children('media', true)->thumbnail->attributes()->url;
-                }
-
-                // 本文から探すフォールバック
-                if (! $thumbnail) {
-                    $content = (string) $entry->children('content', true)->encoded ?: (string) $entry->description;
-                    if (preg_match('/<img[^>]+src=[\'"]([^\'"]+)[\'"]/i', $content, $matches)) {
-                        $thumbnail = $matches[1];
-                    }
-                }
-
-                $this->processArticle($site, [
-                    'url' => $url,
-                    'title' => $title ?: null,
-                    'thumbnail' => $thumbnail,
-                    'published_at' => $publishedAt ? Carbon::parse($publishedAt) : null,
-                ]);
-
-                $count++;
             }
 
-            $this->info("{$count} 件の記事をキューに投入しました。");
+            // ── sitemapindex 展開: .xml URL を子サイトマップとして記事URLを収集 ────
+            if ($isSitemap) {
+                $articleUrls = [];
+                $sitemapUrls = [];
+
+                // 記事URLと子サイトマップURLに振り分け
+                foreach ($allUrls as $u) {
+                    $path = parse_url($u, PHP_URL_PATH) ?? '';
+                    if (str_ends_with($path, '.xml')) {
+                        $sitemapUrls[] = $u;
+                    } else {
+                        $articleUrls[] = $u;
+                    }
+                }
+
+                // 子サイトマップは最大3件展開
+                $sitemapUrls = array_slice($sitemapUrls, 0, 3);
+                foreach ($sitemapUrls as $sitemapUrl) {
+                    $this->info("子サイトマップを展開: {$sitemapUrl}");
+                    try {
+                        $childResponse = Http::withHeaders([
+                            'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+                            'Accept' => 'application/xml,text/xml;q=0.9,*/*;q=0.8',
+                            'Accept-Language' => 'ja,en-US;q=0.7,en;q=0.3',
+                        ])->timeout(15)->get($sitemapUrl);
+
+                        if ($childResponse->successful()) {
+                            $childXml = @simplexml_load_string($childResponse->body(), 'SimpleXMLElement', LIBXML_NOCDATA);
+                            if ($childXml !== false) {
+                                $childLocs = $childXml->xpath('//*[local-name()="loc"]') ?: [];
+                                foreach ($childLocs as $loc) {
+                                    $locUrl = trim((string) $loc);
+                                    $locPath = parse_url($locUrl, PHP_URL_PATH) ?? '';
+                                    if (! empty($locUrl) && filter_var($locUrl, FILTER_VALIDATE_URL) && ! str_ends_with($locPath, '.xml')) {
+                                        $articleUrls[] = $locUrl;
+                                    }
+                                }
+                            }
+                        }
+                    } catch (Exception $e) {
+                        $this->warn("子サイトマップ展開エラー ({$sitemapUrl}): ".$e->getMessage());
+                    }
+                }
+
+                // 重複排除して $allUrls を上書き
+                $allUrls = array_values(array_unique($articleUrls));
+                $this->info(count($allUrls).' 件の記事URLを収集しました。');
+            }
+
+            // ── バルク重複チェック ───────────────────────────────────────────────
+            $existingUrls = Article::whereIn('url', $allUrls)->pluck('url')->toArray();
+            $this->info(count($existingUrls).' 件は既存記事のためスキップします。');
+
+            // ── パス2: 新規記事のみ処理 ──────────────────────────────────────────
+            $count = 0;
+
+            if ($isSitemap) {
+                // sitemap 系は $allUrls を直接ループ（メタデータはスクレイピング補完）
+                foreach ($allUrls as $url) {
+                    if (empty($url) || ! filter_var($url, FILTER_VALIDATE_URL)) {
+                        continue;
+                    }
+                    if (in_array($url, $existingUrls, true)) {
+                        continue;
+                    }
+
+                    $this->processArticle($site, [
+                        'url' => $url,
+                        'title' => null,
+                        'thumbnail' => null,
+                        'published_at' => null,
+                    ]);
+
+                    $count++;
+                }
+            } else {
+                // RSS / Atom は $entries をループしてメタデータも抽出
+                foreach ($entries as $entry) {
+                    // ── URL ──────────────────────────────────────────────
+                    $url = (string) $entry->link;
+                    if (! $url && isset($entry->link['href'])) {
+                        $url = (string) $entry->link['href']; // Atom対応
+                    }
+                    if (empty($url)) {
+                        $guids = $entry->xpath('.//*[local-name()="guid"] | .//*[local-name()="id"]') ?: [];
+                        if (! empty($guids) && filter_var((string) $guids[0], FILTER_VALIDATE_URL)) {
+                            $url = trim((string) $guids[0]);
+                        }
+                    }
+                    if (empty($url) || ! filter_var($url, FILTER_VALIDATE_URL)) {
+                        continue;
+                    }
+
+                    if (in_array($url, $existingUrls, true)) {
+                        continue;
+                    }
+
+                    // ── タイトル ─────────────────────────────────────────
+                    $titleStr = (string) $entry->title;
+                    $title = $titleStr !== '' ? trim($titleStr) : null;
+
+                    // ── 公開日 ───────────────────────────────────────────
+                    $publishedAtRaw = (string) $entry->pubDate
+                        ?: (string) $entry->children('dc', true)->date
+                        ?: (string) $entry->updated
+                        ?: (string) $entry->published
+                        ?: (string) $entry->date;
+
+                    $publishedAt = null;
+                    if ($publishedAtRaw) {
+                        try {
+                            $publishedAt = Carbon::parse($publishedAtRaw)->toDateTimeString();
+                        } catch (Exception $e) {
+                            $publishedAt = null;
+                        }
+                    }
+
+                    // ── サムネイル ───────────────────────────────────────
+                    $thumbnail = null;
+                    if (isset($entry->enclosure) && isset($entry->enclosure['url'])) {
+                        $thumbnail = (string) $entry->enclosure['url'];
+                    } elseif ($entry->children('media', true)->content && isset($entry->children('media', true)->content->attributes()->url)) {
+                        $thumbnail = (string) $entry->children('media', true)->content->attributes()->url;
+                    } elseif ($entry->children('media', true)->thumbnail && isset($entry->children('media', true)->thumbnail->attributes()->url)) {
+                        $thumbnail = (string) $entry->children('media', true)->thumbnail->attributes()->url;
+                    }
+
+                    // 本文から探すフォールバック
+                    if (! $thumbnail) {
+                        $content = (string) $entry->children('content', true)->encoded ?: (string) $entry->description;
+                        if (preg_match('/<img[^>]+src=[\'"]([^\'"]+)[\'"]/i', $content, $matches)) {
+                            $thumbnail = $matches[1];
+                        }
+                    }
+
+                    $this->processArticle($site, [
+                        'url' => $url,
+                        'title' => $title,
+                        'thumbnail' => $thumbnail,
+                        'published_at' => $publishedAt ? Carbon::parse($publishedAt) : null,
+                    ]);
+
+                    $count++;
+                }
+            }
+
+            $this->info("{$count} 件の新規記事をキューに投入しました。");
 
         } catch (Exception $e) {
             $this->error('フィード解析エラー: '.$e->getMessage());
