@@ -39,7 +39,9 @@ class SiteResource extends Resource
     public static function form(Schema $form): Schema
     {
         return $form->schema([
-            Section::make('クロール対象サイト基本情報')
+            Section::make('基本情報')
+                ->description('サイトの基本的な情報を入力します。')
+                ->columns(2)
                 ->schema([
                     TextInput::make('name')
                         ->label('サイト名')
@@ -50,16 +52,8 @@ class SiteResource extends Resource
                         ->required()
                         ->maxLength(255)
                         ->url(),
-                    TextInput::make('rss_url')
-                        ->label('RSS URL')
-                        ->placeholder('https://example.com/feed')
-                        ->maxLength(255)
-                        ->url(),
-                ]),
-            Section::make('設定と所属')
-                ->schema([
                     Select::make('app_id')
-                        ->label('配信アプリ')
+                        ->label('対象アプリ')
                         ->relationship('app', 'name')
                         ->required()
                         ->searchable()
@@ -69,14 +63,27 @@ class SiteResource extends Resource
                         ->default(true)
                         ->inline(false),
                 ]),
-            Section::make('クローラー設定')
-                ->description('サイトから記事を自動取得するための詳細設定')
+
+            Section::make('【定期更新】日々の最新記事取得')
+                ->description('毎日、新しい記事を自動的に巡回して取得するための設定です。')
+                ->schema([
+                    TextInput::make('rss_url')
+                        ->label('RSS URL')
+                        ->placeholder('https://example.com/feed')
+                        ->maxLength(255)
+                        ->url()
+                        ->helperText('通常はこちらのみ設定すれば自動更新が可能です。対象サイトのRSS/AtomフィードのURLをご入力ください。'),
+                ]),
+
+            Section::make('【一括取得】過去記事の抽出ルール')
+                ->description('サイトに既に公開されている過去の全記事を一括で取り込む場合の設定です。')
+                ->collapsed()
                 ->schema([
                     Select::make('crawler_type')
-                        ->label('解析モード')
+                        ->label('過去記事の取得ルール')
                         ->options([
-                            'html' => 'HTML解析モード（DOM解析）',
-                            'sitemap' => 'サイトマップモード（XML）',
+                            'html' => '一覧ページから抽出して取得する',
+                            'sitemap' => 'サイトマップから一括取得する',
                         ])
                         ->default('html')
                         ->required()
@@ -86,38 +93,47 @@ class SiteResource extends Resource
                         ->label('サイトマップURL (.xml)')
                         ->placeholder('https://example.com/sitemap.xml')
                         ->url()
+                        ->required(fn ($get) => $get('crawler_type') === 'sitemap')
                         ->visible(fn ($get) => $get('crawler_type') === 'sitemap')
-                        ->required(fn ($get) => $get('crawler_type') === 'sitemap'),
+                        ->helperText('一括取得に使用するサイトマップ(.xml)のURLを指定してください。'),
 
                     TextInput::make('crawl_start_url')
-                        ->label('クロール開始URL（一覧ページ）')
+                        ->label('一覧ページのURL')
                         ->placeholder('https://example.com/articles')
                         ->url()
                         ->required(fn ($get) => $get('crawler_type') === 'html')
-                        ->visible(fn ($get) => $get('crawler_type') === 'html'),
-                    TextInput::make('list_item_selector')
-                        ->label('記事ブロック（リスト）のCSSセレクタ')
-                        ->placeholder('例: .article-list .item:not(.is-pr)')
+                        ->visible(fn ($get) => $get('crawler_type') === 'html')
+                        ->helperText('過去記事が並んでいる一覧ページ（通常は1ページ目）のURLを指定します。'),
+
+                    TextInput::make('pagination_url_template')
+                        ->label('「2ページ目以降」のURLルール')
+                        ->placeholder('https://example.com/news/page/{page}')
+                        ->helperText('変化する数字の部分を `{page}` と記述します。（例：`https://example.com/page/{page}`）')
                         ->nullable()
                         ->visible(fn ($get) => $get('crawler_type') === 'html'),
-                    TextInput::make('link_selector')
-                        ->label('記事リンクのセレクタ')
-                        ->placeholder('例: a.main-link')
-                        ->visible(fn ($get) => $get('crawler_type') === 'html'),
-                    // title_selector, thumbnail_selector, date_selector are hidden/obsolete
-                    // because ProcessArticleJob perfectly fetches them inside the article page.
-                    TextInput::make('next_page_selector')
-                        ->label('「次のページ」へのリンクセレクタ')
-                        ->placeholder('例: .pager .next a')
-                        ->visible(fn ($get) => $get('crawler_type') === 'html'),
-                    TextInput::make('pagination_url_template')
-                        ->label('ページネーションURLテンプレート')
-                        ->placeholder('https://example.com/news/page/{page}')
-                        ->helperText('2ページ目以降のURLの規則を入力してください。ページ番号が入る部分は `{page}` と記述します。（例：`https://example.com/news/page/{page}` や `https://example.com/news?p={page}`）')
-                        ->nullable(),
+
                     TagsInput::make('ng_url_keywords')
-                        ->label('除外するURLキーワード（NGワード）')
-                        ->helperText('URLにこの文字列が含まれる記事を抽出から除外します（例: osusume, pr=1）'),
+                        ->label('除外キーワード（対象外にするURL条件）')
+                        ->helperText('特定の文字がURLに含まれる記事は取得しません（例: pr, promotion, special など）'),
+
+                    Section::make('高度な抽出設定（エンジニア向け設定）')
+                        ->description('標準の方法でうまく記事だけを読み取れない場合、手動で目印となるCSSセレクタを指定できます。')
+                        ->collapsed()
+                        ->visible(fn ($get) => $get('crawler_type') === 'html')
+                        ->schema([
+                            TextInput::make('list_item_selector')
+                                ->label('記事ブロックの場所')
+                                ->placeholder('例: .article-list .item:not(.is-pr)')
+                                ->nullable(),
+                            
+                            TextInput::make('link_selector')
+                                ->label('記事リンク（<a>タグ）の場所')
+                                ->placeholder('例: a.main-link'),
+                            
+                            TextInput::make('next_page_selector')
+                                ->label('「次のページ」ボタンの場所')
+                                ->placeholder('例: .pager .next a'),
+                        ]),
                 ]),
         ]);
     }
