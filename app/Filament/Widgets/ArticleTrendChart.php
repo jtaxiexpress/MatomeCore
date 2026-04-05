@@ -11,6 +11,8 @@ class ArticleTrendChart extends ChartWidget
 
     protected static ?int $sort = 2;
 
+    protected int|string|array $columnSpan = 1;
+
     protected function getType(): string
     {
         return 'line';

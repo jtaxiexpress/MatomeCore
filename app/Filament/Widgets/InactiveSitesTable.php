@@ -12,6 +12,8 @@ class InactiveSitesTable extends BaseWidget
 {
     protected static ?int $sort = 3;
 
+    protected int|string|array $columnSpan = 1;
+
     public function table(Table $table): Table
     {
         return $table
@@ -23,6 +25,10 @@ class InactiveSitesTable extends BaseWidget
                     })
             )
             ->heading('更新が止まっているサイト (7日以上未取得)')
+            ->emptyStateHeading('すべて正常に稼働しています')
+            ->emptyStateDescription('更新が停止しているサイトはありません。')
+            ->emptyStateIcon('heroicon-o-check-circle')
+            ->defaultSort('articles_max_created_at', 'asc')
             ->columns([
                 TextColumn::make('name')
                     ->label('サイト名'),
@@ -32,7 +38,8 @@ class InactiveSitesTable extends BaseWidget
                     ->dateTime('Y/m/d H:i')
                     ->badge()
                     ->color('danger')
-                    ->default('-'),
+                    ->default('-')
+                    ->sortable(),
             ]);
     }
 }

@@ -13,6 +13,7 @@ class SystemStatsOverview extends BaseWidget
 
     protected function getStats(): array
     {
+        $pendingJobsCount = DB::table('jobs')->count();
         $failedJobsCount = DB::table('failed_jobs')->count();
 
         return [
@@ -21,9 +22,10 @@ class SystemStatsOverview extends BaseWidget
                 ->descriptionIcon('heroicon-m-document-text')
                 ->color('success'),
 
-            Stat::make('待機中のジョブ', DB::table('jobs')->count())
+            Stat::make('待機中のジョブ', $pendingJobsCount)
                 ->description('処理待ちのキュー')
-                ->descriptionIcon('heroicon-m-clock'),
+                ->descriptionIcon('heroicon-m-clock')
+                ->color($pendingJobsCount >= 1 ? 'warning' : 'success'),
 
             Stat::make('失敗したジョブ', $failedJobsCount)
                 ->description('エラー発生数')
