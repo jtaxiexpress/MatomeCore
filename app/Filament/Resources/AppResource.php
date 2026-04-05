@@ -140,6 +140,19 @@ class AppResource extends Resource
                 TextColumn::make('name')->label('アプリ名')->searchable(),
                 ColorColumn::make('theme_color')->label('テーマカラー')->searchable(),
                 ToggleColumn::make('is_active')->label('ステータス'),
+                TextColumn::make('sites_count')->counts('sites')->label('登録サイト数')->badge(),
+                TextColumn::make('articles_count')->counts('articles')->label('取得記事数')->badge()->sortable(),
+                TextColumn::make('articles_max_created_at')
+                    ->label('最終取得日時')
+                    ->dateTime('Y/m/d H:i')
+                    ->sortable()
+                    ->badge()
+                    ->color(fn ($state): string => match (true) {
+                        $state === null => 'danger',
+                        \Carbon\Carbon::parse($state) >= now()->subDays(3) => 'success',
+                        \Carbon\Carbon::parse($state) >= now()->subDays(7) => 'warning',
+                        default => 'gray',
+                    }),
                 TextColumn::make('created_at')->label('作成日')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('updated_at')->label('更新日')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
             ])
@@ -153,7 +166,8 @@ class AppResource extends Resource
             ])
             ->bulkActions([
                 BulkActionGroup::make([DeleteBulkAction::make()]),
-            ]);
+            ])
+            ->modifyQueryUsing(fn (\Illuminate\Database\Eloquent\Builder $query) => $query->withMax('articles', 'created_at'));
     }
 
     public static function getRelations(): array

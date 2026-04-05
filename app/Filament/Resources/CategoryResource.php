@@ -126,6 +126,22 @@ class CategoryResource extends Resource
                 TextColumn::make('name')
                     ->label('カテゴリ名')
                     ->searchable(),
+                TextColumn::make('articles_count')
+                    ->counts('articles')
+                    ->label('取得記事数')
+                    ->badge()
+                    ->sortable(),
+                TextColumn::make('articles_max_created_at')
+                    ->label('最終取得日時')
+                    ->dateTime('Y/m/d H:i')
+                    ->sortable()
+                    ->badge()
+                    ->color(fn ($state): string => match (true) {
+                        $state === null => 'danger',
+                        \Carbon\Carbon::parse($state) >= now()->subDays(3) => 'success',
+                        \Carbon\Carbon::parse($state) >= now()->subDays(7) => 'warning',
+                        default => 'gray',
+                    }),
                 TextColumn::make('children_count')
                     ->counts('children')
                     ->label('子カテゴリ数')
@@ -176,7 +192,7 @@ class CategoryResource extends Resource
             ->bulkActions([
                 BulkActionGroup::make([DeleteBulkAction::make()]),
             ])
-            ->modifyQueryUsing(fn (\Illuminate\Database\Eloquent\Builder $query) => $query->whereNull('parent_id'))
+            ->modifyQueryUsing(fn (\Illuminate\Database\Eloquent\Builder $query) => $query->whereNull('parent_id')->withMax('articles', 'created_at'))
             ->reorderable('sort_order')
             ->defaultSort('sort_order')
             ->paginated(false);

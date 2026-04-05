@@ -143,6 +143,18 @@ class SiteResource extends Resource
         return $table
             ->columns([
                 TextColumn::make('app.name')->label('アプリ')->sortable()->badge()->color('info'),
+                TextColumn::make('articles_count')->counts('articles')->label('取得記事数')->badge()->sortable(),
+                TextColumn::make('articles_max_created_at')
+                    ->label('最終取得日時')
+                    ->dateTime('Y/m/d H:i')
+                    ->sortable()
+                    ->badge()
+                    ->color(fn ($state): string => match (true) {
+                        $state === null => 'danger',
+                        \Carbon\Carbon::parse($state) >= now()->subDays(3) => 'success',
+                        \Carbon\Carbon::parse($state) >= now()->subDays(7) => 'warning',
+                        default => 'gray',
+                    }),
                 TextColumn::make('name')->label('サイト名')->searchable(),
                 TextColumn::make('url')->label('URL')->searchable()->limit(30),
                 ToggleColumn::make('is_active')->label('ステータス'),
@@ -151,8 +163,9 @@ class SiteResource extends Resource
             ])
             ->filters([])
             ->actions([
-                Action::make('test_crawl')
-                    ->label('クローラ抽出テスト')
+                \Filament\Actions\ActionGroup::make([
+                    Action::make('test_crawl')
+                        ->label('クローラ抽出テスト')
                     ->icon('heroicon-o-bug-ant')
                     ->color('warning')
                     ->action(function (Site $record) {
@@ -572,6 +585,7 @@ class SiteResource extends Resource
                             return view('filament.actions.rss-preview', ['error' => '通信エラーが発生しました: '.$e->getMessage()]);
                         }
                     }),
+                ])->label('テスト実行')->icon('heroicon-m-beaker'),
                 EditAction::make()
                     ->modalWidth('4xl')
                     ->modalHeading('サイト情報の編集')
@@ -580,7 +594,8 @@ class SiteResource extends Resource
             ])
             ->bulkActions([
                 BulkActionGroup::make([DeleteBulkAction::make()]),
-            ]);
+            ])
+            ->modifyQueryUsing(fn (\Illuminate\Database\Eloquent\Builder $query) => $query->withMax('articles', 'created_at'));
     }
 
     public static function getPages(): array
