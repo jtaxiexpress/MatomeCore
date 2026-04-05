@@ -194,7 +194,7 @@ class CategoryResource extends Resource
             ])
             ->modifyQueryUsing(fn (\Illuminate\Database\Eloquent\Builder $query) => $query->whereNull('parent_id')->withMax('articles', 'created_at'))
             ->reorderable('sort_order')
-            ->defaultSort('sort_order')
+            ->defaultSort('created_at', 'desc')
             ->paginated(false);
 
     }

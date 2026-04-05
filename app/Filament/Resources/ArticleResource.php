@@ -129,7 +129,8 @@ class ArticleResource extends Resource
             ])
             ->bulkActions([
                 BulkActionGroup::make([DeleteBulkAction::make()]),
-            ]);
+            ])
+            ->defaultSort('published_at', 'desc');
     }
 
     public static function getPages(): array
