@@ -6,6 +6,7 @@ use App\Actions\CategorizeArticleAction;
 use App\Filament\Resources\ArticleResource\Pages;
 use App\Models\Article;
 use App\Models\Category;
+use App\Models\Site;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -55,7 +56,10 @@ class ArticleResource extends Resource
                             ->label('配信アプリ')
                             ->relationship('app', 'name')
                             ->live()
-                            ->afterStateUpdated(fn (Set $set) => $set('category_id', null))
+                            ->afterStateUpdated(function (Set $set) {
+                                $set('category_id', null);
+                                $set('site_id', null);
+                            })
                             ->required()
                             ->searchable()
                             ->preload(),
@@ -67,7 +71,8 @@ class ArticleResource extends Resource
                             ->preload(),
                         Select::make('site_id')
                             ->label('配信元サイト')
-                            ->relationship('site', 'name')
+                            ->options(fn (Get $get) => Site::where('app_id', $get('app_id'))->pluck('name', 'id'))
+                            ->placeholder(fn (Get $get) => $get('app_id') ? 'サイトを選択' : 'まずアプリを選択してください')
                             ->required()
                             ->searchable()
                             ->preload(),

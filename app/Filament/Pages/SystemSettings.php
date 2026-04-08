@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Jobs\CheckDeadLinksJob;
+use App\Models\Article;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Forms\Components\Select;
@@ -86,11 +87,29 @@ class SystemSettings extends Page implements HasForms
                     ->label('リンク切れ巡回チェックを今すぐ実行')
                     ->icon('heroicon-o-magnifying-glass-circle')
                     ->requiresConfirmation()
-                    ->modalDescription('リンク切れチェックジョブ（500件分）をバックグラウンドのキューに投入します。')
+                    ->modalDescription('リンク切れチェックジョブ（100件分）をバックグラウンドのキューに投入します。')
                     ->action(function () {
                         CheckDeadLinksJob::dispatch();
                         Notification::make()
                             ->title('リンク切れチェックをバックグラウンドで開始しました')
+                            ->success()
+                            ->send();
+                    }),
+
+                // 4. チェック履歴のフルリセット
+                Action::make('resetDeadLinkHistory')
+                    ->label('チェック履歴をフルリセット')
+                    ->icon('heroicon-o-arrow-path')
+                    ->color('warning')
+                    ->requiresConfirmation()
+                    ->modalHeading('チェック履歴のリセット')
+                    ->modalDescription('すべての記事の「リンク確認日時」をnullに戻します。次回チェック実行時に全記事が再スキャン対象になります。よろしいですか？')
+                    ->modalSubmitActionLabel('リセットする')
+                    ->action(function () {
+                        Article::query()->update(['last_checked_at' => null]);
+                        Notification::make()
+                            ->title('チェック履歴をリセットしました')
+                            ->body('すべての記事が次回の巡回チェック対象になりました。')
                             ->success()
                             ->send();
                     }),
