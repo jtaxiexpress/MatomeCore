@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\CheckDeadLinksJob;
 use App\Models\App;
 use Carbon\Carbon;
 use Illuminate\Foundation\Inspiring;
@@ -10,6 +11,15 @@ use Illuminate\Support\Facades\Schema;
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+// Queue Monitor等の自動クリーンアップ（毎日深夜3時）
+Schedule::command('model:prune')->dailyAt('03:00');
+
+// 失敗したジョブ履歴を1ヶ月(720時間)で削除（毎日深夜3時30分）
+Schedule::command('queue:prune-failed --hours=720')->dailyAt('03:30');
+
+// 毎日深夜4時に、500件だけリンク切れをチェックする
+Schedule::job(new CheckDeadLinksJob)->dailyAt('04:00');
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Appごとのダイナミックスケジュール登録

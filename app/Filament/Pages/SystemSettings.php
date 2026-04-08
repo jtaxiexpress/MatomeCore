@@ -2,7 +2,9 @@
 
 namespace App\Filament\Pages;
 
+use App\Jobs\CheckDeadLinksJob;
 use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -49,6 +51,53 @@ class SystemSettings extends Page implements HasForms
                         ->success()
                         ->send();
                 }),
+
+            ActionGroup::make([
+                // 1. Queue Monitor等のクリーンアップ
+                Action::make('pruneModels')
+                    ->label('ログの自動掃除を実行 (Prune)')
+                    ->icon('heroicon-o-trash')
+                    ->requiresConfirmation()
+                    ->modalDescription('成功した古いジョブ履歴などを即座に削除します。よろしいですか？')
+                    ->action(function () {
+                        Artisan::call('model:prune');
+                        Notification::make()
+                            ->title('ログの掃除が完了しました')
+                            ->success()
+                            ->send();
+                    }),
+
+                // 2. 失敗したジョブのクリーンアップ
+                Action::make('pruneFailedJobs')
+                    ->label('古いエラー履歴を削除')
+                    ->icon('heroicon-o-exclamation-triangle')
+                    ->requiresConfirmation()
+                    ->modalDescription('30日以上経過したエラー履歴を強制削除します。')
+                    ->action(function () {
+                        Artisan::call('queue:prune-failed', ['--hours' => 720]);
+                        Notification::make()
+                            ->title('古いエラー履歴を削除しました')
+                            ->success()
+                            ->send();
+                    }),
+
+                // 3. リンク切れチェックの強制実行
+                Action::make('runDeadLinkChecker')
+                    ->label('リンク切れ巡回チェックを今すぐ実行')
+                    ->icon('heroicon-o-magnifying-glass-circle')
+                    ->requiresConfirmation()
+                    ->modalDescription('リンク切れチェックジョブ（500件分）をバックグラウンドのキューに投入します。')
+                    ->action(function () {
+                        CheckDeadLinksJob::dispatch();
+                        Notification::make()
+                            ->title('リンク切れチェックをバックグラウンドで開始しました')
+                            ->success()
+                            ->send();
+                    }),
+            ])
+                ->label('メンテナンス実行')
+                ->icon('heroicon-m-wrench-screwdriver')
+                ->button(),
         ];
     }
 

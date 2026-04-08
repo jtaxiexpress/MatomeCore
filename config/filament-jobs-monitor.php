@@ -1,5 +1,7 @@
 <?php
 
+use App\Filament\Resources\QueueMonitorResource;
+
 return [
 
     'connection' => null,
@@ -13,7 +15,7 @@ return [
         'navigation_sort' => null,
         'sub_navigation_position' => null,
         'navigation_count_badge' => false,
-        'resource' => \App\Filament\Resources\QueueMonitorResource::class,
+        'resource' => QueueMonitorResource::class,
         'cluster' => null,
         /**
          * Configure the sub-navigation position for the resource pages.
@@ -24,7 +26,7 @@ return [
     ],
     'pruning' => [
         'enabled' => true,
-        'retention_days' => 7,
+        'retention_days' => 3,
     ],
     'queues' => [
         'default',

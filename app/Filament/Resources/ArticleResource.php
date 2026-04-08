@@ -105,6 +105,11 @@ class ArticleResource extends Resource
                 TextColumn::make('published_at')->label('公開日時')->dateTime('Y/n/j H:i')->sortable(),
                 TextColumn::make('created_at')->label('作成日')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('updated_at')->label('更新日')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('last_checked_at')
+                    ->label('リンク確認日時')
+                    ->dateTime('Y/m/d H:i')
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([])
             ->actions([
