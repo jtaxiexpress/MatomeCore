@@ -67,6 +67,9 @@ class CrawlSiteCommand extends Command
             ])->timeout(30)->get($feedUrl);
 
             if (! $response->successful()) {
+                if (is_null($site->failing_since)) {
+                    $site->update(['failing_since' => now()]);
+                }
                 $this->error('フィード取得失敗: HTTP '.$response->status());
 
                 return;
@@ -76,9 +79,16 @@ class CrawlSiteCommand extends Command
             libxml_clear_errors();
 
             if ($xml === false) {
+                if (is_null($site->failing_since)) {
+                    $site->update(['failing_since' => now()]);
+                }
                 $this->error('XMLのパースに失敗しました。');
 
                 return;
+            }
+
+            if (! is_null($site->failing_since)) {
+                $site->update(['failing_since' => null]);
             }
 
             // RSS 1.0 (RDF) / RSS 2.0 / Atom のフォーマット差異を local-name() で吸収
@@ -271,6 +281,9 @@ class CrawlSiteCommand extends Command
             $this->info("{$count} 件の新規記事をキューに投入しました。");
 
         } catch (Exception $e) {
+            if (is_null($site->failing_since)) {
+                $site->update(['failing_since' => now()]);
+            }
             $this->error('フィード解析エラー: '.$e->getMessage());
         }
     }
@@ -309,8 +322,15 @@ class CrawlSiteCommand extends Command
                 ])->timeout(30)->get($currentUrl);
 
                 if (! $response->successful()) {
+                    if ($page === 1 && is_null($site->failing_since)) {
+                        $site->update(['failing_since' => now()]);
+                    }
                     $this->error('Failed to fetch page. HTTP '.$response->status());
                     break;
+                }
+
+                if ($page === 1 && ! is_null($site->failing_since)) {
+                    $site->update(['failing_since' => null]);
                 }
 
                 $crawler = new Crawler($response->body(), $currentUrl);
@@ -366,6 +386,9 @@ class CrawlSiteCommand extends Command
                 sleep(2);
 
             } catch (Exception $e) {
+                if ($page === 1 && is_null($site->failing_since)) {
+                    $site->update(['failing_since' => now()]);
+                }
                 $this->error('Error crawling HTML: '.$e->getMessage());
                 break;
             }
