@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services;
 
 use App\Ai\Agents\CategorizeArticleAgent;
@@ -8,6 +10,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
+use RuntimeException;
 
 class ArticleAiService
 {
@@ -20,7 +23,7 @@ class ArticleAiService
      * @return array{category_id: int, rewritten_title: string}
      *
      * @throws InvalidArgumentException
-     * @throws \RuntimeException
+     * @throws RuntimeException
      */
     public function classifyAndRewrite(
         string $originalTitle,
@@ -48,25 +51,13 @@ class ArticleAiService
         $response = CategorizeArticleAgent::make()->prompt($prompt, model: $geminiModel);
 
         if (is_string($response)) {
-            preg_match_all('/\{(?:[^{}]|(?R))*\}/x', $response, $matches);
-            if (! empty($matches[0])) {
-                foreach ($matches[0] as $match) {
-                    $data = json_decode($match, true);
-                    if (is_array($data)) {
-                        $rewrittenTitle = $data['rewritten_title'] ?? $data['rewrite'] ?? $data['title'] ?? null;
-                        $categoryId = $data['category_id'] ?? $data['category'] ?? null;
-
-                        if ($rewrittenTitle !== null && $categoryId !== null) {
-                            return [
-                                'category_id' => (int) $categoryId,
-                                'rewritten_title' => (string) $rewrittenTitle,
-                            ];
-                        }
-                    }
-                }
+            $parsedResponse = $this->extractJsonResponse($response);
+            if ($parsedResponse) {
+                return $parsedResponse;
             }
+
             Log::warning('AI Response Parse Failed (Gemini). Raw Text: '.$response);
-            throw new \RuntimeException('Gemini generation failed or returned invalid JSON structure.');
+            throw new RuntimeException('Gemini generation failed or returned invalid JSON structure.');
         }
 
         return [
@@ -78,14 +69,14 @@ class ArticleAiService
     /**
      * Ollama APIを使用してカテゴリ分類とタイトルリライトを行います。
      * JSONフォーマットのみを出力するよう厳格に指定します。
+     *
+     * @return array{category_id: int, rewritten_title: string}
      */
     private function processWithOllama(string $title, array $categories, ?App $app = null): array
     {
         $prompt = $this->buildPrompt($title, $categories, $app);
-
         $ollamaUrl = config('services.ollama.url', 'http://host.docker.internal:11434/api/generate');
 
-        // App別設定があればそれを使用、なければグローバル設定にフォールバック
         $model = (! empty($app?->ollama_model))
             ? $app->ollama_model
             : Cache::get('ollama_model', 'qwen3.5:9b');
@@ -104,45 +95,57 @@ class ArticleAiService
 
             if ($response->failed() || ! is_array($jsonResponse)) {
                 Log::error('Ollama API Error. Body: '.$response->body());
-                throw new \RuntimeException('Ollama API HTTP error or invalid response mapping.');
+                throw new RuntimeException('Ollama API HTTP error or invalid response mapping.');
             }
 
-            // `response` または `thinking` フィールドを結合してテキスト全体を取得
             $rawText = ($jsonResponse['response'] ?? '')."\n".($jsonResponse['thinking'] ?? '');
 
-            if (is_string($rawText)) {
-                preg_match_all('/\{(?:[^{}]|(?R))*\}/x', $rawText, $matches);
-                if (! empty($matches[0])) {
-                    foreach ($matches[0] as $match) {
-                        $data = json_decode($match, true);
-                        if (is_array($data)) {
-                            $rewrittenTitle = $data['rewritten_title'] ?? $data['rewrite'] ?? $data['title'] ?? null;
-                            $categoryId = $data['category_id'] ?? $data['category'] ?? null;
-
-                            if ($rewrittenTitle !== null && $categoryId !== null) {
-                                return [
-                                    'category_id' => (int) $categoryId,
-                                    'rewritten_title' => (string) $rewrittenTitle,
-                                ];
-                            }
-                        }
-                    }
-                }
+            $parsedResponse = $this->extractJsonResponse($rawText);
+            if ($parsedResponse) {
+                return $parsedResponse;
             }
 
             Log::warning('AI Response Parse Failed (Ollama). Raw Text: '.$response->body());
-            throw new \RuntimeException('Ollama generation returned unparseable text.');
+            throw new RuntimeException('Ollama generation returned unparseable text.');
         } catch (\Exception $e) {
             Log::error('AI推論エラー: '.$e->getMessage());
-            throw $e; // Throw back so ProcessArticleJob can catch it and invoke fallbacks
+            throw $e;
         }
     }
 
     /**
-     * AIエージェントへ送信するプロンプトを構築します。
+     * AIのテキストからJSONフォーマットを抽出し、カテゴリIDと書き換えたタイトルを取得します。
      *
-     * @param  array  $categories  カテゴリ一覧
-     *                             [['id' => int, 'name' => string, 'parent_name' => ?string], ...]
+     * @return array{category_id: int, rewritten_title: string}|null
+     */
+    private function extractJsonResponse(string $text): ?array
+    {
+        preg_match_all('/\{(?:[^{}]|(?R))*\}/x', $text, $matches);
+
+        if (empty($matches[0])) {
+            return null;
+        }
+
+        foreach ($matches[0] as $match) {
+            $data = json_decode($match, true);
+            if (is_array($data)) {
+                $rewrittenTitle = $data['rewritten_title'] ?? $data['rewrite'] ?? $data['title'] ?? null;
+                $categoryId = $data['category_id'] ?? $data['category'] ?? null;
+
+                if ($rewrittenTitle !== null && $categoryId !== null) {
+                    return [
+                        'category_id' => (int) $categoryId,
+                        'rewritten_title' => (string) $rewrittenTitle,
+                    ];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * AIエージェントへ送信するプロンプトを構築します。
      */
     private function buildPrompt(
         string $originalTitle,
@@ -159,14 +162,11 @@ class ArticleAiService
             })
             ->implode("\n");
 
-        // App別設定があればそれを使用、なければグローバル設定にフォールバック
         $template = (! empty($app?->ai_prompt_template))
             ? $app->ai_prompt_template
             : Cache::get('ai_prompt_template', $this->getDefaultPromptTemplate());
 
-        $prompt = str_replace(['{categories}', '{title}'], [$categoryList, $originalTitle], $template);
-
-        return $prompt;
+        return str_replace(['{categories}', '{title}'], [$categoryList, $originalTitle], $template);
     }
 
     /**
