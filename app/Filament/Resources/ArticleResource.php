@@ -23,6 +23,7 @@ use Filament\Schemas\Schema;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Support\Facades\Storage;
 
 class ArticleResource extends Resource
 {
@@ -48,7 +49,9 @@ class ArticleResource extends Resource
                         TextInput::make('thumbnail_url')
                             ->label('サムネイル画像URL')
                             ->maxLength(255)
-                            ->url(),
+                            ->url()
+                            // 空欄でも表示側でカテゴリのデフォルト画像が自動適用される旨を案内
+                            ->helperText('※空欄の場合、一覧表やアプリ側では「カテゴリのデフォルト画像」が自動的に適用されます。'),
                     ]),
                 Section::make('メタデータ')
                     ->schema([
@@ -87,8 +90,35 @@ class ArticleResource extends Resource
     {
         return $table
             ->columns([
-                ImageColumn::make('thumbnail_url')->label('画像')->square(),
-                TextColumn::make('title')->label('タイトル')->searchable()->limit(40),
+                // Filament の defaultImageUrl() でフォールバックを実装
+                // display_thumbnail_url アクセサは API 側で引き続き使用するため削除しない
+                ImageColumn::make('thumbnail_url')
+                    ->label('画像')
+                    ->square()
+                    ->defaultImageUrl(function (Article $record): ?string {
+                        $path = $record->category?->default_image_path;
+                        if (empty($path)) {
+                            return null;
+                        }
+
+                        return str_starts_with($path, 'http')
+                            ? $path
+                            : Storage::url($path);
+                    }),
+                TextColumn::make('title')
+                    ->label('タイトル')
+                    ->searchable()
+                    ->limit(40)
+                    // thumbnail_url が空の時はカテゴリデフォルト画像使用中であることを明示
+                    ->description(fn (Article $record): ?string => empty($record->thumbnail_url)
+                        ? '💡 カテゴリのデフォルト画像を表示中'
+                        : null
+                    )
+                    // 代替画像表示中は warning 色で視覚的に区別する
+                    ->color(fn (Article $record): ?string => empty($record->thumbnail_url)
+                        ? 'warning'
+                        : null
+                    ),
                 TextColumn::make('app.name')->label('アプリ')->sortable()->badge()->color('info'),
                 TextColumn::make('category.name')->label('カテゴリ')->sortable()->badge(),
                 TextColumn::make('site.name')->label('配信元')->sortable(),

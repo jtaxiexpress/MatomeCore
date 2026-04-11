@@ -13,13 +13,25 @@ use Symfony\Component\DomCrawler\Crawler;
 class ArticleScraperService
 {
     /**
+     * システム全体で共通の除外画像URL（デフォルトのサービスアイコン等）
+     * これらはサムネイルとして不適切なためAPIコール前にフィルタリングする
+     */
+    private const GLOBAL_NG_IMAGES = [
+        'https://parts.blog.livedoor.jp/img/usr/cmn/ogp_image/livedoor.png',
+        'https://stat100.ameba.jp/common_style/img/ogp/ameba_ogp.png',
+    ];
+
+    /**
      * URLからHTMLをフェッチし、タイトル・画像・日付のメタデータを抽出します。
      *
      * @param  string  $url  取得対象の記事URL
      * @param  string|null  $siteDateSelector  (任意) サイト設定の固有の日付セレクタ
      * @return array{success: bool, data: array{title: ?string, url: string, date: ?string, image: ?string}, error_message: ?string}
      */
-    public function scrape(string $url, ?string $siteDateSelector = null): array
+    /**
+     * @param  array<string>  $siteNgImages  サイト固有の除外画像URLリスト（管理画面から設定）
+     */
+    public function scrape(string $url, ?string $siteDateSelector = null, array $siteNgImages = []): array
     {
         $result = [
             'success' => false,
@@ -50,8 +62,11 @@ class ArticleScraperService
 
             $crawler = new Crawler($response->body(), $url);
 
+            // グローバルNGリストとサイト固有NGリストをマージして使用
+            $mergedNgImages = array_filter(array_unique(array_merge(self::GLOBAL_NG_IMAGES, $siteNgImages)));
+
             $result['data']['title'] = $this->extractTitle($crawler);
-            $result['data']['image'] = $this->extractImage($crawler);
+            $result['data']['image'] = $this->extractImage($crawler, $mergedNgImages);
             $result['data']['date'] = $this->extractDate($crawler, $siteDateSelector);
             $result['success'] = true;
 
@@ -78,7 +93,10 @@ class ArticleScraperService
         return null;
     }
 
-    private function extractImage(Crawler $crawler): ?string
+    /**
+     * @param  array<string>  $ngImages  除外すべき画像URLのリスト（完全一致）
+     */
+    private function extractImage(Crawler $crawler, array $ngImages = []): ?string
     {
         $imgSelectors = [
             ['selector' => 'meta[property="og:image"]', 'attr' => 'content'],
@@ -100,8 +118,13 @@ class ArticleScraperService
                     $src = $crawler->filter($img['selector'])->first()->attr($img['attr']);
                 }
 
-                if (! empty(trim((string) $src))) {
-                    return trim((string) $src);
+                $trimmedSrc = trim((string) $src);
+                if (! empty($trimmedSrc) && ! in_array($trimmedSrc, $ngImages, true)) {
+                    return $trimmedSrc;
+                }
+                // NGリストに含まれる場合は次の候補へ
+                if (! empty($trimmedSrc)) {
+                    Log::debug("[ArticleScraperService] NG画像のためスキップ: {$trimmedSrc}");
                 }
             } catch (Exception) {
                 // ignore image parsing errors

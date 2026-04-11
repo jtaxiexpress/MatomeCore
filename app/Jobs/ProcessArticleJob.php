@@ -46,8 +46,20 @@ class ProcessArticleJob implements ShouldQueue
         ArticleScraperService $scraper,
         CleanArticleTitleAction $cleanTitleAction
     ): void {
+        // ① 排他制御: 同一URLの並列処理を防ぐCacheロック
+        $lockKey = 'process_article_'.md5($this->url);
+        $lock = Cache::lock($lockKey, 120);
+
+        if (! $lock->get()) {
+            // 他のワーカーが処理中のためスキップ（再試行なし）
+            Log::info("[ProcessArticleJob] ロック取得不可のためスキップ: {$this->url}");
+
+            return;
+        }
+
         try {
             if (Cache::get('is_bulk_paused', false)) {
+                $lock->release();
                 $this->release(60);
 
                 return;
@@ -68,20 +80,26 @@ class ProcessArticleJob implements ShouldQueue
             $metaData = $this->resolveMetaData($scraper);
 
             $title = $cleanTitleAction->execute($metaData['title'], $this->site->name);
-            if (empty($title)) {
-                Log::warning("[Process: {$this->url}] タイトルが空のためスキップします");
+
+            // ② AI APIの無駄打ち防止: タイトルが短すぎる場合はAI呼び出し自体をスキップ
+            if (empty($title) || mb_strlen($title) < 5) {
+                Log::warning("[Process: {$this->url}] タイトルが空または5文字未満のためAI呼び出しをスキップします");
 
                 return;
             }
 
-            Log::info("[Process: {$this->url}] タイトル洗浄: 【前】{$metaData['title']} -> 【後】{$title}");
+            Log::info("[Process: {$this->url}] タイトル洗浄: 》前「{$metaData['title']} -> 」後「{$title}");
 
             $aiResult = $this->classifyAndRewriteTitle($aiService, $title);
             $this->saveArticle($aiResult, $title, $metaData);
 
         } catch (\Throwable $e) {
             Log::error("[ProcessArticleJob] Job Error: [{$this->url}] ".$e->getMessage()."\n".$e->getTraceAsString());
-            throw $e;
+            // ③ 無限リトライの強制停止: throwではなくfail()でキューに失敗として登録する
+            $this->fail($e);
+        } finally {
+            // 処理完了または例外発生時に必ずロックを解放する
+            $lock->release();
         }
     }
 
@@ -100,7 +118,9 @@ class ProcessArticleJob implements ShouldQueue
         if ($needsScraping) {
             try {
                 Log::info("[Process: {$this->url}] 不足データ(title/thumbnail/date)の補完のためHTMLスクレイピングを開始します");
-                $scrapeResult = $scraper->scrape($this->url, $this->site->date_selector ?? null);
+                // ④ サイト固有のNG画像URLリストをスクレイパーに渡す
+                $siteNgImages = $this->site->ng_image_urls ?? [];
+                $scrapeResult = $scraper->scrape($this->url, $this->site->date_selector ?? null, $siteNgImages);
 
                 if ($scrapeResult['success']) {
                     $title = empty($title) && ! empty($scrapeResult['data']['title']) ? $scrapeResult['data']['title'] : $title;
