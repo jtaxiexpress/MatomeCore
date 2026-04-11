@@ -1,9 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Article extends Model
@@ -15,6 +16,15 @@ class Article extends Model
         return [
             'published_at' => 'datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (Article $article): void {
+            if (empty($article->url_hash) && ! empty($article->url)) {
+                $article->url_hash = hash('sha256', $article->url);
+            }
+        });
     }
 
     public function app(): BelongsTo
