@@ -127,6 +127,8 @@ class SystemSettings extends Page implements HasForms
             'ollama_model' => Cache::get('ollama_model', 'qwen3.5:9b'),
             'gemini_model' => Cache::get('gemini_model', 'gemini-1.5-flash-lite'),
             'ai_prompt_template' => Cache::get('ai_prompt_template', $this->getDefaultPromptTemplate()),
+            'ollama_num_predict' => Cache::get('ollama_num_predict', 3000),
+            'ollama_num_ctx' => Cache::get('ollama_num_ctx', 8192),
         ]);
     }
 
@@ -147,6 +149,14 @@ class SystemSettings extends Page implements HasForms
                             ->default('qwen3.5:9b')
                             ->helperText('ローカルOllama環境のモデル名。')
                             ->required(),
+                        TextInput::make('ollama_num_predict')
+                            ->label('Ollama 出力トークン上限 (num_predict)')
+                            ->numeric()
+                            ->default(3000),
+                        TextInput::make('ollama_num_ctx')
+                            ->label('Ollama コンテキスト長 (num_ctx)')
+                            ->numeric()
+                            ->default(8192),
                         Select::make('gemini_model')
                             ->label('Geminiモデル名（デフォルト）')
                             ->helperText('Google Gemini APIのモデル名。アプリ個別設定がない場合はこちらが使用されます。')
@@ -202,6 +212,8 @@ class SystemSettings extends Page implements HasForms
         Cache::put('ollama_model', $state['ollama_model'] ?? 'qwen3.5:9b');
         Cache::put('gemini_model', $state['gemini_model'] ?? 'gemini-1.5-flash-lite');
         Cache::put('ai_prompt_template', $state['ai_prompt_template'] ?? $this->getDefaultPromptTemplate());
+        Cache::put('ollama_num_predict', $state['ollama_num_predict'] ?? 3000);
+        Cache::put('ollama_num_ctx', $state['ollama_num_ctx'] ?? 8192);
 
         Notification::make()
             ->title('設定を保存しました')

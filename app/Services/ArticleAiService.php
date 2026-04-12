@@ -82,6 +82,9 @@ class ArticleAiService
             ? $app->ollama_model
             : Cache::get('ollama_model', 'qwen3.5:9b');
 
+        $numPredict = $app?->ollama_num_predict ?? Cache::get('ollama_num_predict', 3000);
+        $numCtx = $app?->ollama_num_ctx ?? Cache::get('ollama_num_ctx', 8192);
+
         Log::info("[デバッグ]AI送信プロンプト:\n".$prompt);
 
         try {
@@ -90,6 +93,10 @@ class ArticleAiService
                 'prompt' => $prompt,
                 'stream' => false,
                 'format' => 'json',
+                'options' => [
+                    'num_predict' => (int) $numPredict,
+                    'num_ctx' => (int) $numCtx,
+                ],
             ]);
 
             $jsonResponse = $response->json();
@@ -170,7 +177,7 @@ class ArticleAiService
 
         // テンプレートが存在しない場合は例外を投げる
         if (empty($template)) {
-            throw new \RuntimeException('AIプロンプトのテンプレートが設定されていません。システム設定またはアプリ設定を確認してください。');
+            throw new RuntimeException('AIプロンプトのテンプレートが設定されていません。システム設定またはアプリ設定を確認してください。');
         }
 
         return str_replace(['{categories}', '{title}'], [$categoryList, $originalTitle], $template);
@@ -241,6 +248,9 @@ class ArticleAiService
             ? $app->ollama_model
             : Cache::get('ollama_model', 'qwen3.5:9b');
 
+        $numPredict = $app?->ollama_num_predict ?? Cache::get('ollama_num_predict', 3000);
+        $numCtx = $app?->ollama_num_ctx ?? Cache::get('ollama_num_ctx', 8192);
+
         Log::info("[バッチ]AI送信プロンプト:\n".$prompt);
 
         try {
@@ -248,7 +258,10 @@ class ArticleAiService
                 'model' => $model,
                 'prompt' => $prompt,
                 'stream' => false,
-                'format' => 'json',
+                'options' => [
+                    'num_predict' => (int) $numPredict,
+                    'num_ctx' => (int) $numCtx,
+                ],
             ]);
 
             $jsonResponse = $response->json();
@@ -299,7 +312,7 @@ class ArticleAiService
 
         // テンプレートが存在しない場合は例外を投げる
         if (empty($template)) {
-            throw new \RuntimeException('[バッチ] AIプロンプトのテンプレートが設定されていません。システム設定またはアプリ設定を確認してください。');
+            throw new RuntimeException('[バッチ] AIプロンプトのテンプレートが設定されていません。システム設定またはアプリ設定を確認してください。');
         }
 
         // 管理画面のテンプレートで {title} が使われている場合も考慮し、{articles_json} に置換する
@@ -318,10 +331,37 @@ class ArticleAiService
      */
     private function extractBatchJsonResponse(string $text): array
     {
+
+        Log::info('[バッチRAW出力] '.$text);
         // マークダウンのコードブロックなどを簡易的に除去
         $cleaned = preg_replace('/```(?:json)?\s*/i', '', $text);
         $cleaned = preg_replace('/```/', '', $cleaned ?? $text);
         $cleaned = trim($cleaned ?? $text);
+
+        // 新規処理: プレーンなJSON配列としてパースを試みる
+        $decodedFullArray = json_decode($cleaned, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decodedFullArray)) {
+            $results = [];
+            foreach ($decodedFullArray as $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+
+                $articleId = $item['article_id'] ?? null;
+                $categoryId = $item['category_id'] ?? null;
+                $rewrittenTitle = $item['rewritten_title'] ?? null;
+
+                if ($articleId !== null && $categoryId !== null && $rewrittenTitle !== null) {
+                    $results[(int) $articleId] = [
+                        'category_id' => (int) $categoryId,
+                        'rewritten_title' => (string) $rewrittenTitle,
+                    ];
+                }
+            }
+            if (! empty($results)) {
+                return $results;
+            }
+        }
 
         // JSONオブジェクト（{...}）を個別にすべて抽出。再帰的パターンでネストされた括弧にも対応。
         if (! preg_match_all('/\{(?:[^{}]|(?0))*\}/s', $cleaned, $matches) || empty($matches[0])) {

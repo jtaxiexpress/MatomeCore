@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\AppResource\Pages;
 use App\Filament\Resources\AppResource\RelationManagers;
 use App\Models\App;
+use Carbon\Carbon;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -20,6 +21,7 @@ use Filament\Tables\Columns\ColorColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\ToggleColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
@@ -65,6 +67,14 @@ class AppResource extends Resource
                             ->placeholder('例: qwen3.5:9b')
                             ->helperText('※未入力の場合はシステム全体のデフォルト設定が使用されます。')
                             ->maxLength(255),
+                        TextInput::make('ollama_num_predict')
+                            ->label('Ollama 出力トークン上限 (num_predict)')
+                            ->numeric()
+                            ->helperText('※システム設定を上書きする場合のみ入力'),
+                        TextInput::make('ollama_num_ctx')
+                            ->label('Ollama コンテキスト長 (num_ctx)')
+                            ->numeric()
+                            ->helperText('※システム設定を上書きする場合のみ入力'),
                         Select::make('gemini_model')
                             ->label('Geminiモデル名')
                             ->helperText('※未入力の場合はシステム全体のデフォルト設定が使用されます。')
@@ -149,8 +159,8 @@ class AppResource extends Resource
                     ->badge()
                     ->color(fn ($state): string => match (true) {
                         $state === null => 'danger',
-                        \Carbon\Carbon::parse($state) >= now()->subDays(3) => 'success',
-                        \Carbon\Carbon::parse($state) >= now()->subDays(7) => 'warning',
+                        Carbon::parse($state) >= now()->subDays(3) => 'success',
+                        Carbon::parse($state) >= now()->subDays(7) => 'warning',
                         default => 'gray',
                     }),
                 TextColumn::make('created_at')->label('作成日')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
@@ -167,7 +177,7 @@ class AppResource extends Resource
             ->bulkActions([
                 BulkActionGroup::make([DeleteBulkAction::make()]),
             ])
-            ->modifyQueryUsing(fn (\Illuminate\Database\Eloquent\Builder $query) => $query->withMax('articles', 'created_at'))
+            ->modifyQueryUsing(fn (Builder $query) => $query->withMax('articles', 'created_at'))
             ->defaultSort('created_at', 'desc');
     }
 
