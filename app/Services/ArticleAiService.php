@@ -96,6 +96,8 @@ class ArticleAiService
                 'options' => [
                     'num_predict' => (int) $numPredict,
                     'num_ctx' => (int) $numCtx,
+                    'repeat_penalty' => 1.0,
+                    'temperature' => 0.2,
                 ],
             ]);
 
@@ -261,6 +263,8 @@ class ArticleAiService
                 'options' => [
                     'num_predict' => (int) $numPredict,
                     'num_ctx' => (int) $numCtx,
+                    'repeat_penalty' => 1.0,
+                    'temperature' => 0.2,
                 ],
             ]);
 
