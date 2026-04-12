@@ -14,6 +14,7 @@ class ArticleAiServiceBatchTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        \Illuminate\Support\Facades\Cache::put('ai_prompt_template', 'test template {categories} {title} {articles_json}');
         $this->service = new ArticleAiService;
     }
 
@@ -40,6 +41,18 @@ class ArticleAiServiceBatchTest extends TestCase
         $this->assertSame('タイトル1', $result[1]['rewritten_title']);
         $this->assertArrayHasKey(2, $result);
         $this->assertSame(5, $result[2]['category_id']);
+    }
+
+    public function test_extract_batch_json_response_parses_wrapped_json_array(): void
+    {
+        $text = '{"results": [{"article_id": 10, "rewritten_title": "Wrapped Title", "category_id": 99}]}';
+
+        $result = $this->callExtractBatchJsonResponse($text);
+
+        $this->assertCount(1, $result);
+        $this->assertArrayHasKey(10, $result);
+        $this->assertSame(99, $result[10]['category_id']);
+        $this->assertSame('Wrapped Title', $result[10]['rewritten_title']);
     }
 
     public function test_extract_batch_json_response_strips_json_code_block(): void

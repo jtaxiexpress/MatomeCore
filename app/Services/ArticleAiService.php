@@ -338,26 +338,30 @@ class ArticleAiService
         $cleaned = preg_replace('/```/', '', $cleaned ?? $text);
         $cleaned = trim($cleaned ?? $text);
 
-        // 新規処理: プレーンなJSON配列としてパースを試みる
-        $decodedFullArray = json_decode($cleaned, true);
-        if (json_last_error() === JSON_ERROR_NONE && is_array($decodedFullArray)) {
+        // 全体を JSON としてパースし、再帰的に結果を探索する処理
+        $decodedData = json_decode($cleaned, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decodedData)) {
             $results = [];
-            foreach ($decodedFullArray as $item) {
-                if (! is_array($item)) {
-                    continue;
-                }
 
-                $articleId = $item['article_id'] ?? null;
-                $categoryId = $item['category_id'] ?? null;
-                $rewrittenTitle = $item['rewritten_title'] ?? null;
-
-                if ($articleId !== null && $categoryId !== null && $rewrittenTitle !== null) {
-                    $results[(int) $articleId] = [
-                        'category_id' => (int) $categoryId,
-                        'rewritten_title' => (string) $rewrittenTitle,
+            $extractItems = function (array $data) use (&$extractItems, &$results): void {
+                if (array_key_exists('article_id', $data) && array_key_exists('category_id', $data) && array_key_exists('rewritten_title', $data)) {
+                    $results[(int) $data['article_id']] = [
+                        'category_id' => (int) $data['category_id'],
+                        'rewritten_title' => (string) $data['rewritten_title'],
                     ];
+
+                    return;
                 }
-            }
+
+                foreach ($data as $value) {
+                    if (is_array($value)) {
+                        $extractItems($value);
+                    }
+                }
+            };
+
+            $extractItems($decodedData);
+
             if (! empty($results)) {
                 return $results;
             }
