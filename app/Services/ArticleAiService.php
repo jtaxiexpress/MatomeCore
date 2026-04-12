@@ -163,33 +163,17 @@ class ArticleAiService
             })
             ->implode("\n");
 
+        // アプリ設定またはシステム設定（Cache）からのみ取得
         $template = (! empty($app?->ai_prompt_template))
             ? $app->ai_prompt_template
-            : Cache::get('ai_prompt_template', $this->getDefaultPromptTemplate());
+            : Cache::get('ai_prompt_template');
+
+        // テンプレートが存在しない場合は例外を投げる
+        if (empty($template)) {
+            throw new \RuntimeException('AIプロンプトのテンプレートが設定されていません。システム設定またはアプリ設定を確認してください。');
+        }
 
         return str_replace(['{categories}', '{title}'], [$categoryList, $originalTitle], $template);
-    }
-
-    /**
-     * デフォルトのプロンプトテンプレート
-     */
-    private function getDefaultPromptTemplate(): string
-    {
-        return <<<'PROMPT'
-あなたは優秀な編集者です。以下の情報を見て推論を行ってください。
-
-## 利用可能なカテゴリ一覧
-{categories}
-
-## 元のタイトル
-{title}
-
-要件:
-1. タイトルをキャッチーで分かりやすくリライトしてください。
-2. 最も適切なカテゴリのIDを1つ選んでください。
-3. 出力は必ず以下のJSON形式とし、マークダウンや解説は一切含めないでください:
-{"rewritten_title": "新しいタイトル", "category_id": 1}
-PROMPT;
     }
 
     // =========================================================================
@@ -308,31 +292,22 @@ PROMPT;
             JSON_UNESCAPED_UNICODE
         );
 
-        $template = $this->getBatchPromptTemplate();
+        // アプリ設定またはシステム設定（Cache）からのみ取得
+        $template = (! empty($app?->ai_prompt_template))
+            ? $app->ai_prompt_template
+            : Cache::get('ai_prompt_template');
 
-        return str_replace(['{categories}', '{articles_json}'], [$categoryList, $articlesJson], $template);
-    }
+        // テンプレートが存在しない場合は例外を投げる
+        if (empty($template)) {
+            throw new \RuntimeException('[バッチ] AIプロンプトのテンプレートが設定されていません。システム設定またはアプリ設定を確認してください。');
+        }
 
-    /**
-     * バッチ処理用のデフォルトプロンプトテンプレート
-     */
-    private function getBatchPromptTemplate(): string
-    {
-        return <<<'PROMPT'
-あなたは優秀な編集者です。以下の複数記事をまとめて処理してください。
-
-## 利用可能なカテゴリ一覧
-{categories}
-
-## 処理対象記事（JSON）
-{articles_json}
-
-要件:
-1. 各記事のタイトルをキャッチーで分かりやすくリライトしてください（40文字以内）。
-2. 各記事に最も適切なカテゴリIDを1つ選んでください。
-3. 出力は必ず以下のJSON配列形式のみとし、マークダウンやコードブロック、解説は一切含めないでください:
-[{"article_id": 1, "rewritten_title": "新しいタイトル", "category_id": 3}]
-PROMPT;
+        // 管理画面のテンプレートで {title} が使われている場合も考慮し、{articles_json} に置換する
+        return str_replace(
+            ['{categories}', '{articles_json}', '{title}'],
+            [$categoryList, $articlesJson, $articlesJson],
+            $template
+        );
     }
 
     /**
