@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Jobs\ProcessArticleJob;
+use App\Jobs\ProcessArticleBatchJob;
 use App\Models\Article;
 use App\Models\Site;
 use Carbon\Carbon;
@@ -17,6 +17,8 @@ class CrawlSiteCommand extends Command
     protected $signature = 'app:crawl-site {site_id} {--max-pages=5}';
 
     protected $description = 'Crawl a site for articles using either sitemap or html parser';
+
+    private array $batchArticles = [];
 
     public function handle()
     {
@@ -40,8 +42,17 @@ class CrawlSiteCommand extends Command
             $this->crawlHtml($site, $maxPages);
         }
 
-        $this->info('Crawl completed.');
-        Log::info("CrawlSiteCommand: Crawl completed for Site ID: {$site->id}");
+        $this->info('Crawl completed. Dispatching batches...');
+        Log::info("CrawlSiteCommand: Crawl completed for Site ID: {$site->id}. Dispatching batches.");
+
+        if (! empty($this->batchArticles)) {
+            $chunks = array_chunk($this->batchArticles, 10);
+            foreach ($chunks as $chunk) {
+                ProcessArticleBatchJob::dispatch($site->id, $chunk, 'gemini', 'rss');
+            }
+            $this->info('Dispatched '.count($chunks).' batch jobs.');
+            Log::info('CrawlSiteCommand: Dispatched '.count($chunks)." batch jobs for Site ID: {$site->id}.");
+        }
 
         return 0;
     }
@@ -444,13 +455,16 @@ class CrawlSiteCommand extends Command
             return;
         }
 
-        $this->info("Dispatching new article: {$url}");
-        Log::info("CrawlSiteCommand: Dispatching ProcessArticleJob for {$url} (Site ID: {$site->id})");
+        $this->info("Queuing new article for batch: {$url}");
+        Log::info("CrawlSiteCommand: Queuing article for batch: {$url} (Site ID: {$site->id})");
 
-        ProcessArticleJob::dispatch($site->id, $url, [
-            'raw_title' => $data['title'],
-            'thumbnail_url' => $data['thumbnail'],
-            'published_at' => $data['published_at']?->toDateTimeString(),
-        ], 'gemini', 'rss');
+        $this->batchArticles[] = [
+            'url' => $url,
+            'metaData' => [
+                'raw_title' => $data['title'],
+                'thumbnail_url' => $data['thumbnail'],
+                'published_at' => $data['published_at']?->toDateTimeString(),
+            ],
+        ];
     }
 }

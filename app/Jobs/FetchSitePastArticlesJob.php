@@ -151,14 +151,18 @@ class FetchSitePastArticlesJob implements ShouldQueue
 
                 Log::info("[Fetch: {$this->site->name}] 新規URL: ".count($newUrls).'件 / 重複スキップ: '.(count($extractedUrls) - count($newUrls)).'件');
 
-                foreach ($newUrls as $newUrl) {
-                    ProcessArticleJob::dispatch($this->site->id, $newUrl, [], 'ollama', $sourceType);
-                    $dispatchedCount++;
+                $targetUrls = $this->limit > 0 ? array_slice($newUrls, 0, $this->limit) : $newUrls;
+                $dispatchedCount += count($targetUrls);
 
-                    if ($this->limit > 0 && $dispatchedCount >= $this->limit) {
-                        Log::info("[Fetch: {$this->site->name}] 指定された上限（{$this->limit}件）に到達したため終了します。");
-                        break;
+                if (! empty($targetUrls)) {
+                    $articlesBatch = array_map(fn ($url) => ['url' => $url, 'metaData' => []], $targetUrls);
+                    foreach (array_chunk($articlesBatch, 10) as $chunk) {
+                        ProcessArticleBatchJob::dispatch($this->site->id, $chunk, 'ollama', $sourceType);
                     }
+                }
+
+                if ($this->limit > 0 && $dispatchedCount >= $this->limit) {
+                    Log::info("[Fetch: {$this->site->name}] 指定された上限（{$this->limit}件）に到達したため終了します。");
                 }
 
             } else {
@@ -168,6 +172,7 @@ class FetchSitePastArticlesJob implements ShouldQueue
 
                 // 安全のためページネーションの暴走を防ぐハードリミット
                 $maxPages = 100;
+                $collectedHtmlUrls = [];
 
                 for ($page = 1; $page <= $maxPages; $page++) {
                     // 管理画面でテンプレートが設定されている場合はそれを優先使用
@@ -281,9 +286,9 @@ class FetchSitePastArticlesJob implements ShouldQueue
                         break;
                     }
 
-                    // 4. 純粋な新規URLのみをそのままキューに投入し、純増カウント
+                    // 4. 純粋な新規URLのみをそのまま配列に入れ、純増カウント
                     foreach ($newUrls as $newUrl) {
-                        ProcessArticleJob::dispatch($this->site->id, $newUrl, [], 'ollama', $sourceType);
+                        $collectedHtmlUrls[] = $newUrl;
                         $dispatchedCount++;
 
                         if ($this->limit > 0 && $dispatchedCount >= $this->limit) {
@@ -295,10 +300,17 @@ class FetchSitePastArticlesJob implements ShouldQueue
                     // 対象サイトへのサーバー負荷軽減
                     sleep(1);
                 }
+
+                if (! empty($collectedHtmlUrls)) {
+                    $articlesBatch = array_map(fn ($url) => ['url' => $url, 'metaData' => []], $collectedHtmlUrls);
+                    foreach (array_chunk($articlesBatch, 10) as $chunk) {
+                        ProcessArticleBatchJob::dispatch($this->site->id, $chunk, 'ollama', $sourceType);
+                    }
+                }
             } // end HTML mode
 
             $limitLog = $this->limit === 0 ? 'なし' : $this->limit.'件';
-            $successMessage = "[Scraper] {$this->site->name} から新しい記事を {$dispatchedCount} 件取得し、キューに投入しました（上限設定: {$limitLog}）";
+            $successMessage = "[Scraper] {$this->site->name} から新しい記事を {$dispatchedCount} 件取得し、バッチキューに投入しました（上限設定: {$limitLog}）";
             Log::info($successMessage);
             $this->output = $successMessage;
 
