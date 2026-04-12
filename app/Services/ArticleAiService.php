@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Ai\Agents\BatchCategorizeAgent;
 use App\Ai\Agents\CategorizeArticleAgent;
 use App\Models\App;
 use Illuminate\Support\Facades\Cache;
@@ -189,5 +190,202 @@ class ArticleAiService
 3. 出力は必ず以下のJSON形式とし、マークダウンや解説は一切含めないでください:
 {"rewritten_title": "新しいタイトル", "category_id": 1}
 PROMPT;
+    }
+
+    // =========================================================================
+    // バッチ処理 API
+    // =========================================================================
+
+    /**
+     * 複数記事のカテゴリ分類とタイトルリライトを1回のAIリクエストで実行します。
+     *
+     * @param  array<int, array{id: int, title: string}>  $articles  処理対象の記事配列
+     * @param  array<int, array{id: int, name: string}>  $categories  カテゴリ一覧
+     * @return array<int, array{category_id: int, rewritten_title: string}> 記事IDをキーとした結果配列
+     *
+     * @throws InvalidArgumentException
+     */
+    public function classifyAndRewriteBatch(
+        array $articles,
+        array $categories,
+        string $driver = 'gemini',
+        ?App $app = null
+    ): array {
+        if (empty($categories)) {
+            throw new InvalidArgumentException('カテゴリ一覧が空です。少なくとも1件のカテゴリが必要です。');
+        }
+
+        if (empty($articles)) {
+            return [];
+        }
+
+        $prompt = $this->buildBatchPrompt($articles, $categories, $app);
+
+        return $driver === 'ollama'
+            ? $this->batchWithOllama($prompt, $app)
+            : $this->batchWithGemini($prompt, $app);
+    }
+
+    /**
+     * GeminiでバッチAI処理を実行します。
+     *
+     * @return array<int, array{category_id: int, rewritten_title: string}>
+     */
+    private function batchWithGemini(string $prompt, ?App $app = null): array
+    {
+        $geminiModel = (! empty($app?->gemini_model))
+            ? $app->gemini_model
+            : Cache::get('gemini_model', 'gemini-1.5-flash-lite');
+
+        Log::info("[バッチ]AI送信プロンプト:\n".$prompt);
+
+        $response = BatchCategorizeAgent::make()->prompt($prompt, model: $geminiModel);
+        $rawText = is_string($response) ? $response : (string) $response;
+
+        return $this->extractBatchJsonResponse($rawText);
+    }
+
+    /**
+     * OllamaでバッチAI処理を実行します。
+     *
+     * @return array<int, array{category_id: int, rewritten_title: string}>
+     */
+    private function batchWithOllama(string $prompt, ?App $app = null): array
+    {
+        $ollamaUrl = config('services.ollama.url', 'http://host.docker.internal:11434/api/generate');
+        $model = (! empty($app?->ollama_model))
+            ? $app->ollama_model
+            : Cache::get('ollama_model', 'qwen3.5:9b');
+
+        Log::info("[バッチ]AI送信プロンプト:\n".$prompt);
+
+        try {
+            $response = Http::timeout(180)->post($ollamaUrl, [
+                'model' => $model,
+                'prompt' => $prompt,
+                'stream' => false,
+                'format' => 'json',
+            ]);
+
+            $jsonResponse = $response->json();
+
+            if ($response->failed() || ! is_array($jsonResponse)) {
+                Log::error('[バッチ] Ollama API Error. Body: '.$response->body());
+
+                return [];
+            }
+
+            $rawText = ($jsonResponse['response'] ?? '')."\n".($jsonResponse['thinking'] ?? '');
+
+            return $this->extractBatchJsonResponse($rawText);
+        } catch (\Exception $e) {
+            Log::error('[バッチ] AI推論エラー: '.$e->getMessage());
+
+            return [];
+        }
+    }
+
+    /**
+     * バッチ処理用のプロンプトを構築します。
+     *
+     * @param  array<int, array{id: int, title: string}>  $articles
+     * @param  array<int, array{id: int, name: string}>  $categories
+     */
+    private function buildBatchPrompt(array $articles, array $categories, ?App $app = null): string
+    {
+        $categoryList = collect($categories)
+            ->map(function (array $cat): string {
+                $label = isset($cat['parent_name'])
+                    ? "{$cat['parent_name']} > {$cat['name']} (ID: {$cat['id']})"
+                    : "{$cat['name']} (ID: {$cat['id']})";
+
+                return "- {$label}";
+            })
+            ->implode("\n");
+
+        $articlesJson = json_encode(
+            array_map(fn (array $a): array => ['article_id' => $a['id'], 'title' => $a['title']], $articles),
+            JSON_UNESCAPED_UNICODE
+        );
+
+        $template = $this->getBatchPromptTemplate();
+
+        return str_replace(['{categories}', '{articles_json}'], [$categoryList, $articlesJson], $template);
+    }
+
+    /**
+     * バッチ処理用のデフォルトプロンプトテンプレート
+     */
+    private function getBatchPromptTemplate(): string
+    {
+        return <<<'PROMPT'
+あなたは優秀な編集者です。以下の複数記事をまとめて処理してください。
+
+## 利用可能なカテゴリ一覧
+{categories}
+
+## 処理対象記事（JSON）
+{articles_json}
+
+要件:
+1. 各記事のタイトルをキャッチーで分かりやすくリライトしてください（40文字以内）。
+2. 各記事に最も適切なカテゴリIDを1つ選んでください。
+3. 出力は必ず以下のJSON配列形式のみとし、マークダウンやコードブロック、解説は一切含めないでください:
+[{"article_id": 1, "rewritten_title": "新しいタイトル", "category_id": 3}]
+PROMPT;
+    }
+
+    /**
+     * AIの返答からJSON配列を抽出・パースして記事IDをキーとした結果配列を返します。
+     * 部分的な成功（一部記事のみ返却）を許容し、例外を投げません。
+     *
+     * @return array<int, array{category_id: int, rewritten_title: string}>
+     */
+    private function extractBatchJsonResponse(string $text): array
+    {
+        // マークダウンのコードブロックを除去
+        $cleaned = preg_replace('/```(?:json)?\s*/i', '', $text);
+        $cleaned = preg_replace('/```/', '', $cleaned ?? $text);
+        $cleaned = trim($cleaned ?? $text);
+
+        // JSON配列の抽出（最初の [ から最後の ] まで）
+        if (! preg_match('/\[.*\]/s', $cleaned, $matches)) {
+            Log::warning('[バッチ] JSON配列が見つかりませんでした。Raw: '.mb_substr($cleaned, 0, 500));
+
+            return [];
+        }
+
+        $decoded = json_decode($matches[0], true);
+
+        if (! is_array($decoded)) {
+            Log::warning('[バッチ] JSONのデコードに失敗しました。Raw: '.mb_substr($matches[0], 0, 500));
+
+            return [];
+        }
+
+        $results = [];
+
+        foreach ($decoded as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $articleId = $item['article_id'] ?? null;
+            $categoryId = $item['category_id'] ?? null;
+            $rewrittenTitle = $item['rewritten_title'] ?? null;
+
+            if ($articleId === null || $categoryId === null || $rewrittenTitle === null) {
+                Log::warning('[バッチ] 不正なアイテム形式をスキップしました。', ['item' => $item]);
+
+                continue;
+            }
+
+            $results[(int) $articleId] = [
+                'category_id' => (int) $categoryId,
+                'rewritten_title' => (string) $rewrittenTitle,
+            ];
+        }
+
+        return $results;
     }
 }
