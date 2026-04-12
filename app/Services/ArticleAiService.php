@@ -336,46 +336,42 @@ PROMPT;
     }
 
     /**
-     * AIの返答からJSON配列を抽出・パースして記事IDをキーとした結果配列を返します。
+     * AIの返答からJSONオブジェクト群を抽出・パースして記事IDをキーとした結果配列を返します。
      * 部分的な成功（一部記事のみ返却）を許容し、例外を投げません。
      *
      * @return array<int, array{category_id: int, rewritten_title: string}>
      */
     private function extractBatchJsonResponse(string $text): array
     {
-        // マークダウンのコードブロックを除去
+        // マークダウンのコードブロックなどを簡易的に除去
         $cleaned = preg_replace('/```(?:json)?\s*/i', '', $text);
         $cleaned = preg_replace('/```/', '', $cleaned ?? $text);
         $cleaned = trim($cleaned ?? $text);
 
-        // JSON配列の抽出（最初の [ から最後の ] まで）
-        if (! preg_match('/\[.*\]/s', $cleaned, $matches)) {
-            Log::warning('[バッチ] JSON配列が見つかりませんでした。Raw: '.mb_substr($cleaned, 0, 500));
-
-            return [];
-        }
-
-        $decoded = json_decode($matches[0], true);
-
-        if (! is_array($decoded)) {
-            Log::warning('[バッチ] JSONのデコードに失敗しました。Raw: '.mb_substr($matches[0], 0, 500));
+        // JSONオブジェクト（{...}）を個別にすべて抽出。再帰的パターンでネストされた括弧にも対応。
+        if (! preg_match_all('/\{(?:[^{}]|(?0))*\}/s', $cleaned, $matches) || empty($matches[0])) {
+            Log::warning('[バッチ] JSONオブジェクトが見つかりませんでした。Raw: '.mb_substr($cleaned, 0, 500));
 
             return [];
         }
 
         $results = [];
 
-        foreach ($decoded as $item) {
-            if (! is_array($item)) {
+        foreach ($matches[0] as $match) {
+            $decoded = json_decode($match, true);
+
+            if (! is_array($decoded)) {
+                Log::warning('[バッチ] JSONオブジェクトのデコードに失敗しました。Raw: '.mb_substr($match, 0, 500));
+
                 continue;
             }
 
-            $articleId = $item['article_id'] ?? null;
-            $categoryId = $item['category_id'] ?? null;
-            $rewrittenTitle = $item['rewritten_title'] ?? null;
+            $articleId = $decoded['article_id'] ?? null;
+            $categoryId = $decoded['category_id'] ?? null;
+            $rewrittenTitle = $decoded['rewritten_title'] ?? null;
 
             if ($articleId === null || $categoryId === null || $rewrittenTitle === null) {
-                Log::warning('[バッチ] 不正なアイテム形式をスキップしました。', ['item' => $item]);
+                Log::warning('[バッチ] 不正なアイテム形式をスキップしました。', ['item' => $decoded]);
 
                 continue;
             }
