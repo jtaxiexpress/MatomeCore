@@ -331,74 +331,92 @@ class ArticleAiService
      */
     private function extractBatchJsonResponse(string $text): array
     {
-
         Log::info('[バッチRAW出力] '.$text);
-        // マークダウンのコードブロックなどを簡易的に除去
+
+        // マークダウンのコードブロックなどを除去
         $cleaned = preg_replace('/```(?:json)?\s*/i', '', $text);
         $cleaned = preg_replace('/```/', '', $cleaned ?? $text);
         $cleaned = trim($cleaned ?? $text);
 
-        // 全体を JSON としてパースし、再帰的に結果を探索する処理
+        $results = [];
+
+        // 再帰的に valid なアイテムを探索して抽出するクロージャ
+        $findItems = function (array $data) use (&$findItems, &$results): void {
+            if (array_key_exists('article_id', $data) && array_key_exists('category_id', $data) && array_key_exists('rewritten_title', $data)) {
+                $articleId = $data['article_id'];
+                $categoryId = $data['category_id'];
+                $rewrittenTitle = $data['rewritten_title'];
+
+                if ($articleId !== null && $categoryId !== null && $rewrittenTitle !== null) {
+                    $results[(int) $articleId] = [
+                        'category_id' => (int) $categoryId,
+                        'rewritten_title' => (string) $rewrittenTitle,
+                    ];
+                }
+
+                return;
+            }
+
+            foreach ($data as $value) {
+                if (is_array($value)) {
+                    $findItems($value);
+                }
+            }
+        };
+
+        // パターン1: テキスト全体をそのまま json_decode して再帰探索
         $decodedData = json_decode($cleaned, true);
         if (json_last_error() === JSON_ERROR_NONE && is_array($decodedData)) {
-            $results = [];
-
-            $extractItems = function (array $data) use (&$extractItems, &$results): void {
-                if (array_key_exists('article_id', $data) && array_key_exists('category_id', $data) && array_key_exists('rewritten_title', $data)) {
-                    $results[(int) $data['article_id']] = [
-                        'category_id' => (int) $data['category_id'],
-                        'rewritten_title' => (string) $data['rewritten_title'],
-                    ];
-
-                    return;
-                }
-
-                foreach ($data as $value) {
-                    if (is_array($value)) {
-                        $extractItems($value);
-                    }
-                }
-            };
-
-            $extractItems($decodedData);
-
+            $findItems($decodedData);
             if (! empty($results)) {
                 return $results;
             }
         }
 
-        // JSONオブジェクト（{...}）を個別にすべて抽出。再帰的パターンでネストされた括弧にも対応。
-        if (! preg_match_all('/\{(?:[^{}]|(?0))*\}/s', $cleaned, $matches) || empty($matches[0])) {
-            Log::warning('[バッチ] JSONオブジェクトが見つかりませんでした。Raw: '.mb_substr($cleaned, 0, 500));
-
-            return [];
+        // パターン2: テキスト内から最初の大括弧 '[' と最後の大括弧 ']' を結んでパース
+        $startPosArray = strpos($cleaned, '[');
+        $endPosArray = strrpos($cleaned, ']');
+        if ($startPosArray !== false && $endPosArray !== false && $endPosArray > $startPosArray) {
+            $jsonString = substr($cleaned, $startPosArray, $endPosArray - $startPosArray + 1);
+            $decodedArray = json_decode($jsonString, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decodedArray)) {
+                $findItems($decodedArray);
+            }
+            if (! empty($results)) {
+                return $results;
+            }
         }
 
-        $results = [];
-
-        foreach ($matches[0] as $match) {
-            $decoded = json_decode($match, true);
-
-            if (! is_array($decoded)) {
-                Log::warning('[バッチ] JSONオブジェクトのデコードに失敗しました。Raw: '.mb_substr($match, 0, 500));
-
-                continue;
+        // パターン3: テキスト内から最初の中括弧 '{' と最後の中括弧 '}' を結んでパース
+        // (LLMが {"item": {"results": [...]}} のような全体オブジェクトの前後に会話を入れた場合)
+        $startPosObj = strpos($cleaned, '{');
+        $endPosObj = strrpos($cleaned, '}');
+        if ($startPosObj !== false && $endPosObj !== false && $endPosObj > $startPosObj) {
+            $jsonString = substr($cleaned, $startPosObj, $endPosObj - $startPosObj + 1);
+            $decodedObj = json_decode($jsonString, true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decodedObj)) {
+                $findItems($decodedObj);
             }
-
-            $articleId = $decoded['article_id'] ?? null;
-            $categoryId = $decoded['category_id'] ?? null;
-            $rewrittenTitle = $decoded['rewritten_title'] ?? null;
-
-            if ($articleId === null || $categoryId === null || $rewrittenTitle === null) {
-                Log::warning('[バッチ] 不正なアイテム形式をスキップしました。', ['item' => $decoded]);
-
-                continue;
+            if (! empty($results)) {
+                return $results;
             }
+        }
 
-            $results[(int) $articleId] = [
-                'category_id' => (int) $categoryId,
-                'rewritten_title' => (string) $rewrittenTitle,
-            ];
+        // パターン4: それでもダメなら個別の JSON オブジェクト {...} をすべて抽出して再帰探索
+        // （複数の配列ではなく独立した {...} が列挙されている場合など）
+        if (preg_match_all('/(?s)\{(?:[^{}]|(?0))*\}/', $cleaned, $objectMatches) && ! empty($objectMatches[0])) {
+            foreach ($objectMatches[0] as $match) {
+                $decodedObj = json_decode($match, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($decodedObj)) {
+                    $findItems($decodedObj);
+                } else {
+                    Log::warning('[バッチ] 個別オブジェクトのデコードに失敗しました。Raw: '.mb_substr($match, 0, 500));
+                }
+            }
+        }
+
+        if (empty($results)) {
+            Log::warning('[バッチ] JSON配列およびオブジェクトが見つからなかったか、有効なデータが抽出できませんでした。Raw: '.mb_substr($cleaned, 0, 500));
         }
 
         return $results;
