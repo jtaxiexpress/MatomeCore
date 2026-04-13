@@ -337,90 +337,59 @@ class ArticleAiService
     {
         Log::info('[バッチRAW出力] '.$text);
 
-        // マークダウンのコードブロックなどを除去
+        // マークダウンのコードブロックを除去
         $cleaned = preg_replace('/```(?:json)?\s*/i', '', $text);
         $cleaned = preg_replace('/```/', '', $cleaned ?? $text);
         $cleaned = trim($cleaned ?? $text);
 
         $results = [];
 
-        // 再帰的に valid なアイテムを探索して抽出するクロージャ
-        $findItems = function (array $data) use (&$findItems, &$results): void {
-            if (array_key_exists('article_id', $data) && array_key_exists('category_id', $data) && array_key_exists('rewritten_title', $data)) {
-                $articleId = $data['article_id'];
-                $categoryId = $data['category_id'];
-                $rewrittenTitle = $data['rewritten_title'];
+        // そのままデコードを試みる
+        $decoded = json_decode($cleaned, true);
 
-                if ($articleId !== null && $categoryId !== null && $rewrittenTitle !== null) {
-                    $results[(int) $articleId] = [
-                        'category_id' => (int) $categoryId,
-                        'rewritten_title' => (string) $rewrittenTitle,
-                    ];
-                }
-
-                return;
-            }
-
-            foreach ($data as $value) {
-                if (is_array($value)) {
-                    $findItems($value);
-                }
-            }
-        };
-
-        // パターン1: テキスト全体をそのまま json_decode して再帰探索
-        $decodedData = json_decode($cleaned, true);
-        if (json_last_error() === JSON_ERROR_NONE && is_array($decodedData)) {
-            $findItems($decodedData);
-            if (! empty($results)) {
-                return $results;
+        // 失敗した場合、テキストから配列 [ ... ] またはオブジェクト { ... } を抽出して再試行
+        if (json_last_error() !== JSON_ERROR_NONE || ! is_array($decoded)) {
+            if (preg_match('/\[.*\]|\{.*\}/s', $cleaned, $matches)) {
+                $decoded = json_decode($matches[0], true);
             }
         }
 
-        // パターン2: テキスト内から最初の大括弧 '[' と最後の大括弧 ']' を結んでパース
-        $startPosArray = strpos($cleaned, '[');
-        $endPosArray = strrpos($cleaned, ']');
-        if ($startPosArray !== false && $endPosArray !== false && $endPosArray > $startPosArray) {
-            $jsonString = substr($cleaned, $startPosArray, $endPosArray - $startPosArray + 1);
-            $decodedArray = json_decode($jsonString, true);
-            if (json_last_error() === JSON_ERROR_NONE && is_array($decodedArray)) {
-                $findItems($decodedArray);
-            }
-            if (! empty($results)) {
-                return $results;
-            }
+        if (json_last_error() !== JSON_ERROR_NONE || ! is_array($decoded)) {
+            Log::warning('[バッチ] JSONが見つからなかったか、デコードに失敗しました。Raw: '.mb_substr($cleaned, 0, 500));
+
+            return [];
         }
 
-        // パターン3: テキスト内から最初の中括弧 '{' と最後の中括弧 '}' を結んでパース
-        // (LLMが {"item": {"results": [...]}} のような全体オブジェクトの前後に会話を入れた場合)
-        $startPosObj = strpos($cleaned, '{');
-        $endPosObj = strrpos($cleaned, '}');
-        if ($startPosObj !== false && $endPosObj !== false && $endPosObj > $startPosObj) {
-            $jsonString = substr($cleaned, $startPosObj, $endPosObj - $startPosObj + 1);
-            $decodedObj = json_decode($jsonString, true);
-            if (json_last_error() === JSON_ERROR_NONE && is_array($decodedObj)) {
-                $findItems($decodedObj);
-            }
-            if (! empty($results)) {
-                return $results;
-            }
+        // results ラッパーオブジェクトが存在すればそれを対象とする
+        $decodedArray = isset($decoded['results']) && is_array($decoded['results'])
+            ? $decoded['results']
+            : (isset($decoded[0]) ? $decoded : []);
+
+        if (empty($decodedArray)) {
+            Log::warning('[バッチ] 抽出可能な記事データが見つかりませんでした。', ['decoded' => $decoded]);
+
+            return [];
         }
 
-        // パターン4: それでもダメなら個別の JSON オブジェクト {...} をすべて抽出して再帰探索
-        // （複数の配列ではなく独立した {...} が列挙されている場合など）
-        if (preg_match_all('/(?s)\{(?:[^{}]|(?0))*\}/', $cleaned, $objectMatches) && ! empty($objectMatches[0])) {
-            foreach ($objectMatches[0] as $match) {
-                $decodedObj = json_decode($match, true);
-                if (json_last_error() === JSON_ERROR_NONE && is_array($decodedObj)) {
-                    $findItems($decodedObj);
-                } else {
-                    Log::warning('[バッチ] 個別オブジェクトのデコードに失敗しました。Raw: '.mb_substr($match, 0, 500));
-                }
+        foreach ($decodedArray as $item) {
+            if (! is_array($item)) {
+                continue;
             }
-        }
 
-        if (empty($results)) {
-            Log::warning('[バッチ] JSON配列およびオブジェクトが見つからなかったか、有効なデータが抽出できませんでした。Raw: '.mb_substr($cleaned, 0, 500));
+            $articleId = $item['article_id'] ?? null;
+            $categoryId = $item['category_id'] ?? null;
+            $rewrittenTitle = $item['rewritten_title'] ?? null;
+
+            if ($articleId === null || $categoryId === null || $rewrittenTitle === null) {
+                Log::warning('[バッチ] 不正なアイテム形式をスキップしました。', ['item' => $item]);
+
+                continue;
+            }
+
+            $results[(int) $articleId] = [
+                'category_id' => (int) $categoryId,
+                'rewritten_title' => (string) $rewrittenTitle,
+            ];
         }
 
         return $results;
