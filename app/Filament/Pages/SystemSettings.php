@@ -199,11 +199,11 @@ class SystemSettings extends Page implements HasForms
                         Textarea::make('ai_base_prompt')
                             ->label('システム共通ベースプロンプト（役割と基本ルール）')
                             ->rows(15)
-                            ->helperText('アプリ全体で共通してAIに与える役割や基本動作を定義します。※Structured Outputsを利用するため、JSONフォーマットや配列に関する指示は絶対に記述しないでください。')
+                            ->helperText('アプリ全体で共通してAIに与える役割や基本動作を定義します。※Structured Outputsを利用するため、JSONフォーマットや配列に関する指示は絶対に記述しないでください。また、{app_prompt}を配置した場所に個別アプリのプロンプトが展開されます。')
                             ->rule(function () {
                                 return function (string $attribute, $value, \Closure $fail) {
-                                    if (! str_contains((string) $value, '{categories}') || ! str_contains((string) $value, '{articles_json}') || ! str_contains((string) $value, '{count}')) {
-                                        $fail('必須プレースホルダ（{categories}, {articles_json}, {count}）が含まれていません。');
+                                    if (! str_contains((string) $value, '{categories}') || ! str_contains((string) $value, '{articles_json}') || ! str_contains((string) $value, '{count}') || ! str_contains((string) $value, '{app_prompt}')) {
+                                        $fail('必須プレースホルダ（{app_prompt}, {categories}, {articles_json}, {count}）が含まれていません。');
                                     }
                                 };
                             })
@@ -233,6 +233,9 @@ class SystemSettings extends Page implements HasForms
         return <<<'PROMPT'
 あなたは日本語のアンテナサイト向けに複数記事の分類とリライトを一括で行う優秀な編集者です。
 以下の記事を分析し、最適なカテゴリを選び、クリックしたくなる魅力的な日本語タイトルにリライトしてください。
+
+【アプリ個別要件】
+{app_prompt}
 
 【カテゴリ一覧】
 {categories}

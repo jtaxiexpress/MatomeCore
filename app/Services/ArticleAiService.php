@@ -330,16 +330,15 @@ class ArticleAiService
         $basePrompt = Cache::get('ai_base_prompt', SystemSettings::getDefaultPromptTemplate());
         $appPrompt = $app?->ai_prompt_template ?? '';
 
-        $prompt = trim($basePrompt."\n\n".$appPrompt);
         $count = count($articles);
 
         $prompt = str_replace(
-            ['{categories}', '{articles_json}', '{count}'],
-            [$categoryList, $articlesJson, (string) $count],
-            $prompt
+            ['{app_prompt}', '{categories}', '{articles_json}', '{count}'],
+            [$appPrompt, $categoryList, $articlesJson, (string) $count],
+            $basePrompt
         );
 
-        return $prompt;
+        return trim($prompt);
     }
 
     /**
