@@ -185,7 +185,7 @@ class ProcessArticleJob implements ShouldQueue
             ]
         );
 
-        Log::info("[Process: {$this->url}] 記事の保存が完了しました (カテゴリID: {$aiResult['category_id']})");
+        Log::info("[Process: {$this->url}] 記事の保存が完了しました (カテゴリID: {$aiResult['category_id']}, リライト後: {$aiResult['rewritten_title']})");
         $this->output = "AI Processing completed successfully. Mapped to category_id: {$aiResult['category_id']}";
     }
 }

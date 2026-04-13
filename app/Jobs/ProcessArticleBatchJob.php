@@ -199,7 +199,7 @@ class ProcessArticleBatchJob implements ShouldQueue
                 ]
             );
 
-            Log::info("[ProcessArticleBatchJob] 保存完了: {$url} (カテゴリID: {$aiResult['category_id']})");
+            Log::info("[ProcessArticleBatchJob] 保存完了: {$url} (カテゴリID: {$aiResult['category_id']}, リライト後: {$aiResult['rewritten_title']})");
             $savedCount++;
         }
 
