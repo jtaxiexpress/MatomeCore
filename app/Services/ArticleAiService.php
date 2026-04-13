@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\Ai\Agents\BatchCategorizeAgent;
 use App\Ai\Agents\CategorizeArticleAgent;
+use App\Filament\Pages\SystemSettings;
 use App\Models\App;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -326,28 +327,17 @@ class ArticleAiService
             JSON_UNESCAPED_UNICODE
         );
 
-        $basePrompt = Cache::get('ai_base_prompt', '提示された記事を分析し、最適なカテゴリを選び、クリックしたくなる魅力的なタイトルにリライトしてください。');
+        $basePrompt = Cache::get('ai_base_prompt', SystemSettings::getDefaultPromptTemplate());
         $appPrompt = $app?->ai_prompt_template ?? '';
 
-        $prompt = trim($basePrompt . "\n\n" . $appPrompt);
-        
-        // 以前の {categories} プレースホルダなどがあれば変換（後方互換性のため残しつつ、末尾にも追記）
+        $prompt = trim($basePrompt."\n\n".$appPrompt);
+        $count = count($articles);
+
         $prompt = str_replace(
-            ['{categories}', '{articles_json}', '{title}'],
-            [$categoryList, $articlesJson, $articlesJson],
+            ['{categories}', '{articles_json}', '{count}'],
+            [$categoryList, $articlesJson, (string) $count],
             $prompt
         );
-
-        if (!str_contains($prompt, $categoryList)) {
-            $prompt .= "\n\n【カテゴリ一覧】\n" . $categoryList;
-        }
-        
-        if (!str_contains($prompt, $articlesJson)) {
-            $prompt .= "\n\n【処理対象記事データ】\n" . $articlesJson;
-        }
-
-        $count = count($articles);
-        $prompt .= "\n\n今回は全部で {$count} 件です。出力するJSON配列の要素数は、絶対に {$count} 件と完全に一致させなければなりません。1件も省略せず、最後まで出力してください。";
 
         return $prompt;
     }
@@ -355,7 +345,6 @@ class ArticleAiService
     /**
      * AIの返答からJSONオブジェクト群を抽出・パースして記事IDをキーとした結果配列を返します。
      *
-     * @param array|string $data
      * @return array<int, array{category_id: int, rewritten_title: string}>
      */
     private function extractBatchJsonResponse(array|string $data): array
@@ -376,6 +365,7 @@ class ArticleAiService
 
         if (! is_array($items)) {
             Log::warning('[バッチ] 結果配列(results)が見つかりません。', ['decoded' => $decoded]);
+
             return [];
         }
 

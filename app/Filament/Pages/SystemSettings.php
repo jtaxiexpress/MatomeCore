@@ -126,7 +126,7 @@ class SystemSettings extends Page implements HasForms
             'is_bulk_paused' => Cache::get('is_bulk_paused', false),
             'ollama_model' => Cache::get('ollama_model', 'qwen3.5:9b'),
             'gemini_model' => Cache::get('gemini_model', 'gemini-1.5-flash-lite'),
-            'ai_base_prompt' => Cache::get('ai_base_prompt', $this->getDefaultPromptTemplate()),
+            'ai_base_prompt' => Cache::get('ai_base_prompt', self::getDefaultPromptTemplate()),
             'ollama_num_predict' => Cache::get('ollama_num_predict', 3000),
             'ollama_num_ctx' => Cache::get('ollama_num_ctx', 8192),
         ]);
@@ -200,6 +200,13 @@ class SystemSettings extends Page implements HasForms
                             ->label('システム共通ベースプロンプト（役割と基本ルール）')
                             ->rows(15)
                             ->helperText('アプリ全体で共通してAIに与える役割や基本動作を定義します。※Structured Outputsを利用するため、JSONフォーマットや配列に関する指示は絶対に記述しないでください。')
+                            ->rule(function () {
+                                return function (string $attribute, $value, \Closure $fail) {
+                                    if (! str_contains((string) $value, '{categories}') || ! str_contains((string) $value, '{articles_json}') || ! str_contains((string) $value, '{count}')) {
+                                        $fail('必須プレースホルダ（{categories}, {articles_json}, {count}）が含まれていません。');
+                                    }
+                                };
+                            })
                             ->required(),
                     ]),
             ])->statePath('data');
@@ -211,7 +218,7 @@ class SystemSettings extends Page implements HasForms
         Cache::put('is_bulk_paused', $state['is_bulk_paused'] ?? false);
         Cache::put('ollama_model', $state['ollama_model'] ?? 'qwen3.5:9b');
         Cache::put('gemini_model', $state['gemini_model'] ?? 'gemini-1.5-flash-lite');
-        Cache::put('ai_base_prompt', $state['ai_base_prompt'] ?? $this->getDefaultPromptTemplate());
+        Cache::put('ai_base_prompt', $state['ai_base_prompt'] ?? self::getDefaultPromptTemplate());
         Cache::put('ollama_num_predict', $state['ollama_num_predict'] ?? 3000);
         Cache::put('ollama_num_ctx', $state['ollama_num_ctx'] ?? 8192);
 
@@ -221,15 +228,20 @@ class SystemSettings extends Page implements HasForms
             ->send();
     }
 
-    private function getDefaultPromptTemplate(): string
+    public static function getDefaultPromptTemplate(): string
     {
         return <<<'PROMPT'
 あなたは日本語のアンテナサイト向けに複数記事の分類とリライトを一括で行う優秀な編集者です。
-ユーザーから「カテゴリ一覧」と「処理対象記事の内容」が提供されます。
-各記事について以下の2つの処理を行ってください。
+以下の記事を分析し、最適なカテゴリを選び、クリックしたくなる魅力的な日本語タイトル（40文字以内）にリライトしてください。
 
-1. **カテゴリ分類**: 提供されたカテゴリ一覧の中から最も適切なカテゴリIDを1つ選ぶ。
-2. **タイトルリライト**: 元のタイトルを魅力的でクリックしたくなる日本語タイトル（40文字以内）にリライトする。
+【カテゴリ一覧】
+{categories}
+
+【処理対象記事データ】
+{articles_json}
+
+※重要指示※
+今回は全部で {count} 件です。出力するJSON配列の要素数は、絶対に {count} 件と完全に一致させなければなりません。1件も省略せず、最後まで出力してください。
 PROMPT;
     }
 }
