@@ -22,8 +22,6 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\ToggleColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
 
 class AppResource extends Resource
 {
@@ -62,57 +60,7 @@ class AppResource extends Resource
                     ->description('未入力の場合はシステム全体のデフォルト設定が使用されます。')
                     ->collapsed()
                     ->schema([
-                        TextInput::make('ollama_model')
-                            ->label('Ollamaモデル名')
-                            ->placeholder('例: qwen3.5:9b')
-                            ->helperText('※未入力の場合はシステム全体のデフォルト設定が使用されます。')
-                            ->maxLength(255),
-                        TextInput::make('ollama_num_predict')
-                            ->label('Ollama 出力トークン上限 (num_predict)')
-                            ->numeric()
-                            ->helperText('※システム設定を上書きする場合のみ入力'),
-                        TextInput::make('ollama_num_ctx')
-                            ->label('Ollama コンテキスト長 (num_ctx)')
-                            ->numeric()
-                            ->helperText('※システム設定を上書きする場合のみ入力'),
-                        Select::make('gemini_model')
-                            ->label('Geminiモデル名')
-                            ->helperText('※未入力の場合はシステム全体のデフォルト設定が使用されます。')
-                            ->placeholder('モデルを選択してください')
-                            ->searchable()
-                            ->options(function (): array {
-                                return Cache::remember('gemini_model_list', 86400, function (): array {
-                                    $apiKey = config('ai.providers.gemini.key', '');
-                                    if (empty($apiKey)) {
-                                        return [];
-                                    }
 
-                                    try {
-                                        $response = Http::timeout(10)
-                                            ->get("https://generativelanguage.googleapis.com/v1beta/models?key={$apiKey}");
-
-                                        if (! $response->successful()) {
-                                            return [];
-                                        }
-
-                                        $models = collect($response->json('models', []))
-                                            ->filter(fn ($m) => str_contains($m['name'] ?? '', 'gemini'))
-                                            ->filter(fn ($m) => in_array('generateContent', $m['supportedGenerationMethods'] ?? []))
-                                            ->mapWithKeys(function ($m) {
-                                                $name = str_replace('models/', '', $m['name']);
-                                                $label = $m['displayName'] ?? $name;
-
-                                                return [$name => $label];
-                                            })
-                                            ->sortKeys()
-                                            ->toArray();
-
-                                        return $models;
-                                    } catch (\Exception $e) {
-                                        return [];
-                                    }
-                                });
-                            }),
                         Textarea::make('ai_prompt_template')
                             ->label('アプリ固有のリライトルール（差分・テイスト）')
                             ->helperText('（任意）システム共通プロンプトに追加して指示したい、このアプリ特有のルール（例: 2ch風の煽りタイトルにして、ミリタリー系なので少し固い表現にして等）のみを入力してください。※{categories}などの変数の記述や、JSON出力の指示は不要です。')

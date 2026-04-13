@@ -43,10 +43,8 @@ class ArticleAiService
 
         $prompt = $this->buildPrompt($originalTitle, $categories, $app);
 
-        // App別設定があればそれを使用、なければグローバル設定にフォールバック
-        $geminiModel = (! empty($app?->gemini_model))
-            ? $app->gemini_model
-            : Cache::get('gemini_model', 'gemini-1.5-flash-lite');
+        // システムのグローバル設定を使用
+        $geminiModel = Cache::get('gemini_model', 'gemini-1.5-flash-lite');
 
         Log::info("[デバッグ]AI送信プロンプト:\n".$prompt);
 
@@ -79,12 +77,9 @@ class ArticleAiService
         $prompt = $this->buildPrompt($title, $categories, $app);
         $ollamaUrl = config('services.ollama.url', 'http://host.docker.internal:11434/api/generate');
 
-        $model = (! empty($app?->ollama_model))
-            ? $app->ollama_model
-            : Cache::get('ollama_model', 'qwen3.5:9b');
-
-        $numPredict = $app?->ollama_num_predict ?? Cache::get('ollama_num_predict', 3000);
-        $numCtx = $app?->ollama_num_ctx ?? Cache::get('ollama_num_ctx', 8192);
+        $model = Cache::get('ollama_model', 'qwen3.5:9b');
+        $numPredict = Cache::get('ollama_num_predict', 3000);
+        $numCtx = Cache::get('ollama_num_ctx', 8192);
 
         Log::info("[デバッグ]AI送信プロンプト:\n".$prompt);
 
@@ -227,9 +222,7 @@ class ArticleAiService
      */
     private function batchWithGemini(string $prompt, ?App $app = null): array
     {
-        $geminiModel = (! empty($app?->gemini_model))
-            ? $app->gemini_model
-            : Cache::get('gemini_model', 'gemini-1.5-flash-lite');
+        $geminiModel = Cache::get('gemini_model', 'gemini-1.5-flash-lite');
 
         Log::info("[バッチ]AI送信プロンプト:\n".$prompt);
 
@@ -246,12 +239,10 @@ class ArticleAiService
     private function batchWithOllama(string $prompt, ?App $app = null): array
     {
         $ollamaUrl = config('services.ollama.url', 'http://host.docker.internal:11434/api/generate');
-        $model = (! empty($app?->ollama_model))
-            ? $app->ollama_model
-            : Cache::get('ollama_model', 'qwen3.5:9b');
+        $model = Cache::get('ollama_model', 'qwen3.5:9b');
 
-        $numPredict = $app?->ollama_num_predict ?? Cache::get('ollama_num_predict', 3000);
-        $numCtx = $app?->ollama_num_ctx ?? Cache::get('ollama_num_ctx', 8192);
+        $numPredict = Cache::get('ollama_num_predict', 3000);
+        $numCtx = Cache::get('ollama_num_ctx', 8192);
 
         Log::info("[バッチ]AI送信プロンプト:\n".$prompt);
 
