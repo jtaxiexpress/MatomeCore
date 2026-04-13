@@ -43,38 +43,6 @@ class ArticleAiServiceBatchTest extends TestCase
         $this->assertSame(5, $result[2]['category_id']);
     }
 
-    public function test_extract_batch_json_response_parses_wrapped_json_array(): void
-    {
-        $text = '{"results": [{"article_id": 10, "rewritten_title": "Wrapped Title", "category_id": 99}]}';
-
-        $result = $this->callExtractBatchJsonResponse($text);
-
-        $this->assertCount(1, $result);
-        $this->assertArrayHasKey(10, $result);
-        $this->assertSame(99, $result[10]['category_id']);
-        $this->assertSame('Wrapped Title', $result[10]['rewritten_title']);
-    }
-
-    public function test_extract_batch_json_response_strips_json_code_block(): void
-    {
-        $text = "```json\n[{\"article_id\": 1, \"rewritten_title\": \"タイトル\", \"category_id\": 2}]\n```";
-
-        $result = $this->callExtractBatchJsonResponse($text);
-
-        $this->assertCount(1, $result);
-        $this->assertSame(2, $result[1]['category_id']);
-    }
-
-    public function test_extract_batch_json_response_strips_generic_code_block(): void
-    {
-        $text = "```\n[{\"article_id\": 3, \"rewritten_title\": \"テスト\", \"category_id\": 7}]\n```";
-
-        $result = $this->callExtractBatchJsonResponse($text);
-
-        $this->assertCount(1, $result);
-        $this->assertArrayHasKey(3, $result);
-    }
-
     public function test_extract_batch_json_response_returns_empty_array_when_no_json_found(): void
     {
         $text = 'これはJSONではありません。プレーンテキストです。';

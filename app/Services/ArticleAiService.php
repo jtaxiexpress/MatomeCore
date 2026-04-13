@@ -260,6 +260,18 @@ class ArticleAiService
                 'model' => $model,
                 'prompt' => $prompt,
                 'stream' => false,
+                'format' => [
+                    'type' => 'array',
+                    'items' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'article_id' => ['type' => 'integer'],
+                            'rewritten_title' => ['type' => 'string'],
+                            'category_id' => ['type' => 'integer'],
+                        ],
+                        'required' => ['article_id', 'rewritten_title', 'category_id'],
+                    ],
+                ],
                 'options' => [
                     'num_predict' => (int) $numPredict,
                     'num_ctx' => (int) $numCtx,
@@ -320,11 +332,16 @@ class ArticleAiService
         }
 
         // 管理画面のテンプレートで {title} が使われている場合も考慮し、{articles_json} に置換する
-        return str_replace(
+        $prompt = str_replace(
             ['{categories}', '{articles_json}', '{title}'],
             [$categoryList, $articlesJson, $articlesJson],
             $template
         );
+
+        $count = count($articles);
+        $prompt .= "\n\n【重要】サボらずに、必ず全 {$count} 件の記事データを処理して出力してください。";
+
+        return $prompt;
     }
 
     /**
@@ -335,43 +352,17 @@ class ArticleAiService
      */
     private function extractBatchJsonResponse(string $text): array
     {
-        Log::info('[バッチRAW出力] '.$text);
+        $decoded = json_decode($text, true);
 
-        // マークダウンのコードブロックを除去
-        $cleaned = preg_replace('/```(?:json)?\s*/i', '', $text);
-        $cleaned = preg_replace('/```/', '', $cleaned ?? $text);
-        $cleaned = trim($cleaned ?? $text);
+        if (json_last_error() !== JSON_ERROR_NONE || ! is_array($decoded)) {
+            Log::warning('[バッチ] JSONのパースに失敗しました。Raw: '.mb_substr($text, 0, 500));
+
+            return [];
+        }
 
         $results = [];
 
-        // そのままデコードを試みる
-        $decoded = json_decode($cleaned, true);
-
-        // 失敗した場合、テキストから配列 [ ... ] またはオブジェクト { ... } を抽出して再試行
-        if (json_last_error() !== JSON_ERROR_NONE || ! is_array($decoded)) {
-            if (preg_match('/\[.*\]|\{.*\}/s', $cleaned, $matches)) {
-                $decoded = json_decode($matches[0], true);
-            }
-        }
-
-        if (json_last_error() !== JSON_ERROR_NONE || ! is_array($decoded)) {
-            Log::warning('[バッチ] JSONが見つからなかったか、デコードに失敗しました。Raw: '.mb_substr($cleaned, 0, 500));
-
-            return [];
-        }
-
-        // results ラッパーオブジェクトが存在すればそれを対象とする
-        $decodedArray = isset($decoded['results']) && is_array($decoded['results'])
-            ? $decoded['results']
-            : (isset($decoded[0]) ? $decoded : []);
-
-        if (empty($decodedArray)) {
-            Log::warning('[バッチ] 抽出可能な記事データが見つかりませんでした。', ['decoded' => $decoded]);
-
-            return [];
-        }
-
-        foreach ($decodedArray as $item) {
+        foreach ($decoded as $item) {
             if (! is_array($item)) {
                 continue;
             }
@@ -380,16 +371,16 @@ class ArticleAiService
             $categoryId = $item['category_id'] ?? null;
             $rewrittenTitle = $item['rewritten_title'] ?? null;
 
-            if ($articleId === null || $categoryId === null || $rewrittenTitle === null) {
-                Log::warning('[バッチ] 不正なアイテム形式をスキップしました。', ['item' => $item]);
-
-                continue;
+            if ($articleId !== null && $categoryId !== null && $rewrittenTitle !== null) {
+                $results[(int) $articleId] = [
+                    'category_id' => (int) $categoryId,
+                    'rewritten_title' => (string) $rewrittenTitle,
+                ];
             }
+        }
 
-            $results[(int) $articleId] = [
-                'category_id' => (int) $categoryId,
-                'rewritten_title' => (string) $rewrittenTitle,
-            ];
+        if (empty($results)) {
+            Log::warning('[バッチ] 抽出可能な記事データが見つかりませんでした。', ['decoded' => $decoded]);
         }
 
         return $results;
