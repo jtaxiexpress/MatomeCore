@@ -233,9 +233,8 @@ class ArticleAiService
         Log::info("[バッチ]AI送信プロンプト:\n".$prompt);
 
         $response = BatchCategorizeAgent::make()->prompt($prompt, model: $geminiModel);
-        $rawText = is_string($response) ? $response : (string) $response;
 
-        return $this->extractBatchJsonResponse($rawText);
+        return $this->extractBatchJsonResponse($response);
     }
 
     /**
@@ -261,16 +260,22 @@ class ArticleAiService
                 'prompt' => $prompt,
                 'stream' => false,
                 'format' => [
-                    'type' => 'array',
-                    'items' => [
-                        'type' => 'object',
-                        'properties' => [
-                            'article_id' => ['type' => 'integer'],
-                            'rewritten_title' => ['type' => 'string'],
-                            'category_id' => ['type' => 'integer'],
+                    'type' => 'object',
+                    'properties' => [
+                        'results' => [
+                            'type' => 'array',
+                            'items' => [
+                                'type' => 'object',
+                                'properties' => [
+                                    'article_id' => ['type' => 'integer'],
+                                    'rewritten_title' => ['type' => 'string'],
+                                    'category_id' => ['type' => 'integer'],
+                                ],
+                                'required' => ['article_id', 'rewritten_title', 'category_id'],
+                            ],
                         ],
-                        'required' => ['article_id', 'rewritten_title', 'category_id'],
                     ],
+                    'required' => ['results'],
                 ],
                 'options' => [
                     'num_predict' => (int) $numPredict,
@@ -282,13 +287,13 @@ class ArticleAiService
 
             $jsonResponse = $response->json();
 
-            if ($response->failed() || ! is_array($jsonResponse)) {
+            if ($response->failed() || ! is_array($jsonResponse) || empty($jsonResponse['response'])) {
                 Log::error('[バッチ] Ollama API Error. Body: '.$response->body());
 
                 return [];
             }
 
-            $rawText = ($jsonResponse['response'] ?? '')."\n".($jsonResponse['thinking'] ?? '');
+            $rawText = $jsonResponse['response'];
 
             return $this->extractBatchJsonResponse($rawText);
         } catch (\Exception $e) {
@@ -321,48 +326,62 @@ class ArticleAiService
             JSON_UNESCAPED_UNICODE
         );
 
-        // アプリ設定またはシステム設定（Cache）からのみ取得
-        $template = (! empty($app?->ai_prompt_template))
-            ? $app->ai_prompt_template
-            : Cache::get('ai_prompt_template');
+        $basePrompt = Cache::get('ai_base_prompt', '提示された記事を分析し、最適なカテゴリを選び、クリックしたくなる魅力的なタイトルにリライトしてください。');
+        $appPrompt = $app?->ai_prompt_template ?? '';
 
-        // テンプレートが存在しない場合は例外を投げる
-        if (empty($template)) {
-            throw new RuntimeException('[バッチ] AIプロンプトのテンプレートが設定されていません。システム設定またはアプリ設定を確認してください。');
-        }
-
-        // 管理画面のテンプレートで {title} が使われている場合も考慮し、{articles_json} に置換する
+        $prompt = trim($basePrompt . "\n\n" . $appPrompt);
+        
+        // 以前の {categories} プレースホルダなどがあれば変換（後方互換性のため残しつつ、末尾にも追記）
         $prompt = str_replace(
             ['{categories}', '{articles_json}', '{title}'],
             [$categoryList, $articlesJson, $articlesJson],
-            $template
+            $prompt
         );
 
+        if (!str_contains($prompt, $categoryList)) {
+            $prompt .= "\n\n【カテゴリ一覧】\n" . $categoryList;
+        }
+        
+        if (!str_contains($prompt, $articlesJson)) {
+            $prompt .= "\n\n【処理対象記事データ】\n" . $articlesJson;
+        }
+
         $count = count($articles);
-        $prompt .= "\n\n【重要】サボらずに、必ず全 {$count} 件の記事データを処理して出力してください。";
+        $prompt .= "\n\n今回は全部で {$count} 件です。出力するJSON配列の要素数は、絶対に {$count} 件と完全に一致させなければなりません。1件も省略せず、最後まで出力してください。";
 
         return $prompt;
     }
 
     /**
      * AIの返答からJSONオブジェクト群を抽出・パースして記事IDをキーとした結果配列を返します。
-     * 部分的な成功（一部記事のみ返却）を許容し、例外を投げません。
      *
+     * @param array|string $data
      * @return array<int, array{category_id: int, rewritten_title: string}>
      */
-    private function extractBatchJsonResponse(string $text): array
+    private function extractBatchJsonResponse(array|string $data): array
     {
-        $decoded = json_decode($text, true);
+        $decoded = is_string($data) ? json_decode($data, true) : $data;
 
-        if (json_last_error() !== JSON_ERROR_NONE || ! is_array($decoded)) {
-            Log::warning('[バッチ] JSONのパースに失敗しました。Raw: '.mb_substr($text, 0, 500));
+        if (is_string($data) && (json_last_error() !== JSON_ERROR_NONE || ! is_array($decoded))) {
+            Log::warning('[バッチ] JSONのパースに失敗しました。Raw: '.mb_substr($data, 0, 500));
 
+            return [];
+        }
+
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $items = $decoded['results'] ?? $decoded;
+
+        if (! is_array($items)) {
+            Log::warning('[バッチ] 結果配列(results)が見つかりません。', ['decoded' => $decoded]);
             return [];
         }
 
         $results = [];
 
-        foreach ($decoded as $item) {
+        foreach ($items as $item) {
             if (! is_array($item)) {
                 continue;
             }
