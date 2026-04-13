@@ -126,7 +126,7 @@ class SystemSettings extends Page implements HasForms
             'is_bulk_paused' => Cache::get('is_bulk_paused', false),
             'ollama_model' => Cache::get('ollama_model', 'qwen3.5:9b'),
             'gemini_model' => Cache::get('gemini_model', 'gemini-1.5-flash-lite'),
-            'ai_prompt_template' => Cache::get('ai_prompt_template', $this->getDefaultPromptTemplate()),
+            'ai_base_prompt' => Cache::get('ai_base_prompt', $this->getDefaultPromptTemplate()),
             'ollama_num_predict' => Cache::get('ollama_num_predict', 3000),
             'ollama_num_ctx' => Cache::get('ollama_num_ctx', 8192),
         ]);
@@ -196,10 +196,10 @@ class SystemSettings extends Page implements HasForms
                     ])->columns(2),
                 Section::make('AIプロンプト設定')
                     ->schema([
-                        Textarea::make('ai_prompt_template')
-                            ->label('プロンプトテンプレート')
+                        Textarea::make('ai_base_prompt')
+                            ->label('システム共通ベースプロンプト（役割と基本ルール）')
                             ->rows(15)
-                            ->helperText('{categories} と {title} という文字列を入れると、実行時に動的に置換されます。フォーマット逸脱を防ぐため、JSONのみを出力する指示を含める事を強く推奨します。')
+                            ->helperText('アプリ全体で共通してAIに与える役割や基本動作を定義します。※Structured Outputsを利用するため、JSONフォーマットや配列に関する指示は絶対に記述しないでください。')
                             ->required(),
                     ]),
             ])->statePath('data');
@@ -211,7 +211,7 @@ class SystemSettings extends Page implements HasForms
         Cache::put('is_bulk_paused', $state['is_bulk_paused'] ?? false);
         Cache::put('ollama_model', $state['ollama_model'] ?? 'qwen3.5:9b');
         Cache::put('gemini_model', $state['gemini_model'] ?? 'gemini-1.5-flash-lite');
-        Cache::put('ai_prompt_template', $state['ai_prompt_template'] ?? $this->getDefaultPromptTemplate());
+        Cache::put('ai_base_prompt', $state['ai_base_prompt'] ?? $this->getDefaultPromptTemplate());
         Cache::put('ollama_num_predict', $state['ollama_num_predict'] ?? 3000);
         Cache::put('ollama_num_ctx', $state['ollama_num_ctx'] ?? 8192);
 
@@ -223,20 +223,6 @@ class SystemSettings extends Page implements HasForms
 
     private function getDefaultPromptTemplate(): string
     {
-        return <<<'PROMPT'
-あなたは優秀な編集者です。以下の情報を見て推論を行ってください。
-
-## 利用可能なカテゴリ一覧
-{categories}
-
-## 元のタイトル
-{title}
-
-要件:
-1. タイトルをキャッチーで分かりやすくリライトしてください。
-2. 最も適切なカテゴリのIDを1つ選んでください。
-3. 出力は必ず以下のJSON形式とし、マークダウンや解説は一切含めないでください:
-{"rewritten_title": "新しいタイトル", "category_id": 1}
-PROMPT;
+        return '提示された記事を分析し、最適なカテゴリを選び、クリックしたくなる魅力的なタイトルにリライトしてください。';
     }
 }

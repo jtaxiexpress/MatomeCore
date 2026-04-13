@@ -114,8 +114,8 @@ class AppResource extends Resource
                                 });
                             }),
                         Textarea::make('ai_prompt_template')
-                            ->label('AIプロンプトテンプレート')
-                            ->helperText('※未入力の場合はシステム全体のデフォルト設定が使用されます。{categories}と{title}のプレースホルダーを必ず含めてください。')
+                            ->label('アプリ固有のリライトルール（差分・テイスト）')
+                            ->helperText('（任意）システム共通プロンプトに追加して指示したい、このアプリ特有のルール（例: 2ch風の煽りタイトルにして、ミリタリー系なので少し固い表現にして等）のみを入力してください。※{categories}などの変数の記述や、JSON出力の指示は不要です。')
                             ->rows(8)
                             ->columnSpanFull(),
                     ]),
