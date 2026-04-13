@@ -17,6 +17,7 @@
         "laravel/mcp": "^0.6.3",
         "laravel/sail": "^1.54",
         "laravel/tinker": "^3.0",
+        "opcodesio/log-viewer": "^3.24",
         "symfony/css-selector": "*",
         "symfony/dom-crawler": "*"
     },

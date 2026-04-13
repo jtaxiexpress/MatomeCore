@@ -228,7 +228,12 @@ class ArticleAiService
 
         $response = BatchCategorizeAgent::make()->prompt($prompt, model: $geminiModel);
 
-        return $this->extractBatchJsonResponse($response);
+        // StructuredAgentResponse のようなオブジェクトは配列へ正規化してから解析する
+        $data = method_exists($response, 'toArray')
+            ? $response->toArray()
+            : (string) $response;
+
+        return $this->extractBatchJsonResponse($data);
     }
 
     /**
