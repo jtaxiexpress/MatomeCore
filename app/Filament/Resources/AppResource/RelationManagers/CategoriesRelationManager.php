@@ -8,16 +8,16 @@ use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use App\Filament\Resources\CategoryResource;
-use Illuminate\Support\Facades\Blade;
-use Illuminate\Support\HtmlString;
+use Illuminate\Support\Str;
 
 class CategoriesRelationManager extends RelationManager
 {
     protected static string $relationship = 'categories';
 
     protected static ?string $title = 'カテゴリ';
+
     protected static ?string $modelLabel = 'カテゴリ';
 
     public function form(Schema $form): Schema
@@ -28,6 +28,12 @@ class CategoriesRelationManager extends RelationManager
                     ->label('カテゴリ名')
                     ->required()
                     ->maxLength(255),
+
+                Forms\Components\TextInput::make('api_slug')
+                    ->label('APIスラッグ')
+                    ->required()
+                    ->maxLength(255)
+                    ->dehydrateStateUsing(fn (?string $state): ?string => filled($state) ? Str::slug($state) : null),
 
                 // ─────────────────────────────────────────
                 // 親カテゴリ選択フィールド
@@ -62,10 +68,16 @@ class CategoriesRelationManager extends RelationManager
                             ->label('')
                             ->schema([
                                 Forms\Components\TextInput::make('name')->label('カテゴリ名')->required()->maxLength(255),
+                                Forms\Components\TextInput::make('api_slug')
+                                    ->label('APIスラッグ')
+                                    ->required()
+                                    ->maxLength(255)
+                                    ->dehydrateStateUsing(fn (?string $state): ?string => filled($state) ? Str::slug($state) : null),
                             ])
                             // 保存時に現在のアプリIDを子にも自動反映させる
                             ->mutateRelationshipDataBeforeCreateUsing(function (array $data, $livewire) {
                                 $data['app_id'] = $livewire->getOwnerRecord()->id;
+
                                 return $data;
                             })
                             ->orderColumn('sort_order')
@@ -91,8 +103,13 @@ class CategoriesRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('name')
                     ->label('カテゴリ名')
                     ->searchable()
-                    ->formatStateUsing(fn ($record) => $record->parent_id ? '　└ ' . $record->name : $record->name)
+                    ->formatStateUsing(fn ($record) => $record->parent_id ? '　└ '.$record->name : $record->name)
                     ->sortable(),
+
+                Tables\Columns\TextColumn::make('api_slug')
+                    ->label('APIスラッグ')
+                    ->searchable()
+                    ->badge(),
 
                 Tables\Columns\TextColumn::make('sort_order')
                     ->label('並び順')
@@ -122,7 +139,7 @@ class CategoriesRelationManager extends RelationManager
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),
             ])
-            ->modifyQueryUsing(fn (\Illuminate\Database\Eloquent\Builder $query) => $query->whereNull('parent_id'))
+            ->modifyQueryUsing(fn (Builder $query) => $query->whereNull('parent_id'))
             ->reorderable('sort_order')
             ->defaultSort('sort_order')
             ->paginated(false);

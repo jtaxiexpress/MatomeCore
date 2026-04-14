@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Ai\Agents\BatchCategorizeAgent;
 use App\Actions\CleanArticleTitleAction;
+use App\Ai\Agents\BatchCategorizeAgent;
 use App\Jobs\ProcessArticleBatchJob;
 use App\Models\App as AppModel;
 use App\Models\Article;
@@ -81,16 +81,18 @@ class ProcessArticleBatchJobTest extends TestCase
         $site = Site::factory()->for($appModel)->create();
 
         BatchCategorizeAgent::fake([
-            json_encode([
-                ['article_id' => 1, 'rewritten_title' => 'AIリライトタイトル', 'category_id' => $category->id],
-            ]),
+            [
+                'results' => [
+                    ['article_id' => 1, 'rewritten_title' => 'AIリライトタイトル', 'category_id' => $category->id],
+                ],
+            ],
         ]);
 
         $job = new ProcessArticleBatchJob(
             siteId: $site->id,
             articles: [
                 [
-                    'url'      => 'https://example.com/article-1',
+                    'url' => 'https://example.com/article-1',
                     'metaData' => ['raw_title' => '元のタイトルです長めに', 'thumbnail_url' => null, 'published_at' => null],
                 ],
             ],
@@ -103,9 +105,9 @@ class ProcessArticleBatchJobTest extends TestCase
         );
 
         $this->assertDatabaseHas('articles', [
-            'url'         => 'https://example.com/article-1',
-            'title'       => 'AIリライトタイトル',
-            'site_id'     => $site->id,
+            'url' => 'https://example.com/article-1',
+            'title' => 'AIリライトタイトル',
+            'site_id' => $site->id,
             'category_id' => $category->id,
         ]);
     }
@@ -130,7 +132,9 @@ class ProcessArticleBatchJobTest extends TestCase
             ->for($category)
             ->create(['url' => 'https://example.com/existing-article']);
 
-        BatchCategorizeAgent::fake([json_encode([])]);
+        BatchCategorizeAgent::fake([
+            ['results' => []],
+        ]);
 
         $job = new ProcessArticleBatchJob(
             siteId: $site->id,
@@ -164,9 +168,11 @@ class ProcessArticleBatchJobTest extends TestCase
 
         // AI は article_id=1 のみ返し、2 は漏れる
         BatchCategorizeAgent::fake([
-            json_encode([
-                ['article_id' => 1, 'rewritten_title' => 'タイトル1', 'category_id' => $category->id],
-            ]),
+            [
+                'results' => [
+                    ['article_id' => 1, 'rewritten_title' => 'タイトル1', 'category_id' => $category->id],
+                ],
+            ],
         ]);
 
         Log::spy();

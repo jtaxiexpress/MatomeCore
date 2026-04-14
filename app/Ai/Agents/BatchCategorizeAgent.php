@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Ai\Agents;
 
 use Illuminate\Contracts\JsonSchema\JsonSchema;
-use Laravel\Ai\Attributes\UseCheapestModel;
+use Laravel\Ai\Attributes\Provider;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\HasStructuredOutput;
 use Laravel\Ai\Promptable;
@@ -13,7 +13,7 @@ use Laravel\Ai\Promptable;
 /**
  * バッチ処理用の記事分類・リライトエージェント。
  */
-#[UseCheapestModel]
+#[Provider('gemini')]
 class BatchCategorizeAgent implements Agent, HasStructuredOutput
 {
     use Promptable;
@@ -28,9 +28,9 @@ class BatchCategorizeAgent implements Agent, HasStructuredOutput
         return [
             'results' => $schema->array()->items(
                 $schema->object([
-                    'article_id'      => $schema->integer()->required(),
+                    'article_id' => $schema->integer()->required(),
                     'rewritten_title' => $schema->string()->required(),
-                    'category_id'     => $schema->integer()->required(),
+                    'category_id' => $schema->integer()->required(),
                 ])
             )->required(),
         ];

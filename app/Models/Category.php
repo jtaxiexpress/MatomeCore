@@ -2,16 +2,17 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use SolutionForest\FilamentTree\Concern\ModelTree;
-
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 
 class Category extends Model
 {
     use HasFactory;
+
     protected $guarded = [];
 
     protected function casts(): array
@@ -19,6 +20,37 @@ class Category extends Model
         return [
             'sort_order' => 'integer',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (Category $category): void {
+            $category->api_slug = static::resolveUniqueApiSlug(
+                value: (string) ($category->api_slug ?: $category->name),
+                appId: (int) ($category->app_id ?: 0),
+                ignoreId: $category->id,
+            );
+        });
+    }
+
+    private static function resolveUniqueApiSlug(string $value, int $appId, ?int $ignoreId = null): string
+    {
+        $base = Str::slug($value);
+        $base = $base !== '' ? $base : 'category';
+
+        $slug = $base;
+        $suffix = 2;
+
+        while (static::query()
+            ->where('app_id', $appId)
+            ->when($ignoreId, fn (Builder $query): Builder => $query->whereKeyNot($ignoreId))
+            ->where('api_slug', $slug)
+            ->exists()) {
+            $slug = $base.'-'.$suffix;
+            $suffix++;
+        }
+
+        return $slug;
     }
 
     public function app(): BelongsTo

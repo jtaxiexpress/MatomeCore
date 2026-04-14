@@ -94,7 +94,11 @@ class ProcessArticleJob implements ShouldQueue
             $this->saveArticle($aiResult, $title, $metaData);
 
         } catch (\Throwable $e) {
-            Log::error("[ProcessArticleJob] Job Error: [{$this->url}] ".$e->getMessage()."\n".$e->getTraceAsString());
+            Log::error('[ProcessArticleJob] Job Error', [
+                'site_id' => $this->siteId,
+                'url' => $this->url,
+                'message' => $e->getMessage(),
+            ]);
             // ③ 無限リトライの強制停止: throwではなくfail()でキューに失敗として登録する
             $this->fail($e);
         } finally {

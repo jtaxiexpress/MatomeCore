@@ -3,12 +3,12 @@
 namespace App\Ai\Agents;
 
 use Illuminate\Contracts\JsonSchema\JsonSchema;
-use Laravel\Ai\Attributes\UseCheapestModel;
+use Laravel\Ai\Attributes\Provider;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\HasStructuredOutput;
 use Laravel\Ai\Promptable;
 
-#[UseCheapestModel]
+#[Provider('gemini')]
 class CategorizeArticleAgent implements Agent, HasStructuredOutput
 {
     use Promptable;
@@ -28,7 +28,7 @@ class CategorizeArticleAgent implements Agent, HasStructuredOutput
     public function schema(JsonSchema $schema): array
     {
         return [
-            'category_id'     => $schema->integer()->required(),
+            'category_id' => $schema->integer()->required(),
             'rewritten_title' => $schema->string()->required(),
         ];
     }

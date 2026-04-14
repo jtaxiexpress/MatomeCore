@@ -46,7 +46,12 @@ class ArticleAiService
         // システムのグローバル設定を使用
         $geminiModel = Cache::get('gemini_model', 'gemini-1.5-flash-lite');
 
-        Log::info("[デバッグ]AI送信プロンプト:\n".$prompt);
+        Log::info('[AI] 単体推論を開始', [
+            'driver' => 'gemini',
+            'model' => $geminiModel,
+            'title_length' => mb_strlen($originalTitle),
+            'categories' => count($categories),
+        ]);
 
         $response = CategorizeArticleAgent::make()->prompt($prompt, model: $geminiModel);
 
@@ -56,7 +61,9 @@ class ArticleAiService
                 return $parsedResponse;
             }
 
-            Log::warning('AI Response Parse Failed (Gemini). Raw Text: '.$response);
+            Log::warning('[AI] Geminiレスポンス解析に失敗', [
+                'preview' => mb_substr($response, 0, 200),
+            ]);
             throw new RuntimeException('Gemini generation failed or returned invalid JSON structure.');
         }
 
@@ -81,7 +88,12 @@ class ArticleAiService
         $numPredict = Cache::get('ollama_num_predict', 3000);
         $numCtx = Cache::get('ollama_num_ctx', 8192);
 
-        Log::info("[デバッグ]AI送信プロンプト:\n".$prompt);
+        Log::info('[AI] 単体推論を開始', [
+            'driver' => 'ollama',
+            'model' => $model,
+            'title_length' => mb_strlen($title),
+            'categories' => count($categories),
+        ]);
 
         try {
             $response = Http::timeout(120)->post($ollamaUrl, [
@@ -100,7 +112,10 @@ class ArticleAiService
             $jsonResponse = $response->json();
 
             if ($response->failed() || ! is_array($jsonResponse)) {
-                Log::error('Ollama API Error. Body: '.$response->body());
+                Log::error('[AI] Ollama APIエラー', [
+                    'status' => $response->status(),
+                    'body_preview' => mb_substr($response->body(), 0, 200),
+                ]);
                 throw new RuntimeException('Ollama API HTTP error or invalid response mapping.');
             }
 
@@ -111,10 +126,12 @@ class ArticleAiService
                 return $parsedResponse;
             }
 
-            Log::warning('AI Response Parse Failed (Ollama). Raw Text: '.$response->body());
+            Log::warning('[AI] Ollamaレスポンス解析に失敗', [
+                'preview' => mb_substr($response->body(), 0, 200),
+            ]);
             throw new RuntimeException('Ollama generation returned unparseable text.');
         } catch (\Exception $e) {
-            Log::error('AI推論エラー: '.$e->getMessage());
+            Log::error('[AI] 単体推論エラー', ['message' => $e->getMessage()]);
             throw $e;
         }
     }
@@ -224,14 +241,19 @@ class ArticleAiService
     {
         $geminiModel = Cache::get('gemini_model', 'gemini-1.5-flash-lite');
 
-        Log::info("[バッチ]AI送信プロンプト:\n".$prompt);
+        Log::info('[AI] バッチ推論を開始', [
+            'driver' => 'gemini',
+            'model' => $geminiModel,
+            'payload_length' => mb_strlen($prompt),
+        ]);
 
         $response = BatchCategorizeAgent::make()->prompt($prompt, model: $geminiModel);
 
-        // StructuredAgentResponse のようなオブジェクトは配列へ正規化してから解析する
-        $data = method_exists($response, 'toArray')
-            ? $response->toArray()
-            : (string) $response;
+        $data = match (true) {
+            is_array($response), is_string($response) => $response,
+            is_object($response) && method_exists($response, 'toArray') => $this->safeResponseToArray($response),
+            default => (string) $response,
+        };
 
         return $this->extractBatchJsonResponse($data);
     }
@@ -249,7 +271,11 @@ class ArticleAiService
         $numPredict = Cache::get('ollama_num_predict', 3000);
         $numCtx = Cache::get('ollama_num_ctx', 8192);
 
-        Log::info("[バッチ]AI送信プロンプト:\n".$prompt);
+        Log::info('[AI] バッチ推論を開始', [
+            'driver' => 'ollama',
+            'model' => $model,
+            'payload_length' => mb_strlen($prompt),
+        ]);
 
         try {
             $response = Http::timeout(180)->post($ollamaUrl, [
@@ -285,7 +311,10 @@ class ArticleAiService
             $jsonResponse = $response->json();
 
             if ($response->failed() || ! is_array($jsonResponse) || empty($jsonResponse['response'])) {
-                Log::error('[バッチ] Ollama API Error. Body: '.$response->body());
+                Log::error('[AI] バッチOllama APIエラー', [
+                    'status' => $response->status(),
+                    'body_preview' => mb_substr($response->body(), 0, 200),
+                ]);
 
                 return [];
             }
@@ -294,7 +323,7 @@ class ArticleAiService
 
             return $this->extractBatchJsonResponse($rawText);
         } catch (\Exception $e) {
-            Log::error('[バッチ] AI推論エラー: '.$e->getMessage());
+            Log::error('[AI] バッチ推論エラー', ['message' => $e->getMessage()]);
 
             return [];
         }
@@ -347,7 +376,9 @@ class ArticleAiService
         $decoded = is_string($data) ? json_decode($data, true) : $data;
 
         if (is_string($data) && (json_last_error() !== JSON_ERROR_NONE || ! is_array($decoded))) {
-            Log::warning('[バッチ] JSONのパースに失敗しました。Raw: '.mb_substr($data, 0, 500));
+            Log::warning('[AI] バッチJSONパース失敗', [
+                'preview' => mb_substr($data, 0, 200),
+            ]);
 
             return [];
         }
@@ -359,7 +390,7 @@ class ArticleAiService
         $items = $decoded['results'] ?? $decoded;
 
         if (! is_array($items)) {
-            Log::warning('[バッチ] 結果配列(results)が見つかりません。', ['decoded' => $decoded]);
+            Log::warning('[AI] バッチ結果配列が見つかりません');
 
             return [];
         }
@@ -384,9 +415,21 @@ class ArticleAiService
         }
 
         if (empty($results)) {
-            Log::warning('[バッチ] 抽出可能な記事データが見つかりませんでした。', ['decoded' => $decoded]);
+            Log::warning('[AI] バッチ結果に有効な記事データがありません');
         }
 
         return $results;
+    }
+
+    private function safeResponseToArray(object $response): array|string
+    {
+        try {
+            /** @var array<string, mixed>|array<int, mixed> $result */
+            $result = $response->toArray();
+
+            return $result;
+        } catch (\Throwable) {
+            return (string) $response;
+        }
     }
 }

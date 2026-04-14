@@ -4,28 +4,33 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\CategoryResource\Pages;
 use App\Models\Category;
-use Filament\Schemas\Components\Grid;
-use Filament\Schemas\Components\Section;
-use Filament\Forms\Components\FileUpload;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
-use Filament\Schemas\Schema;
-use Filament\Resources\Resource;
-use App\Models\App;
+use Carbon\Carbon;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
+use Filament\Resources\Resource;
+use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Schema;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
-use Illuminate\Support\Facades\Blade;
-use Illuminate\Support\HtmlString;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Unique;
 
 class CategoryResource extends Resource
 {
     protected static ?string $model = Category::class;
+
     protected static string|\UnitEnum|null $navigationGroup = 'マスター管理';
+
     protected static ?int $navigationSort = 2;
+
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-tag';
 
     public static function form(Schema $form): Schema
@@ -35,6 +40,17 @@ class CategoryResource extends Resource
                 Section::make('カテゴリ設定')
                     ->schema([
                         TextInput::make('name')->label('カテゴリ名')->required()->maxLength(255),
+                        TextInput::make('api_slug')
+                            ->label('APIスラッグ')
+                            ->helperText('公開API URLに使用する識別子です。')
+                            ->required()
+                            ->maxLength(255)
+                            ->dehydrateStateUsing(fn (?string $state): ?string => filled($state) ? Str::slug($state) : null)
+                            ->unique(
+                                column: 'api_slug',
+                                ignoreRecord: true,
+                                modifyRuleUsing: fn (Unique $rule, Get $get): Unique => $rule->where('app_id', (int) $get('app_id')),
+                            ),
                     ]),
                 Section::make('所属アプリ')
                     ->schema([
@@ -91,11 +107,16 @@ class CategoryResource extends Resource
                 Section::make('サブカテゴリ（子階層）')
                     ->description('この親カテゴリに属する子カテゴリを追加・並び替えできます。')
                     ->schema([
-                        \Filament\Forms\Components\Repeater::make('children')
+                        Repeater::make('children')
                             ->relationship()
                             ->label('')
                             ->schema([
                                 TextInput::make('name')->label('カテゴリ名')->required()->maxLength(255),
+                                TextInput::make('api_slug')
+                                    ->label('APIスラッグ')
+                                    ->required()
+                                    ->maxLength(255)
+                                    ->dehydrateStateUsing(fn (?string $state): ?string => filled($state) ? Str::slug($state) : null),
                                 FileUpload::make('default_image_path')
                                     ->label('フォールバック画像')
                                     ->image()
@@ -108,6 +129,7 @@ class CategoryResource extends Resource
                             ->mutateRelationshipDataBeforeCreateUsing(function (array $data, $livewire) {
                                 // 親（このカテゴリ自身）が属するアプリIDを子にも設定
                                 $data['app_id'] = $livewire->data['app_id'] ?? 1;
+
                                 return $data;
                             })
                             ->orderColumn('sort_order') // これによりドラッグ＆ドロップで子の並び順が保存されます
@@ -126,6 +148,10 @@ class CategoryResource extends Resource
                 TextColumn::make('name')
                     ->label('カテゴリ名')
                     ->searchable(),
+                TextColumn::make('api_slug')
+                    ->label('APIスラッグ')
+                    ->searchable()
+                    ->badge(),
                 TextColumn::make('articles_count')
                     ->counts('articles')
                     ->label('取得記事数')
@@ -138,8 +164,8 @@ class CategoryResource extends Resource
                     ->badge()
                     ->color(fn ($state): string => match (true) {
                         $state === null => 'danger',
-                        \Carbon\Carbon::parse($state) >= now()->subDays(3) => 'success',
-                        \Carbon\Carbon::parse($state) >= now()->subDays(7) => 'warning',
+                        Carbon::parse($state) >= now()->subDays(3) => 'success',
+                        Carbon::parse($state) >= now()->subDays(7) => 'warning',
                         default => 'gray',
                     }),
                 TextColumn::make('children_count')
@@ -192,7 +218,7 @@ class CategoryResource extends Resource
             ->bulkActions([
                 BulkActionGroup::make([DeleteBulkAction::make()]),
             ])
-            ->modifyQueryUsing(fn (\Illuminate\Database\Eloquent\Builder $query) => $query->whereNull('parent_id')->withMax('articles', 'created_at'))
+            ->modifyQueryUsing(fn (Builder $query) => $query->whereNull('parent_id')->withMax('articles', 'created_at'))
             ->reorderable('sort_order')
             ->defaultSort('created_at', 'desc')
             ->paginated(false);

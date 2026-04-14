@@ -22,6 +22,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\ToggleColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Str;
 
 class AppResource extends Resource
 {
@@ -44,6 +45,13 @@ class AppResource extends Resource
                             ->label('アプリ名')
                             ->required()
                             ->maxLength(255),
+                        TextInput::make('api_slug')
+                            ->label('APIスラッグ')
+                            ->helperText('公開API URLに使用する識別子です。半角英数とハイフンを推奨します。')
+                            ->required()
+                            ->maxLength(255)
+                            ->dehydrateStateUsing(fn (?string $state): ?string => filled($state) ? Str::slug($state) : null)
+                            ->unique(ignoreRecord: true),
                         TextInput::make('theme_color')
                             ->label('テーマカラー (Hex)')
                             ->placeholder('#000000')
@@ -96,6 +104,7 @@ class AppResource extends Resource
         return $table
             ->columns([
                 TextColumn::make('name')->label('アプリ名')->searchable(),
+                TextColumn::make('api_slug')->label('APIスラッグ')->searchable()->badge(),
                 ColorColumn::make('theme_color')->label('テーマカラー')->searchable(),
                 ToggleColumn::make('is_active')->label('ステータス'),
                 TextColumn::make('sites_count')->counts('sites')->label('登録サイト数')->badge(),
