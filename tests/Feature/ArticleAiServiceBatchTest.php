@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Ai\Agents\BatchCategorizeAgent;
 use App\Services\ArticleAiService;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
 class ArticleAiServiceBatchTest extends TestCase
@@ -14,7 +17,7 @@ class ArticleAiServiceBatchTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        \Illuminate\Support\Facades\Cache::put('ai_prompt_template', 'test template {categories} {title} {articles_json}');
+        Cache::put('ai_prompt_template', 'test template {categories} {title} {articles_json}');
         $this->service = new ArticleAiService;
     }
 
@@ -134,5 +137,43 @@ class ArticleAiServiceBatchTest extends TestCase
         $this->assertStringContainsString('"article_id":1', $prompt);
         $this->assertStringContainsString('テスト記事タイトル1', $prompt);
         $this->assertStringContainsString('"article_id":2', $prompt);
+    }
+
+    public function test_classify_and_rewrite_batch_logs_the_final_prompt_before_sending_to_ai(): void
+    {
+        Cache::put('ai_base_prompt', 'PROMPT {app_prompt} {categories} {articles_json} {count}');
+        Log::spy();
+
+        BatchCategorizeAgent::fake([
+            [
+                'results' => [
+                    [
+                        'article_id' => 1,
+                        'rewritten_title' => '完成タイトル',
+                        'category_id' => 10,
+                    ],
+                ],
+            ],
+        ]);
+
+        $result = $this->service->classifyAndRewriteBatch(
+            articles: [
+                ['id' => 1, 'title' => '元タイトル'],
+            ],
+            categories: [
+                ['id' => 10, 'name' => 'テクノロジー'],
+            ],
+        );
+
+        $this->assertSame(10, $result[1]['category_id']);
+        $this->assertSame('完成タイトル', $result[1]['rewritten_title']);
+
+        Log::shouldHaveReceived('debug')
+            ->withArgs(function (string $message): bool {
+                return str_contains($message, '[AI] 送信プロンプト:')
+                    && str_contains($message, '元タイトル')
+                    && str_contains($message, 'テクノロジー');
+            })
+            ->once();
     }
 }

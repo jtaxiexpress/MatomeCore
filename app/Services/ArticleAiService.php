@@ -241,6 +241,8 @@ class ArticleAiService
     {
         $geminiModel = Cache::get('gemini_model', 'gemini-1.5-flash-lite');
 
+        Log::debug('[AI] 送信プロンプト:'."\n".$prompt);
+
         Log::info('[AI] バッチ推論を開始', [
             'driver' => 'gemini',
             'model' => $geminiModel,
@@ -270,6 +272,8 @@ class ArticleAiService
 
         $numPredict = Cache::get('ollama_num_predict', 3000);
         $numCtx = Cache::get('ollama_num_ctx', 8192);
+
+        Log::debug('[AI] 送信プロンプト:'."\n".$prompt);
 
         Log::info('[AI] バッチ推論を開始', [
             'driver' => 'ollama',

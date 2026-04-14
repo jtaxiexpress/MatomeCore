@@ -64,7 +64,9 @@ class ProcessArticleBatchJobTest extends TestCase
         );
 
         $this->assertDatabaseCount('articles', 0);
-        Log::shouldHaveReceived('warning')->once()->with(\Mockery::pattern('/Site ID 9999/'));
+        Log::shouldHaveReceived('warning')->once()->with(
+            \Mockery::pattern('/Site ID 9999/')
+        );
     }
 
     // =========================================================================
@@ -79,6 +81,8 @@ class ProcessArticleBatchJobTest extends TestCase
         $category = Category::factory()->for($appModel)->create();
         /** @var Site $site */
         $site = Site::factory()->for($appModel)->create();
+
+        Log::spy();
 
         BatchCategorizeAgent::fake([
             [
@@ -110,6 +114,21 @@ class ProcessArticleBatchJobTest extends TestCase
             'site_id' => $site->id,
             'category_id' => $category->id,
         ]);
+
+        $expectedMessage = sprintf(
+            '保存完了:| リライト前 %s | リライト後: %s | カテゴリID: %d(%s) | %s |',
+            '元のタイトルです長めに',
+            'AIリライトタイトル',
+            $category->id,
+            $category->name,
+            'https://example.com/article-1',
+        );
+
+        Log::shouldHaveReceived('info')
+            ->withArgs(function (string $message) use ($expectedMessage): bool {
+                return $message === $expectedMessage;
+            })
+            ->once();
     }
 
     // =========================================================================

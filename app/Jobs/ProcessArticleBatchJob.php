@@ -163,6 +163,7 @@ class ProcessArticleBatchJob implements ShouldQueue
     {
         $savedCount = 0;
         $missedCount = 0;
+        $categoryNames = $site->app->categories->pluck('name', 'id');
 
         foreach ($validArticles as $article) {
             $tempId = $article['id'];
@@ -202,7 +203,17 @@ class ProcessArticleBatchJob implements ShouldQueue
                 ]
             );
 
-            Log::info("[ProcessArticleBatchJob] 保存完了: {$url} (カテゴリID: {$aiResult['category_id']}, リライト後: {$aiResult['rewritten_title']})");
+            $categoryName = $categoryNames->get($aiResult['category_id'], '不明');
+            $originalTitle = $article['title'];
+
+            Log::info(sprintf(
+                '保存完了:| リライト前 %s | リライト後: %s | カテゴリID: %d(%s) | %s |',
+                $originalTitle,
+                $aiResult['rewritten_title'],
+                $aiResult['category_id'],
+                $categoryName,
+                $url,
+            ));
             $savedCount++;
         }
 
