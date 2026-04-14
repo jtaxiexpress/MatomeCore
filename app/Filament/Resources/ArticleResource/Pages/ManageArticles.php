@@ -20,19 +20,4 @@ class ManageArticles extends ManageRecords
                 ->modalSubmitActionLabel('登録する'),
         ];
     }
-
-    public function getTabs(): array
-    {
-        $tabs = [
-            'all' => \Filament\Schemas\Components\Tabs\Tab::make('すべて'),
-        ];
-
-        $apps = \App\Models\App::all();
-        foreach ($apps as $app) {
-            $tabs[$app->id] = \Filament\Schemas\Components\Tabs\Tab::make($app->name)
-                ->modifyQueryUsing(fn (\Illuminate\Database\Eloquent\Builder $query) => $query->where('app_id', $app->id));
-        }
-
-        return $tabs;
-    }
 }

@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Opcodes\LogViewer\Facades\LogViewer;
 
@@ -20,7 +23,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        LogViewer::auth(function ($request) {
+        RateLimiter::for('public-feed', function (Request $request): Limit {
+            return Limit::perMinute(60)->by($request->ip());
+        });
+
+        LogViewer::auth(function (Request $request): bool {
             return auth()->check();
         });
     }

@@ -2,65 +2,49 @@
 
 namespace App\Providers\Filament;
 
-use App\Filament\Pages\SystemSettings;
-use App\Filament\Resources\AppResource;
-use App\Filament\Resources\Users\UserResource;
-use Croustibat\FilamentJobsMonitor\FilamentJobsMonitorPlugin;
+use App\Filament\Resources\ArticleResource;
+use App\Filament\Resources\CategoryResource;
+use App\Filament\Resources\SiteResource;
+use App\Models\App;
 use Filament\Http\Middleware\Authenticate;
+use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
-use Filament\Navigation\NavigationItem;
 use Filament\Pages;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
-use Filament\View\PanelsRenderHook;
-use Illuminate\Contracts\View\View;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
-use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
-class AdminPanelProvider extends PanelProvider
+class AppPanelProvider extends PanelProvider
 {
     public function panel(Panel $panel): Panel
     {
         return $panel
-            ->default()
-            ->id('admin')
-            ->path('admin')
+            ->id('app')
+            ->path('app')
             ->login()
+            ->tenant(App::class, 'api_slug', 'app')
+            ->tenantSwitcher()
             ->colors([
-                'primary' => Color::Indigo,
-                'gray' => Color::Slate,
+                'primary' => Color::Sky,
             ])
             ->font('Inter')
-            ->brandName('MatomeCore Admin')
+            ->brandName('MatomeCore App')
             ->resources([
-                AppResource::class,
-                UserResource::class,
+                SiteResource::class,
+                CategoryResource::class,
+                ArticleResource::class,
             ])
             ->pages([
                 Pages\Dashboard::class,
-                SystemSettings::class,
             ])
-            ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->widgets([])
-            ->navigationItems([
-                NavigationItem::make('ログビューア')
-                    ->url(fn (): string => route('log-viewer.index'))
-                    ->icon('heroicon-o-document-text')
-                    ->group('システム管理')
-                    ->sort(99),
-            ])
-            ->plugin(FilamentJobsMonitorPlugin::make())
-            ->renderHook(
-                PanelsRenderHook::SIDEBAR_FOOTER,
-                fn (): View => view('filament.sidebar-footer'),
-            )
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,

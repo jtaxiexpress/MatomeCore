@@ -54,12 +54,6 @@ class SiteResource extends Resource
                         ->required()
                         ->maxLength(255)
                         ->url(),
-                    Select::make('app_id')
-                        ->label('対象アプリ')
-                        ->relationship('app', 'name')
-                        ->required()
-                        ->searchable()
-                        ->preload(),
                     Toggle::make('is_active')
                         ->label('クローリング有効')
                         ->default(true)
@@ -149,7 +143,6 @@ class SiteResource extends Resource
     {
         return $table
             ->columns([
-                TextColumn::make('app.name')->label('アプリ')->sortable()->badge()->color('info'),
                 TextColumn::make('articles_count')->counts('articles')->label('取得記事数')->badge()->sortable(),
                 TextColumn::make('articles_max_created_at')
                     ->label('最終取得日時')

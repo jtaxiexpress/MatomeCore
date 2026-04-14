@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')
     ->name('v1.')
     ->scopeBindings()
+    ->middleware('throttle:public-feed')
     ->group(function (): void {
         Route::get('/apps', [PublicFeedController::class, 'apps'])
             ->name('apps.index');

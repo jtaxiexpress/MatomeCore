@@ -190,6 +190,48 @@ class PublicFeedApiTest extends TestCase
         $newResponse->assertOk();
     }
 
+    public function test_read_only_api_rejects_post_requests(): void
+    {
+        $response = $this->postJson('/api/v1/apps', []);
+
+        $response->assertStatus(405);
+    }
+
+    public function test_read_only_api_rejects_delete_requests(): void
+    {
+        $app = AppModel::factory()->create([
+            'api_slug' => 'delete-app',
+            'is_active' => true,
+        ]);
+        $category = Category::factory()->for($app)->create([
+            'api_slug' => 'delete-category',
+        ]);
+
+        $response = $this->deleteJson('/api/v1/apps/'.$app->api_slug.'/categories/'.$category->api_slug.'/articles');
+
+        $response->assertStatus(405);
+    }
+
+    public function test_public_feed_api_rate_limit_is_enforced(): void
+    {
+        AppModel::factory()->create([
+            'api_slug' => 'rate-limit-app',
+            'is_active' => true,
+        ]);
+
+        for ($attempt = 0; $attempt < 60; $attempt++) {
+            $this->withServerVariables([
+                'REMOTE_ADDR' => '10.20.30.40',
+            ])->getJson('/api/v1/apps')->assertOk();
+        }
+
+        $response = $this->withServerVariables([
+            'REMOTE_ADDR' => '10.20.30.40',
+        ])->getJson('/api/v1/apps');
+
+        $response->assertTooManyRequests();
+    }
+
     public function test_ai_configuration_supports_only_gemini_and_ollama(): void
     {
         $this->assertSame(['gemini', 'ollama'], array_keys(config('ai.providers')));
