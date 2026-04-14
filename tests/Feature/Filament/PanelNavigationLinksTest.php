@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Filament;
 
+use App\Models\App as AppModel;
+use App\Models\User;
 use App\Providers\Filament\AdminPanelProvider;
 use App\Providers\Filament\AppPanelProvider;
 use Filament\Navigation\MenuItem;
@@ -38,6 +40,33 @@ class PanelNavigationLinksTest extends TestCase
         $this->assertInstanceOf(MenuItem::class, $userMenuItems[0]);
         $this->assertSame('システム管理 (Adminパネル) へ', $userMenuItems[0]->getLabel());
         $this->assertSame('/admin', $userMenuItems[0]->getUrl());
+    }
+
+    public function test_app_panel_home_is_not_fixed_to_admin_tenant(): void
+    {
+        $panel = (new AppPanelProvider($this->app))->panel(Panel::make());
+
+        $this->assertNull($panel->getHomeUrl());
+    }
+
+    public function test_app_history_page_renders_back_link_to_admin_tenant(): void
+    {
+        $user = User::factory()->admin()->create();
+        AppModel::factory()->create([
+            'name' => 'History',
+            'api_slug' => 'history',
+        ]);
+
+        AppModel::factory()->create([
+            'name' => 'Admin',
+            'api_slug' => 'admin',
+        ]);
+
+        $this->actingAs($user)
+            ->get('/app/history')
+            ->assertOk()
+            ->assertSee('Adminに戻る', false)
+            ->assertSee('href="/admin"', false);
     }
 
     /**

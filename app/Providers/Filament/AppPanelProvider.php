@@ -15,6 +15,8 @@ use Filament\Pages;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Filament\View\PanelsRenderHook;
+use Illuminate\Contracts\View\View;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -51,6 +53,10 @@ class AppPanelProvider extends PanelProvider
                     ->url('/admin')
                     ->icon('heroicon-o-cog-8-tooth'),
             ])
+            ->renderHook(
+                PanelsRenderHook::SIDEBAR_FOOTER,
+                fn (): View => view('filament.app-sidebar-footer'),
+            )
             ->widgets([])
             ->middleware([
                 EncryptCookies::class,
