@@ -69,9 +69,9 @@ return [
     |
     */
 
-    'back_to_system_url' => config('app.url', null),
+    'back_to_system_url' => rtrim((string) config('app.url', ''), '/').'/admin',
 
-    'back_to_system_label' => null, // Displayed by default: "Back to {{ app.name }}"
+    'back_to_system_label' => 'システム管理画面に戻る',
 
     /*
     |--------------------------------------------------------------------------

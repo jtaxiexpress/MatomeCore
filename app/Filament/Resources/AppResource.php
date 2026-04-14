@@ -9,6 +9,7 @@ use Carbon\Carbon;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -134,6 +135,7 @@ class AppResource extends Resource
             ->bulkActions([
                 BulkActionGroup::make([DeleteBulkAction::make()]),
             ])
+            ->recordUrl(fn (App $record): ?string => Filament::getPanel('app')->getUrl($record))
             ->modifyQueryUsing(fn (Builder $query) => $query->withMax('articles', 'created_at'))
             ->defaultSort('created_at', 'desc');
     }

@@ -9,6 +9,7 @@ use Croustibat\FilamentJobsMonitor\FilamentJobsMonitorPlugin;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
+use Filament\Navigation\MenuItem;
 use Filament\Navigation\NavigationItem;
 use Filament\Pages;
 use Filament\Panel;
@@ -39,6 +40,7 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->font('Inter')
             ->brandName('MatomeCore Admin')
+            ->homeUrl('/admin')
             ->resources([
                 AppResource::class,
                 UserResource::class,
@@ -46,6 +48,12 @@ class AdminPanelProvider extends PanelProvider
             ->pages([
                 Pages\Dashboard::class,
                 SystemSettings::class,
+            ])
+            ->userMenuItems([
+                MenuItem::make()
+                    ->label('アプリ管理 (Appパネル) へ')
+                    ->url('/app')
+                    ->icon('heroicon-o-squares-2x2'),
             ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->widgets([])

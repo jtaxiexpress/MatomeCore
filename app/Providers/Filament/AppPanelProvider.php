@@ -10,6 +10,7 @@ use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
+use Filament\Navigation\MenuItem;
 use Filament\Pages;
 use Filament\Panel;
 use Filament\PanelProvider;
@@ -43,6 +44,12 @@ class AppPanelProvider extends PanelProvider
             ])
             ->pages([
                 Pages\Dashboard::class,
+            ])
+            ->userMenuItems([
+                MenuItem::make()
+                    ->label('システム管理 (Adminパネル) へ')
+                    ->url('/admin')
+                    ->icon('heroicon-o-cog-8-tooth'),
             ])
             ->widgets([])
             ->middleware([
