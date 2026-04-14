@@ -40,4 +40,23 @@ class AppNavigationTest extends TestCase
         $this->assertSame(Filament::getPanel('app')->getUrl($app), $table->getRecordUrl($app));
         $this->assertTrue(collect($table->getActions())->contains(static fn (EditAction $action): bool => $action instanceof EditAction));
     }
+
+    public function test_app_table_uses_requested_fixed_columns(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        $table = Livewire::actingAs($admin)
+            ->test(ManageApps::class)
+            ->instance()
+            ->getTable();
+
+        $this->assertSame([
+            'name',
+            'api_slug',
+            'sites_count',
+            'articles_count',
+            'articles_max_created_at',
+            'theme_color',
+        ], array_keys($table->getColumns()));
+    }
 }

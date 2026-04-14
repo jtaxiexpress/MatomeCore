@@ -20,7 +20,6 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\ColorColumn;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Columns\ToggleColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
@@ -106,8 +105,6 @@ class AppResource extends Resource
             ->columns([
                 TextColumn::make('name')->label('アプリ名')->searchable(),
                 TextColumn::make('api_slug')->label('APIスラッグ')->searchable()->badge(),
-                ColorColumn::make('theme_color')->label('テーマカラー')->searchable(),
-                ToggleColumn::make('is_active')->label('ステータス'),
                 TextColumn::make('sites_count')->counts('sites')->label('登録サイト数')->badge(),
                 TextColumn::make('articles_count')->counts('articles')->label('取得記事数')->badge()->sortable(),
                 TextColumn::make('articles_max_created_at')
@@ -121,8 +118,7 @@ class AppResource extends Resource
                         Carbon::parse($state) >= now()->subDays(7) => 'warning',
                         default => 'gray',
                     }),
-                TextColumn::make('created_at')->label('作成日')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('updated_at')->label('更新日')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
+                ColorColumn::make('theme_color')->label('テーマカラー')->searchable(),
             ])
             ->filters([])
             ->actions([
