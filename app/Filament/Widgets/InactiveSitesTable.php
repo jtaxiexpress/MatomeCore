@@ -3,6 +3,7 @@
 namespace App\Filament\Widgets;
 
 use App\Models\Site;
+use Filament\Facades\Filament;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
@@ -16,9 +17,19 @@ class InactiveSitesTable extends BaseWidget
 
     public function table(Table $table): Table
     {
+        $tenant = Filament::getTenant();
+
+        $query = Site::query();
+
+        if ($tenant) {
+            $query->whereBelongsTo($tenant, 'app');
+        } else {
+            $query->whereRaw('1 = 0');
+        }
+
         return $table
             ->query(
-                Site::query()
+                $query
                     ->withMax('articles', 'created_at')
                     ->whereDoesntHave('articles', function (Builder $query) {
                         $query->where('created_at', '>=', now()->subDays(7));

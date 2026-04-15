@@ -50,6 +50,8 @@ class ProcessArticleBatchJob implements ShouldQueue
         ArticleScraperService $scraper,
         CleanArticleTitleAction $cleanTitleAction,
     ): void {
+        $this->shareLogContext();
+
         if (Cache::get('is_bulk_paused', false)) {
             $this->release(60);
 
@@ -63,6 +65,8 @@ class ProcessArticleBatchJob implements ShouldQueue
 
             return;
         }
+
+        $this->shareLogContext($site);
 
         $categories = $site->app->categories->map(fn ($cat) => [
             'id' => $cat->id,
@@ -261,5 +265,15 @@ class ProcessArticleBatchJob implements ShouldQueue
             'image' => $thumbnailUrl,
             'date' => $publishedAt ?: now()->toDateTimeString(),
         ];
+    }
+
+    private function shareLogContext(?Site $site = null): void
+    {
+        Log::withContext([
+            'site_id' => $site?->getKey() ?? $this->siteId,
+            'app_id' => $site?->app_id,
+            'app_slug' => (string) data_get($site, 'app.api_slug'),
+            'batch_size' => count($this->articles),
+        ]);
     }
 }

@@ -5,17 +5,23 @@ namespace App\Providers\Filament;
 use App\Filament\Resources\ArticleResource;
 use App\Filament\Resources\CategoryResource;
 use App\Filament\Resources\SiteResource;
+use App\Filament\Widgets\ArticleTrendChart;
+use App\Filament\Widgets\InactiveSitesTable;
+use App\Filament\Widgets\SystemStatsOverview;
+use App\Http\Middleware\ShareTenantLogContext;
 use App\Models\App;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\Navigation\MenuItem;
+use Filament\Navigation\NavigationItem;
 use Filament\Pages;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
 use Filament\View\PanelsRenderHook;
+use Filament\Widgets\AccountWidget;
 use Illuminate\Contracts\View\View;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -34,6 +40,9 @@ class AppPanelProvider extends PanelProvider
             ->login()
             ->tenant(App::class, 'api_slug', 'app')
             ->tenantSwitcher()
+            ->tenantMiddleware([
+                ShareTenantLogContext::class,
+            ], isPersistent: true)
             ->colors([
                 'primary' => Color::Sky,
             ])
@@ -57,7 +66,20 @@ class AppPanelProvider extends PanelProvider
                 PanelsRenderHook::SIDEBAR_FOOTER,
                 fn (): View => view('filament.app-sidebar-footer'),
             )
-            ->widgets([])
+            ->widgets([
+                AccountWidget::class,
+                SystemStatsOverview::class,
+                ArticleTrendChart::class,
+                InactiveSitesTable::class,
+            ])
+            ->navigationItems([
+                NavigationItem::make('ログビューア')
+                    ->url(fn (): string => route('log-viewer.index'))
+                    ->icon('heroicon-o-document-text')
+                    ->group('システム管理')
+                    ->sort(99)
+                    ->openUrlInNewTab(),
+            ])
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,

@@ -35,6 +35,9 @@ class FetchSitePastArticlesJob implements ShouldQueue
      */
     public function handle(): string
     {
+        $this->site->loadMissing('app');
+        $this->shareLogContext();
+
         Log::info("{$this->site->name} の過去記事一括取得処理を開始しました");
 
         try {
@@ -391,5 +394,14 @@ class FetchSitePastArticlesJob implements ShouldQueue
         }
 
         return $urls;
+    }
+
+    private function shareLogContext(): void
+    {
+        Log::withContext([
+            'site_id' => $this->site->getKey(),
+            'app_id' => $this->site->app_id,
+            'app_slug' => (string) data_get($this->site, 'app.api_slug'),
+        ]);
     }
 }

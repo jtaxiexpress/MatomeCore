@@ -4,12 +4,18 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Filament;
 
+use App\Filament\Widgets\ArticleTrendChart;
+use App\Filament\Widgets\InactiveSitesTable;
+use App\Filament\Widgets\SystemStatsOverview;
+use App\Http\Middleware\ShareTenantLogContext;
 use App\Models\App as AppModel;
 use App\Models\User;
 use App\Providers\Filament\AdminPanelProvider;
 use App\Providers\Filament\AppPanelProvider;
 use Filament\Navigation\MenuItem;
+use Filament\Navigation\NavigationItem;
 use Filament\Panel;
+use Filament\Widgets\AccountWidget;
 use Tests\TestCase;
 
 class PanelNavigationLinksTest extends TestCase
@@ -47,6 +53,38 @@ class PanelNavigationLinksTest extends TestCase
         $panel = (new AppPanelProvider($this->app))->panel(Panel::make());
 
         $this->assertNull($panel->getHomeUrl());
+    }
+
+    public function test_app_panel_registers_operational_dashboard_widgets(): void
+    {
+        $panel = (new AppPanelProvider($this->app))->panel(Panel::make());
+
+        $this->assertSame([
+            AccountWidget::class,
+            SystemStatsOverview::class,
+            ArticleTrendChart::class,
+            InactiveSitesTable::class,
+        ], $panel->getWidgets());
+    }
+
+    public function test_app_panel_has_log_viewer_navigation_item(): void
+    {
+        $panel = (new AppPanelProvider($this->app))->panel(Panel::make());
+        $navigationItems = $panel->getNavigationItems();
+
+        $this->assertCount(1, $navigationItems);
+        $this->assertInstanceOf(NavigationItem::class, $navigationItems[0]);
+        $this->assertSame('ログビューア', $navigationItems[0]->getLabel());
+        $this->assertSame(route('log-viewer.index'), $navigationItems[0]->getUrl());
+        $this->assertSame('システム管理', $navigationItems[0]->getGroup());
+        $this->assertTrue($navigationItems[0]->shouldOpenUrlInNewTab());
+    }
+
+    public function test_app_panel_registers_tenant_log_context_middleware(): void
+    {
+        $panel = (new AppPanelProvider($this->app))->panel(Panel::make());
+
+        $this->assertContains(ShareTenantLogContext::class, $panel->getTenantMiddleware());
     }
 
     public function test_app_history_page_renders_back_link_to_admin_tenant(): void

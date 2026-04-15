@@ -46,6 +46,8 @@ class ProcessArticleJob implements ShouldQueue
         ArticleScraperService $scraper,
         CleanArticleTitleAction $cleanTitleAction
     ): void {
+        $this->shareLogContext();
+
         // ① 排他制御: 同一URLの並列処理を防ぐCacheロック
         $lockKey = 'process_article_'.md5($this->url);
         $lock = Cache::lock($lockKey, 120);
@@ -72,6 +74,7 @@ class ProcessArticleJob implements ShouldQueue
                 return;
             }
             $this->site = $site;
+            $this->shareLogContext($site);
 
             if (Article::where('url', $this->url)->exists()) {
                 return;
@@ -193,5 +196,15 @@ class ProcessArticleJob implements ShouldQueue
 
         Log::info("[Process: {$this->url}] 記事の保存が完了しました (カテゴリID: {$aiResult['category_id']}, リライト後: {$aiResult['rewritten_title']})");
         $this->output = "AI Processing completed successfully. Mapped to category_id: {$aiResult['category_id']}";
+    }
+
+    private function shareLogContext(?Site $site = null): void
+    {
+        Log::withContext([
+            'site_id' => $site?->getKey() ?? $this->siteId,
+            'app_id' => $site?->app_id,
+            'app_slug' => (string) data_get($site, 'app.api_slug'),
+            'url' => $this->url,
+        ]);
     }
 }
