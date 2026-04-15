@@ -96,6 +96,8 @@ class ProcessArticleBatchJob implements ShouldQueue
             $this->persistResults($validArticles, $aiResults, $site);
 
         } catch (\Throwable $e) {
+            report($e);
+
             Log::error('[ProcessArticleBatchJob] Job Error', [
                 'site_id' => $this->siteId,
                 'message' => $e->getMessage(),

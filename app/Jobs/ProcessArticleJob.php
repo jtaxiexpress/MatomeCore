@@ -94,6 +94,8 @@ class ProcessArticleJob implements ShouldQueue
             $this->saveArticle($aiResult, $title, $metaData);
 
         } catch (\Throwable $e) {
+            report($e);
+
             Log::error('[ProcessArticleJob] Job Error', [
                 'site_id' => $this->siteId,
                 'url' => $this->url,
