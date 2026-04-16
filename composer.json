@@ -16,7 +16,9 @@
         "laravel/framework": "^13.0",
         "laravel/mcp": "^0.6.3",
         "laravel/sail": "^1.54",
+        "laravel/slack-notification-channel": "^3.8",
         "laravel/tinker": "^3.0",
+        "opcodesio/log-viewer": "^3.24",
         "symfony/css-selector": "*",
         "symfony/dom-crawler": "*"
     },

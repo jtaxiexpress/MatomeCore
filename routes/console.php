@@ -21,6 +21,12 @@ Schedule::command('queue:prune-failed --hours=720')->dailyAt('03:30');
 // 毎日深夜4時に、500件だけリンク切れをチェックする
 Schedule::job(new CheckDeadLinksJob)->dailyAt('04:00');
 
+// 毎朝9時にカテゴリ別の日次レポートを送信する
+Schedule::command('app:send-daily-category-report')
+    ->dailyAt('09:00')
+    ->timezone(config('app.timezone'))
+    ->withoutOverlapping(120);
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Appごとのダイナミックスケジュール登録
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

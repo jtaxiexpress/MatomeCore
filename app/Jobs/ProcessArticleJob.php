@@ -46,6 +46,8 @@ class ProcessArticleJob implements ShouldQueue
         ArticleScraperService $scraper,
         CleanArticleTitleAction $cleanTitleAction
     ): void {
+        $this->shareLogContext();
+
         // ① 排他制御: 同一URLの並列処理を防ぐCacheロック
         $lockKey = 'process_article_'.md5($this->url);
         $lock = Cache::lock($lockKey, 120);
@@ -72,6 +74,7 @@ class ProcessArticleJob implements ShouldQueue
                 return;
             }
             $this->site = $site;
+            $this->shareLogContext($site);
 
             if (Article::where('url', $this->url)->exists()) {
                 return;
@@ -94,7 +97,13 @@ class ProcessArticleJob implements ShouldQueue
             $this->saveArticle($aiResult, $title, $metaData);
 
         } catch (\Throwable $e) {
-            Log::error("[ProcessArticleJob] Job Error: [{$this->url}] ".$e->getMessage()."\n".$e->getTraceAsString());
+            report($e);
+
+            Log::error('[ProcessArticleJob] Job Error', [
+                'site_id' => $this->siteId,
+                'url' => $this->url,
+                'message' => $e->getMessage(),
+            ]);
             // ③ 無限リトライの強制停止: throwではなくfail()でキューに失敗として登録する
             $this->fail($e);
         } finally {
@@ -185,7 +194,17 @@ class ProcessArticleJob implements ShouldQueue
             ]
         );
 
-        Log::info("[Process: {$this->url}] 記事の保存が完了しました (カテゴリID: {$aiResult['category_id']})");
+        Log::info("[Process: {$this->url}] 記事の保存が完了しました (カテゴリID: {$aiResult['category_id']}, リライト後: {$aiResult['rewritten_title']})");
         $this->output = "AI Processing completed successfully. Mapped to category_id: {$aiResult['category_id']}";
+    }
+
+    private function shareLogContext(?Site $site = null): void
+    {
+        Log::withContext([
+            'site_id' => $site?->getKey() ?? $this->siteId,
+            'app_id' => $site?->app_id,
+            'app_slug' => (string) data_get($site, 'app.api_slug'),
+            'url' => $this->url,
+        ]);
     }
 }

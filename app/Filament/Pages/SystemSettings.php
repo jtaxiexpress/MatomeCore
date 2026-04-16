@@ -126,7 +126,9 @@ class SystemSettings extends Page implements HasForms
             'is_bulk_paused' => Cache::get('is_bulk_paused', false),
             'ollama_model' => Cache::get('ollama_model', 'qwen3.5:9b'),
             'gemini_model' => Cache::get('gemini_model', 'gemini-1.5-flash-lite'),
-            'ai_prompt_template' => Cache::get('ai_prompt_template', $this->getDefaultPromptTemplate()),
+            'ai_base_prompt' => Cache::get('ai_base_prompt', self::getDefaultPromptTemplate()),
+            'ollama_num_predict' => Cache::get('ollama_num_predict', 3000),
+            'ollama_num_ctx' => Cache::get('ollama_num_ctx', 8192),
         ]);
     }
 
@@ -147,6 +149,14 @@ class SystemSettings extends Page implements HasForms
                             ->default('qwen3.5:9b')
                             ->helperText('ローカルOllama環境のモデル名。')
                             ->required(),
+                        TextInput::make('ollama_num_predict')
+                            ->label('Ollama 出力トークン上限 (num_predict)')
+                            ->numeric()
+                            ->default(3000),
+                        TextInput::make('ollama_num_ctx')
+                            ->label('Ollama コンテキスト長 (num_ctx)')
+                            ->numeric()
+                            ->default(8192),
                         Select::make('gemini_model')
                             ->label('Geminiモデル名（デフォルト）')
                             ->helperText('Google Gemini APIのモデル名。アプリ個別設定がない場合はこちらが使用されます。')
@@ -186,10 +196,17 @@ class SystemSettings extends Page implements HasForms
                     ])->columns(2),
                 Section::make('AIプロンプト設定')
                     ->schema([
-                        Textarea::make('ai_prompt_template')
-                            ->label('プロンプトテンプレート')
+                        Textarea::make('ai_base_prompt')
+                            ->label('システム共通ベースプロンプト（役割と基本ルール）')
                             ->rows(15)
-                            ->helperText('{categories} と {title} という文字列を入れると、実行時に動的に置換されます。フォーマット逸脱を防ぐため、JSONのみを出力する指示を含める事を強く推奨します。')
+                            ->helperText('アプリ全体で共通してAIに与える役割や基本動作を定義します。※Structured Outputsを利用するため、JSONフォーマットや配列に関する指示は絶対に記述しないでください。また、{app_prompt}を配置した場所に個別アプリのプロンプトが展開されます。')
+                            ->rule(function () {
+                                return function (string $attribute, $value, \Closure $fail) {
+                                    if (! str_contains((string) $value, '{categories}') || ! str_contains((string) $value, '{articles_json}') || ! str_contains((string) $value, '{count}') || ! str_contains((string) $value, '{app_prompt}')) {
+                                        $fail('必須プレースホルダ（{app_prompt}, {categories}, {articles_json}, {count}）が含まれていません。');
+                                    }
+                                };
+                            })
                             ->required(),
                     ]),
             ])->statePath('data');
@@ -201,7 +218,9 @@ class SystemSettings extends Page implements HasForms
         Cache::put('is_bulk_paused', $state['is_bulk_paused'] ?? false);
         Cache::put('ollama_model', $state['ollama_model'] ?? 'qwen3.5:9b');
         Cache::put('gemini_model', $state['gemini_model'] ?? 'gemini-1.5-flash-lite');
-        Cache::put('ai_prompt_template', $state['ai_prompt_template'] ?? $this->getDefaultPromptTemplate());
+        Cache::put('ai_base_prompt', $state['ai_base_prompt'] ?? self::getDefaultPromptTemplate());
+        Cache::put('ollama_num_predict', $state['ollama_num_predict'] ?? 3000);
+        Cache::put('ollama_num_ctx', $state['ollama_num_ctx'] ?? 8192);
 
         Notification::make()
             ->title('設定を保存しました')
@@ -209,22 +228,23 @@ class SystemSettings extends Page implements HasForms
             ->send();
     }
 
-    private function getDefaultPromptTemplate(): string
+    public static function getDefaultPromptTemplate(): string
     {
         return <<<'PROMPT'
-あなたは優秀な編集者です。以下の情報を見て推論を行ってください。
+あなたは日本語のアンテナサイト向けに複数記事の分類とリライトを一括で行う優秀な編集者です。
+以下の記事を分析し、最適なカテゴリを選び、クリックしたくなる魅力的な日本語タイトルにリライトしてください。
 
-## 利用可能なカテゴリ一覧
+【アプリ個別要件】
+{app_prompt}
+
+【カテゴリ一覧】
 {categories}
 
-## 元のタイトル
-{title}
+【処理対象記事データ】
+{articles_json}
 
-要件:
-1. タイトルをキャッチーで分かりやすくリライトしてください。
-2. 最も適切なカテゴリのIDを1つ選んでください。
-3. 出力は必ず以下のJSON形式とし、マークダウンや解説は一切含めないでください:
-{"rewritten_title": "新しいタイトル", "category_id": 1}
+※重要指示※
+今回は全部で {count} 件です。出力するJSON配列の要素数は、絶対に {count} 件と完全に一致させなければなりません。1件も省略せず、最後まで出力してください。
 PROMPT;
     }
 }

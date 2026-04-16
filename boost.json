@@ -1,10 +1,14 @@
 {
     "agents": [
-        "gemini"
+        "gemini",
+        "copilot"
     ],
     "guidelines": true,
     "mcp": true,
     "nightwatch_mcp": false,
+    "packages": [
+        "filament/filament"
+    ],
     "sail": true,
     "skills": [
         "ai-sdk-development",

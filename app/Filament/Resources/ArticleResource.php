@@ -5,24 +5,22 @@ namespace App\Filament\Resources;
 use App\Actions\CategorizeArticleAction;
 use App\Filament\Resources\ArticleResource\Pages;
 use App\Models\Article;
-use App\Models\Category;
-use App\Models\Site;
 use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Facades\Filament;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
-use Filament\Schemas\Components\Utilities\Get;
-use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Storage;
 
 class ArticleResource extends Resource
@@ -55,27 +53,43 @@ class ArticleResource extends Resource
                     ]),
                 Section::make('メタデータ')
                     ->schema([
-                        Select::make('app_id')
-                            ->label('配信アプリ')
-                            ->relationship('app', 'name')
-                            ->live()
-                            ->afterStateUpdated(function (Set $set) {
-                                $set('category_id', null);
-                                $set('site_id', null);
-                            })
-                            ->required()
-                            ->searchable()
-                            ->preload(),
                         Select::make('category_id')
                             ->label('カテゴリ')
-                            ->options(fn (Get $get) => Category::where('app_id', $get('app_id'))->pluck('name', 'id'))
-                            ->placeholder(fn (Get $get) => $get('app_id') ? 'カテゴリを選択' : 'まずアプリを選択してください')
+                            ->relationship(
+                                name: 'category',
+                                titleAttribute: 'name',
+                                modifyQueryUsing: function (Builder $query): Builder {
+                                    $tenant = Filament::getTenant();
+
+                                    if (! $tenant) {
+                                        return $query->whereRaw('1 = 0');
+                                    }
+
+                                    return $query
+                                        ->whereBelongsTo($tenant, 'app')
+                                        ->orderBy('sort_order')
+                                        ->orderBy('name');
+                                },
+                            )
                             ->searchable()
                             ->preload(),
                         Select::make('site_id')
                             ->label('配信元サイト')
-                            ->options(fn (Get $get) => Site::where('app_id', $get('app_id'))->pluck('name', 'id'))
-                            ->placeholder(fn (Get $get) => $get('app_id') ? 'サイトを選択' : 'まずアプリを選択してください')
+                            ->relationship(
+                                name: 'site',
+                                titleAttribute: 'name',
+                                modifyQueryUsing: function (Builder $query): Builder {
+                                    $tenant = Filament::getTenant();
+
+                                    if (! $tenant) {
+                                        return $query->whereRaw('1 = 0');
+                                    }
+
+                                    return $query
+                                        ->whereBelongsTo($tenant, 'app')
+                                        ->orderBy('name');
+                                },
+                            )
                             ->required()
                             ->searchable()
                             ->preload(),
@@ -119,7 +133,6 @@ class ArticleResource extends Resource
                         ? 'warning'
                         : null
                     ),
-                TextColumn::make('app.name')->label('アプリ')->sortable()->badge()->color('info'),
                 TextColumn::make('category.name')->label('カテゴリ')->sortable()->badge(),
                 TextColumn::make('site.name')->label('配信元')->sortable(),
                 TextColumn::make('fetch_source')->label('取得元')

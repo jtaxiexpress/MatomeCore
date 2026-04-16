@@ -5,9 +5,11 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\AppResource\Pages;
 use App\Filament\Resources\AppResource\RelationManagers;
 use App\Models\App;
+use Carbon\Carbon;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -18,10 +20,9 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\ColorColumn;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Columns\ToggleColumn;
 use Filament\Tables\Table;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Str;
 
 class AppResource extends Resource
 {
@@ -44,6 +45,13 @@ class AppResource extends Resource
                             ->label('アプリ名')
                             ->required()
                             ->maxLength(255),
+                        TextInput::make('api_slug')
+                            ->label('APIスラッグ')
+                            ->helperText('公開API URLに使用する識別子です。半角英数とハイフンを推奨します。')
+                            ->required()
+                            ->maxLength(255)
+                            ->dehydrateStateUsing(fn (?string $state): ?string => filled($state) ? Str::slug($state) : null)
+                            ->unique(ignoreRecord: true),
                         TextInput::make('theme_color')
                             ->label('テーマカラー (Hex)')
                             ->placeholder('#000000')
@@ -60,52 +68,10 @@ class AppResource extends Resource
                     ->description('未入力の場合はシステム全体のデフォルト設定が使用されます。')
                     ->collapsed()
                     ->schema([
-                        TextInput::make('ollama_model')
-                            ->label('Ollamaモデル名')
-                            ->placeholder('例: qwen3.5:9b')
-                            ->helperText('※未入力の場合はシステム全体のデフォルト設定が使用されます。')
-                            ->maxLength(255),
-                        Select::make('gemini_model')
-                            ->label('Geminiモデル名')
-                            ->helperText('※未入力の場合はシステム全体のデフォルト設定が使用されます。')
-                            ->placeholder('モデルを選択してください')
-                            ->searchable()
-                            ->options(function (): array {
-                                return Cache::remember('gemini_model_list', 86400, function (): array {
-                                    $apiKey = config('ai.providers.gemini.key', '');
-                                    if (empty($apiKey)) {
-                                        return [];
-                                    }
 
-                                    try {
-                                        $response = Http::timeout(10)
-                                            ->get("https://generativelanguage.googleapis.com/v1beta/models?key={$apiKey}");
-
-                                        if (! $response->successful()) {
-                                            return [];
-                                        }
-
-                                        $models = collect($response->json('models', []))
-                                            ->filter(fn ($m) => str_contains($m['name'] ?? '', 'gemini'))
-                                            ->filter(fn ($m) => in_array('generateContent', $m['supportedGenerationMethods'] ?? []))
-                                            ->mapWithKeys(function ($m) {
-                                                $name = str_replace('models/', '', $m['name']);
-                                                $label = $m['displayName'] ?? $name;
-
-                                                return [$name => $label];
-                                            })
-                                            ->sortKeys()
-                                            ->toArray();
-
-                                        return $models;
-                                    } catch (\Exception $e) {
-                                        return [];
-                                    }
-                                });
-                            }),
                         Textarea::make('ai_prompt_template')
-                            ->label('AIプロンプトテンプレート')
-                            ->helperText('※未入力の場合はシステム全体のデフォルト設定が使用されます。{categories}と{title}のプレースホルダーを必ず含めてください。')
+                            ->label('アプリ固有のリライトルール（差分・テイスト）')
+                            ->helperText('（任意）システム共通プロンプトに追加して指示したい、このアプリ特有のルール（例: 2ch風の煽りタイトルにして、ミリタリー系なので少し固い表現にして等）のみを入力してください。※{categories}などの変数の記述や、JSON出力の指示は不要です。')
                             ->rows(8)
                             ->columnSpanFull(),
                     ]),
@@ -138,8 +104,7 @@ class AppResource extends Resource
         return $table
             ->columns([
                 TextColumn::make('name')->label('アプリ名')->searchable(),
-                ColorColumn::make('theme_color')->label('テーマカラー')->searchable(),
-                ToggleColumn::make('is_active')->label('ステータス'),
+                TextColumn::make('api_slug')->label('APIスラッグ')->searchable()->badge(),
                 TextColumn::make('sites_count')->counts('sites')->label('登録サイト数')->badge(),
                 TextColumn::make('articles_count')->counts('articles')->label('取得記事数')->badge()->sortable(),
                 TextColumn::make('articles_max_created_at')
@@ -149,12 +114,11 @@ class AppResource extends Resource
                     ->badge()
                     ->color(fn ($state): string => match (true) {
                         $state === null => 'danger',
-                        \Carbon\Carbon::parse($state) >= now()->subDays(3) => 'success',
-                        \Carbon\Carbon::parse($state) >= now()->subDays(7) => 'warning',
+                        Carbon::parse($state) >= now()->subDays(3) => 'success',
+                        Carbon::parse($state) >= now()->subDays(7) => 'warning',
                         default => 'gray',
                     }),
-                TextColumn::make('created_at')->label('作成日')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('updated_at')->label('更新日')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
+                ColorColumn::make('theme_color')->label('テーマカラー')->searchable(),
             ])
             ->filters([])
             ->actions([
@@ -167,7 +131,8 @@ class AppResource extends Resource
             ->bulkActions([
                 BulkActionGroup::make([DeleteBulkAction::make()]),
             ])
-            ->modifyQueryUsing(fn (\Illuminate\Database\Eloquent\Builder $query) => $query->withMax('articles', 'created_at'))
+            ->recordUrl(fn (App $record): ?string => Filament::getPanel('app')->getUrl($record))
+            ->modifyQueryUsing(fn (Builder $query) => $query->withMax('articles', 'created_at'))
             ->defaultSort('created_at', 'desc');
     }
 

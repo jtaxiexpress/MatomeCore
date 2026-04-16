@@ -26,12 +26,19 @@ class SiteCleanupJob implements ShouldQueue
     public function handle(): void
     {
         // 1. 安全装置として、nullやバグ日付(1970年等)を弾き、7日以上前から失敗しているサイトを取得
-        $deadSites = Site::whereNotNull('failing_since')
+        $deadSites = Site::with('app')
+            ->whereNotNull('failing_since')
             ->where('failing_since', '>=', '2020-01-01')
             ->where('failing_since', '<=', now()->subDays(7))
             ->get();
 
         foreach ($deadSites as $site) {
+            Log::withContext([
+                'site_id' => $site->id,
+                'app_id' => $site->app_id,
+                'app_slug' => (string) data_get($site, 'app.api_slug'),
+            ]);
+
             Log::info("閉鎖サイト削除開始: サイトID {$site->id} ({$site->name})");
 
             // 2. データベースのロック・クラッシュを防ぐため、1000件ずつ分割して記事を物理削除

@@ -4,28 +4,33 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\CategoryResource\Pages;
 use App\Models\Category;
-use Filament\Schemas\Components\Grid;
-use Filament\Schemas\Components\Section;
-use Filament\Forms\Components\FileUpload;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
-use Filament\Schemas\Schema;
-use Filament\Resources\Resource;
-use App\Models\App;
+use Carbon\Carbon;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Facades\Filament;
+use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
+use Filament\Resources\Resource;
+use Filament\Schemas\Components\Section;
+use Filament\Schemas\Schema;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
-use Illuminate\Support\Facades\Blade;
-use Illuminate\Support\HtmlString;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rules\Unique;
 
 class CategoryResource extends Resource
 {
     protected static ?string $model = Category::class;
+
     protected static string|\UnitEnum|null $navigationGroup = 'マスター管理';
+
     protected static ?int $navigationSort = 2;
+
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-tag';
 
     public static function form(Schema $form): Schema
@@ -35,38 +40,39 @@ class CategoryResource extends Resource
                 Section::make('カテゴリ設定')
                     ->schema([
                         TextInput::make('name')->label('カテゴリ名')->required()->maxLength(255),
-                    ]),
-                Section::make('所属アプリ')
-                    ->schema([
-                        Select::make('app_id')
-                            ->label('関連アプリ')
-                            ->relationship('app', 'name')
+                        TextInput::make('api_slug')
+                            ->label('APIスラッグ')
+                            ->helperText('公開API URLに使用する識別子です。')
                             ->required()
-                            ->searchable()
-                            ->preload()
-                            // app_id が変わったら parent_id をリセット
-                            ->afterStateUpdated(fn ($set) => $set('parent_id', null))
-                            ->live(),
+                            ->maxLength(255)
+                            ->dehydrateStateUsing(fn (?string $state): ?string => filled($state) ? Str::slug($state) : null)
+                            ->unique(
+                                column: 'api_slug',
+                                ignoreRecord: true,
+                                modifyRuleUsing: function (Unique $rule): Unique {
+                                    $tenant = Filament::getTenant();
 
-                        // ─────────────────────────────────────────────
-                        // 親カテゴリ選択（同じアプリのカテゴリのみ表示）
-                        // ・app_id 未選択の場合は選択肢を空に
-                        // ・編集時は自分自身を除外
-                        // ─────────────────────────────────────────────
+                                    if (! $tenant) {
+                                        return $rule;
+                                    }
+
+                                    return $rule->where('app_id', $tenant->getKey());
+                                },
+                            ),
                         Select::make('parent_id')
                             ->label('親カテゴリ')
                             ->nullable()
                             ->placeholder('（なし＝ルートカテゴリ）')
                             ->searchable()
-                            ->options(function ($get, ?Category $record): array {
-                                $appId = $get('app_id');
-                                if (! $appId) {
+                            ->options(function (?Category $record): array {
+                                $tenant = Filament::getTenant();
+
+                                if (! $tenant) {
                                     return [];
                                 }
 
                                 return Category::query()
-                                    ->where('app_id', $appId)
-                                    // 編集時は自分自身を選択肢から除外
+                                    ->where('app_id', $tenant->getKey())
                                     ->when(
                                         $record?->id,
                                         fn ($q) => $q->where('id', '!=', $record->id)
@@ -91,11 +97,16 @@ class CategoryResource extends Resource
                 Section::make('サブカテゴリ（子階層）')
                     ->description('この親カテゴリに属する子カテゴリを追加・並び替えできます。')
                     ->schema([
-                        \Filament\Forms\Components\Repeater::make('children')
+                        Repeater::make('children')
                             ->relationship()
                             ->label('')
                             ->schema([
                                 TextInput::make('name')->label('カテゴリ名')->required()->maxLength(255),
+                                TextInput::make('api_slug')
+                                    ->label('APIスラッグ')
+                                    ->required()
+                                    ->maxLength(255)
+                                    ->dehydrateStateUsing(fn (?string $state): ?string => filled($state) ? Str::slug($state) : null),
                                 FileUpload::make('default_image_path')
                                     ->label('フォールバック画像')
                                     ->image()
@@ -104,13 +115,16 @@ class CategoryResource extends Resource
                                     ->directory('category-images')
                                     ->nullable(),
                             ])
-                            // 保存時に現在のアプリIDを子にも自動反映させる
-                            ->mutateRelationshipDataBeforeCreateUsing(function (array $data, $livewire) {
-                                // 親（このカテゴリ自身）が属するアプリIDを子にも設定
-                                $data['app_id'] = $livewire->data['app_id'] ?? 1;
+                            ->mutateRelationshipDataBeforeCreateUsing(function (array $data): array {
+                                $tenant = Filament::getTenant();
+
+                                if ($tenant) {
+                                    $data['app_id'] = $tenant->getKey();
+                                }
+
                                 return $data;
                             })
-                            ->orderColumn('sort_order') // これによりドラッグ＆ドロップで子の並び順が保存されます
+                            ->orderColumn('sort_order')
                             ->collapsible()
                             ->collapsed()
                             ->itemLabel(fn (array $state): ?string => $state['name'] ?? null)
@@ -126,6 +140,10 @@ class CategoryResource extends Resource
                 TextColumn::make('name')
                     ->label('カテゴリ名')
                     ->searchable(),
+                TextColumn::make('api_slug')
+                    ->label('APIスラッグ')
+                    ->searchable()
+                    ->badge(),
                 TextColumn::make('articles_count')
                     ->counts('articles')
                     ->label('取得記事数')
@@ -138,8 +156,8 @@ class CategoryResource extends Resource
                     ->badge()
                     ->color(fn ($state): string => match (true) {
                         $state === null => 'danger',
-                        \Carbon\Carbon::parse($state) >= now()->subDays(3) => 'success',
-                        \Carbon\Carbon::parse($state) >= now()->subDays(7) => 'warning',
+                        Carbon::parse($state) >= now()->subDays(3) => 'success',
+                        Carbon::parse($state) >= now()->subDays(7) => 'warning',
                         default => 'gray',
                     }),
                 TextColumn::make('children_count')
@@ -153,12 +171,6 @@ class CategoryResource extends Resource
                 TextColumn::make('id')
                     ->label('ID')
                     ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('app.name')
-                    ->label('アプリ')
-                    ->sortable()
-                    ->badge()
-                    ->color('info')
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('parent.name')
                     ->label('親カテゴリ')
@@ -186,13 +198,13 @@ class CategoryResource extends Resource
                 EditAction::make()
                     ->modalWidth('4xl')
                     ->modalHeading('カテゴリー情報の編集')
-                    ->modalDescription('カテゴリー名や関連アプリを変更します。')
+                    ->modalDescription('カテゴリー情報を変更します。')
                     ->modalSubmitActionLabel('更新する'),
             ])
             ->bulkActions([
                 BulkActionGroup::make([DeleteBulkAction::make()]),
             ])
-            ->modifyQueryUsing(fn (\Illuminate\Database\Eloquent\Builder $query) => $query->whereNull('parent_id')->withMax('articles', 'created_at'))
+            ->modifyQueryUsing(fn (Builder $query) => $query->whereNull('parent_id')->withMax('articles', 'created_at'))
             ->reorderable('sort_order')
             ->defaultSort('created_at', 'desc')
             ->paginated(false);
