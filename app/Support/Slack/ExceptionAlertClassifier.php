@@ -20,10 +20,6 @@ class ExceptionAlertClassifier
             return true;
         }
 
-        if ($this->isGeminiRateLimitError($exception)) {
-            return true;
-        }
-
         return $this->isExternalApiTimeoutError($exception);
     }
 
@@ -48,33 +44,6 @@ class ExceptionAlertClassifier
         }
 
         return $this->containsAny($message, $databaseMarkers);
-    }
-
-    private function isGeminiRateLimitError(Throwable $exception): bool
-    {
-        $message = $this->normalizedMessage($exception);
-
-        $rateLimitMarkers = [
-            ' 429',
-            'http 429',
-            'status code 429',
-            'too many requests',
-            'rate limit',
-            'resource_exhausted',
-            'quota exceeded',
-            'quota',
-        ];
-
-        $providerMarkers = [
-            'gemini',
-            'google',
-            'googleapis',
-            'generativelanguage',
-            'laravel\\ai',
-        ];
-
-        return $this->containsAny($message, $rateLimitMarkers)
-            && $this->containsAny($message, $providerMarkers);
     }
 
     private function isExternalApiTimeoutError(Throwable $exception): bool
@@ -109,10 +78,11 @@ class ExceptionAlertClassifier
             '11434',
             'localhost:11434',
             'host.docker.internal',
+            'ollama.unicorn.tokyo',
             '/api/generate',
         ];
 
-        $ollamaUrl = (string) config('services.ollama.url', '');
+        $ollamaUrl = (string) config('ai.providers.ollama.url', '');
 
         if ($ollamaUrl !== '') {
             $markers[] = mb_strtolower($ollamaUrl);

@@ -232,14 +232,14 @@ class PublicFeedApiTest extends TestCase
         $response->assertTooManyRequests();
     }
 
-    public function test_ai_configuration_supports_only_gemini_and_ollama(): void
+    public function test_ai_configuration_supports_only_ollama(): void
     {
-        $this->assertSame(['gemini', 'ollama'], array_keys(config('ai.providers')));
-        $this->assertSame('gemini', config('ai.default'));
-        $this->assertSame('gemini', config('ai.default_for_audio'));
-        $this->assertSame('gemini', config('ai.default_for_transcription'));
-        $this->assertSame('gemini', config('ai.default_for_embeddings'));
-        $this->assertSame('gemini', config('ai.default_for_reranking'));
+        $this->assertSame(['ollama'], array_keys(config('ai.providers')));
+        $this->assertSame('ollama', config('ai.default'));
+        $this->assertSame('ollama', config('ai.default_for_audio'));
+        $this->assertSame('ollama', config('ai.default_for_transcription'));
+        $this->assertSame('ollama', config('ai.default_for_embeddings'));
+        $this->assertSame('ollama', config('ai.default_for_reranking'));
 
     }
 }

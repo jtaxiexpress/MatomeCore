@@ -48,7 +48,7 @@ class CrawlSiteCommand extends Command
         if (! empty($this->batchArticles)) {
             $chunks = array_chunk($this->batchArticles, 10);
             foreach ($chunks as $chunk) {
-                ProcessArticleBatchJob::dispatch($site->id, $chunk, 'gemini', 'rss');
+                ProcessArticleBatchJob::dispatch($site->id, $chunk, 'rss');
             }
             $this->info('Dispatched '.count($chunks).' batch jobs.');
             Log::info('CrawlSiteCommand: Dispatched '.count($chunks)." batch jobs for Site ID: {$site->id}.");

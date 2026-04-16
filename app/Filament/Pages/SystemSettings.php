@@ -6,7 +6,6 @@ use App\Jobs\CheckDeadLinksJob;
 use App\Models\Article;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
-use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -18,7 +17,6 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
 
 class SystemSettings extends Page implements HasForms
 {
@@ -124,11 +122,10 @@ class SystemSettings extends Page implements HasForms
     {
         $this->form->fill([
             'is_bulk_paused' => Cache::get('is_bulk_paused', false),
-            'ollama_model' => Cache::get('ollama_model', 'qwen3.5:9b'),
-            'gemini_model' => Cache::get('gemini_model', 'gemini-1.5-flash-lite'),
+            'ollama_model' => Cache::get('ollama_model', (string) config('ai.providers.ollama.model', 'gemma4:e2b')),
             'ai_base_prompt' => Cache::get('ai_base_prompt', self::getDefaultPromptTemplate()),
-            'ollama_num_predict' => Cache::get('ollama_num_predict', 3000),
-            'ollama_num_ctx' => Cache::get('ollama_num_ctx', 8192),
+            'ollama_num_predict' => Cache::get('ollama_num_predict', (int) config('ai.providers.ollama.options.num_predict', 3000)),
+            'ollama_num_ctx' => Cache::get('ollama_num_ctx', (int) config('ai.providers.ollama.options.num_ctx', 8192)),
         ]);
     }
 
@@ -146,53 +143,17 @@ class SystemSettings extends Page implements HasForms
                     ->schema([
                         TextInput::make('ollama_model')
                             ->label('Ollamaモデル名')
-                            ->default('qwen3.5:9b')
+                            ->default((string) config('ai.providers.ollama.model', 'gemma4:e2b'))
                             ->helperText('ローカルOllama環境のモデル名。')
                             ->required(),
                         TextInput::make('ollama_num_predict')
                             ->label('Ollama 出力トークン上限 (num_predict)')
                             ->numeric()
-                            ->default(3000),
+                            ->default((int) config('ai.providers.ollama.options.num_predict', 3000)),
                         TextInput::make('ollama_num_ctx')
                             ->label('Ollama コンテキスト長 (num_ctx)')
                             ->numeric()
-                            ->default(8192),
-                        Select::make('gemini_model')
-                            ->label('Geminiモデル名（デフォルト）')
-                            ->helperText('Google Gemini APIのモデル名。アプリ個別設定がない場合はこちらが使用されます。')
-                            ->searchable()
-                            ->required()
-                            ->options(function (): array {
-                                return Cache::remember('gemini_model_list', 86400, function (): array {
-                                    $apiKey = config('ai.providers.gemini.key', '');
-                                    if (empty($apiKey)) {
-                                        return [];
-                                    }
-
-                                    try {
-                                        $response = Http::timeout(10)
-                                            ->get("https://generativelanguage.googleapis.com/v1beta/models?key={$apiKey}");
-
-                                        if (! $response->successful()) {
-                                            return [];
-                                        }
-
-                                        return collect($response->json('models', []))
-                                            ->filter(fn ($m) => str_contains($m['name'] ?? '', 'gemini'))
-                                            ->filter(fn ($m) => in_array('generateContent', $m['supportedGenerationMethods'] ?? []))
-                                            ->mapWithKeys(function ($m) {
-                                                $name = str_replace('models/', '', $m['name']);
-                                                $label = $m['displayName'] ?? $name;
-
-                                                return [$name => $label];
-                                            })
-                                            ->sortKeys()
-                                            ->toArray();
-                                    } catch (\Exception $e) {
-                                        return [];
-                                    }
-                                });
-                            }),
+                            ->default((int) config('ai.providers.ollama.options.num_ctx', 8192)),
                     ])->columns(2),
                 Section::make('AIプロンプト設定')
                     ->schema([
@@ -216,11 +177,10 @@ class SystemSettings extends Page implements HasForms
     {
         $state = $this->form->getState();
         Cache::put('is_bulk_paused', $state['is_bulk_paused'] ?? false);
-        Cache::put('ollama_model', $state['ollama_model'] ?? 'qwen3.5:9b');
-        Cache::put('gemini_model', $state['gemini_model'] ?? 'gemini-1.5-flash-lite');
+        Cache::put('ollama_model', $state['ollama_model'] ?? (string) config('ai.providers.ollama.model', 'gemma4:e2b'));
         Cache::put('ai_base_prompt', $state['ai_base_prompt'] ?? self::getDefaultPromptTemplate());
-        Cache::put('ollama_num_predict', $state['ollama_num_predict'] ?? 3000);
-        Cache::put('ollama_num_ctx', $state['ollama_num_ctx'] ?? 8192);
+        Cache::put('ollama_num_predict', $state['ollama_num_predict'] ?? (int) config('ai.providers.ollama.options.num_predict', 3000));
+        Cache::put('ollama_num_ctx', $state['ollama_num_ctx'] ?? (int) config('ai.providers.ollama.options.num_ctx', 8192));
 
         Notification::make()
             ->title('設定を保存しました')

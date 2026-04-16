@@ -41,7 +41,6 @@ class ProcessArticleBatchJob implements ShouldQueue
     public function __construct(
         public readonly int $siteId,
         public readonly array $articles,
-        public readonly string $aiDriver = 'gemini',
         public readonly ?string $fetchSource = null,
     ) {}
 
@@ -79,8 +78,6 @@ class ProcessArticleBatchJob implements ShouldQueue
             return;
         }
 
-        $aiDriver = $this->aiDriver ?: ($site->app->ai_driver ?? config('ai.default', 'gemini'));
-
         try {
             // ① メタデータ解決と前処理
             $validArticles = $this->resolveValidArticles($scraper, $cleanTitleAction, $site);
@@ -91,10 +88,10 @@ class ProcessArticleBatchJob implements ShouldQueue
                 return;
             }
 
-            Log::info("[ProcessArticleBatchJob] Site ID {$this->siteId}: {$aiDriver}に".count($validArticles).'件の記事をバッチ送信します。');
+            Log::info("[ProcessArticleBatchJob] Site ID {$this->siteId}: Ollamaに".count($validArticles).'件の記事をバッチ送信します。');
 
             // ② AIバッチ推論
-            $aiResults = $aiService->classifyAndRewriteBatch($validArticles, $categories, $aiDriver, $site->app);
+            $aiResults = $aiService->classifyAndRewriteBatch($validArticles, $categories, $site->app);
 
             // ③ 結果の保存と漏れ検出
             $this->persistResults($validArticles, $aiResults, $site);

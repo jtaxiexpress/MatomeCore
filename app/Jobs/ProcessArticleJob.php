@@ -37,7 +37,6 @@ class ProcessArticleJob implements ShouldQueue
         public readonly int $siteId,
         public readonly string $url,
         public readonly array $metaData = [],
-        public readonly string $aiDriver = 'gemini',
         public readonly ?string $fetchSource = null
     ) {}
 
@@ -157,15 +156,13 @@ class ProcessArticleJob implements ShouldQueue
      */
     private function classifyAndRewriteTitle(ArticleAiService $aiService, string $title): array
     {
-        $aiDriver = $this->aiDriver ?: ($this->site->app->ai_driver ?? config('ai.default', 'gemini'));
-
         $categories = $this->site->app->categories->map(fn ($cat) => [
             'id' => $cat->id,
             'name' => $cat->name,
         ])->toArray();
 
-        Log::info("[Process: {$this->url}] AI({$aiDriver})へタイトルリライトとカテゴリ推論をリクエスト中...");
-        $aiResult = $aiService->classifyAndRewrite($title, $categories, $aiDriver, $this->site->app);
+        Log::info("[Process: {$this->url}] AI(Ollama)へタイトルリライトとカテゴリ推論をリクエスト中...");
+        $aiResult = $aiService->classifyAndRewrite($title, $categories, $this->site->app);
 
         if (empty($aiResult['rewritten_title'])) {
             throw new Exception('AI returned empty rewritten_title');

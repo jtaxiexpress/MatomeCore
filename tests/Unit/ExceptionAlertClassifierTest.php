@@ -22,15 +22,6 @@ class ExceptionAlertClassifierTest extends TestCase
         $this->assertTrue($classifier->shouldNotify($exception));
     }
 
-    public function test_it_detects_gemini_rate_limit_errors(): void
-    {
-        $exception = new RuntimeException('Gemini API returned HTTP 429 Too Many Requests from generativelanguage.googleapis.com');
-
-        $classifier = new ExceptionAlertClassifier;
-
-        $this->assertTrue($classifier->shouldNotify($exception));
-    }
-
     public function test_it_detects_external_api_timeout_errors(): void
     {
         $exception = new RuntimeException('Crawl4AI request failed: cURL error 28: Operation timed out after 60001 milliseconds');
@@ -42,7 +33,7 @@ class ExceptionAlertClassifierTest extends TestCase
 
     public function test_it_excludes_ollama_connection_errors(): void
     {
-        $exception = new RuntimeException('cURL error 7: Failed to connect to host.docker.internal port 11434 after 0 ms: Connection refused');
+        $exception = new RuntimeException('cURL error 7: Failed to connect to ollama.unicorn.tokyo port 11434 after 0 ms: Connection refused');
 
         $classifier = new ExceptionAlertClassifier;
 

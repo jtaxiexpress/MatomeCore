@@ -160,7 +160,7 @@ class FetchSitePastArticlesJob implements ShouldQueue
                 if (! empty($targetUrls)) {
                     $articlesBatch = array_map(fn ($url) => ['url' => $url, 'metaData' => []], $targetUrls);
                     foreach (array_chunk($articlesBatch, 10) as $chunk) {
-                        ProcessArticleBatchJob::dispatch($this->site->id, $chunk, 'ollama', $sourceType);
+                        ProcessArticleBatchJob::dispatch($this->site->id, $chunk, $sourceType);
                     }
                 }
 
@@ -307,7 +307,7 @@ class FetchSitePastArticlesJob implements ShouldQueue
                 if (! empty($collectedHtmlUrls)) {
                     $articlesBatch = array_map(fn ($url) => ['url' => $url, 'metaData' => []], $collectedHtmlUrls);
                     foreach (array_chunk($articlesBatch, 10) as $chunk) {
-                        ProcessArticleBatchJob::dispatch($this->site->id, $chunk, 'ollama', $sourceType);
+                        ProcessArticleBatchJob::dispatch($this->site->id, $chunk, $sourceType);
                     }
                 }
             } // end HTML mode

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Actions\CleanArticleTitleAction;
-use App\Ai\Agents\BatchCategorizeAgent;
 use App\Jobs\ProcessArticleBatchJob;
 use App\Models\App as AppModel;
 use App\Models\Article;
@@ -15,6 +14,7 @@ use App\Services\ArticleAiService;
 use App\Services\ArticleScraperService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
@@ -82,14 +82,16 @@ class ProcessArticleBatchJobTest extends TestCase
         /** @var Site $site */
         $site = Site::factory()->for($appModel)->create();
 
+        Http::preventStrayRequests();
         Log::spy();
-
-        BatchCategorizeAgent::fake([
-            [
-                'results' => [
-                    ['article_id' => 1, 'rewritten_title' => 'AIリライトタイトル', 'category_id' => $category->id],
-                ],
-            ],
+        Http::fake([
+            'https://ollama.unicorn.tokyo:11434/api/generate' => Http::response([
+                'response' => json_encode([
+                    'results' => [
+                        ['article_id' => 1, 'rewritten_title' => 'AIリライトタイトル', 'category_id' => $category->id],
+                    ],
+                ], JSON_UNESCAPED_UNICODE),
+            ]),
         ]);
 
         $job = new ProcessArticleBatchJob(
@@ -151,10 +153,6 @@ class ProcessArticleBatchJobTest extends TestCase
             ->for($category)
             ->create(['url' => 'https://example.com/existing-article']);
 
-        BatchCategorizeAgent::fake([
-            ['results' => []],
-        ]);
-
         $job = new ProcessArticleBatchJob(
             siteId: $site->id,
             articles: [
@@ -173,10 +171,10 @@ class ProcessArticleBatchJobTest extends TestCase
     }
 
     // =========================================================================
-    // AI結果が部分的な場合のテスト
+    // AI結果が部分的な場合のフォールバックテスト
     // =========================================================================
 
-    public function test_job_logs_warning_for_articles_missing_from_ai_response(): void
+    public function test_job_falls_back_for_articles_missing_from_ai_response(): void
     {
         /** @var AppModel $appModel */
         $appModel = AppModel::factory()->create();
@@ -185,13 +183,16 @@ class ProcessArticleBatchJobTest extends TestCase
         /** @var Site $site */
         $site = Site::factory()->for($appModel)->create();
 
-        // AI は article_id=1 のみ返し、2 は漏れる
-        BatchCategorizeAgent::fake([
-            [
-                'results' => [
-                    ['article_id' => 1, 'rewritten_title' => 'タイトル1', 'category_id' => $category->id],
-                ],
-            ],
+        Http::preventStrayRequests();
+        // AI は article_id=1 のみ返し、2 はサービス側フォールバックへ
+        Http::fake([
+            'https://ollama.unicorn.tokyo:11434/api/generate' => Http::response([
+                'response' => json_encode([
+                    'results' => [
+                        ['article_id' => 1, 'rewritten_title' => 'タイトル1', 'category_id' => $category->id],
+                    ],
+                ], JSON_UNESCAPED_UNICODE),
+            ]),
         ]);
 
         Log::spy();
@@ -210,10 +211,14 @@ class ProcessArticleBatchJobTest extends TestCase
             app(CleanArticleTitleAction::class),
         );
 
-        // article_id=1 は保存される
+        // article_id=1 はAI結果で保存される
         $this->assertDatabaseHas('articles', ['url' => 'https://example.com/article-1']);
-        // article_id=2 は保存されない（AI漏れ）
-        $this->assertDatabaseMissing('articles', ['url' => 'https://example.com/article-2']);
+        // article_id=2 はフォールバックで保存される
+        $this->assertDatabaseHas('articles', [
+            'url' => 'https://example.com/article-2',
+            'title' => '元タイトル2元タイトル2',
+            'category_id' => $category->id,
+        ]);
 
         Log::shouldHaveReceived('warning')->atLeast()->once();
     }
