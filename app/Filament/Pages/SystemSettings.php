@@ -6,6 +6,7 @@ use App\Jobs\CheckDeadLinksJob;
 use App\Models\Article;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -17,6 +18,9 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class SystemSettings extends Page implements HasForms
 {
@@ -122,7 +126,7 @@ class SystemSettings extends Page implements HasForms
     {
         $this->form->fill([
             'is_bulk_paused' => Cache::get('is_bulk_paused', false),
-            'ollama_model' => Cache::get('ollama_model', (string) config('ai.providers.ollama.model', 'gemma4:e2b')),
+            'ollama_model' => $this->currentOllamaModel(),
             'ai_base_prompt' => Cache::get('ai_base_prompt', self::getDefaultPromptTemplate()),
             'ollama_num_predict' => Cache::get('ollama_num_predict', (int) config('ai.providers.ollama.options.num_predict', 3000)),
             'ollama_num_ctx' => Cache::get('ollama_num_ctx', (int) config('ai.providers.ollama.options.num_ctx', 8192)),
@@ -141,10 +145,12 @@ class SystemSettings extends Page implements HasForms
                     ]),
                 Section::make('AIモデル設定')
                     ->schema([
-                        TextInput::make('ollama_model')
+                        Select::make('ollama_model')
                             ->label('Ollamaモデル名')
-                            ->default((string) config('ai.providers.ollama.model', 'gemma4:e2b'))
-                            ->helperText('ローカルOllama環境のモデル名。')
+                            ->options(fn (): array => $this->getOllamaModelOptions())
+                            ->searchable()
+                            ->default(fn (): string => $this->currentOllamaModel())
+                            ->helperText('Ollamaサーバーの /api/tags から取得したインストール済みモデル一覧から選択してください。')
                             ->required(),
                         TextInput::make('ollama_num_predict')
                             ->label('Ollama 出力トークン上限 (num_predict)')
@@ -177,7 +183,7 @@ class SystemSettings extends Page implements HasForms
     {
         $state = $this->form->getState();
         Cache::put('is_bulk_paused', $state['is_bulk_paused'] ?? false);
-        Cache::put('ollama_model', $state['ollama_model'] ?? (string) config('ai.providers.ollama.model', 'gemma4:e2b'));
+        Cache::put('ollama_model', $state['ollama_model'] ?? $this->currentOllamaModel());
         Cache::put('ai_base_prompt', $state['ai_base_prompt'] ?? self::getDefaultPromptTemplate());
         Cache::put('ollama_num_predict', $state['ollama_num_predict'] ?? (int) config('ai.providers.ollama.options.num_predict', 3000));
         Cache::put('ollama_num_ctx', $state['ollama_num_ctx'] ?? (int) config('ai.providers.ollama.options.num_ctx', 8192));
@@ -206,5 +212,107 @@ class SystemSettings extends Page implements HasForms
 ※重要指示※
 今回は全部で {count} 件です。出力するJSON配列の要素数は、絶対に {count} 件と完全に一致させなければなりません。1件も省略せず、最後まで出力してください。
 PROMPT;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function getOllamaModelOptions(): array
+    {
+        return Cache::remember('ollama_available_models', 300, function (): array {
+            try {
+                $response = Http::timeout(3)
+                    ->acceptJson()
+                    ->get($this->ollamaTagsUrl());
+
+                if (! $response->successful()) {
+                    Log::warning('[SystemSettings] Ollamaモデル一覧の取得に失敗しました', [
+                        'status' => $response->status(),
+                        'url' => $this->ollamaTagsUrl(),
+                    ]);
+
+                    return $this->fallbackOllamaModelOptions();
+                }
+
+                $models = data_get($response->json(), 'models', []);
+
+                if (! is_array($models)) {
+                    Log::warning('[SystemSettings] Ollamaモデル一覧のJSON構造が不正です', [
+                        'url' => $this->ollamaTagsUrl(),
+                    ]);
+
+                    return $this->fallbackOllamaModelOptions();
+                }
+
+                $options = collect($models)
+                    ->pluck('name')
+                    ->filter(static fn ($name): bool => is_string($name) && $name !== '')
+                    ->unique()
+                    ->mapWithKeys(static fn (string $name): array => [$name => $name])
+                    ->all();
+
+                if ($options === []) {
+                    Log::warning('[SystemSettings] Ollamaモデル一覧が空でした', [
+                        'url' => $this->ollamaTagsUrl(),
+                    ]);
+
+                    return $this->fallbackOllamaModelOptions();
+                }
+
+                return $this->ensureCurrentModelExists($options);
+            } catch (Throwable $e) {
+                Log::warning('[SystemSettings] Ollamaモデル一覧の取得で例外が発生しました', [
+                    'message' => $e->getMessage(),
+                    'url' => $this->ollamaTagsUrl(),
+                ]);
+
+                return $this->fallbackOllamaModelOptions();
+            }
+        });
+    }
+
+    /**
+     * @param  array<string, string>  $options
+     * @return array<string, string>
+     */
+    private function ensureCurrentModelExists(array $options): array
+    {
+        $currentModel = $this->currentOllamaModel();
+
+        if ($currentModel !== '' && ! array_key_exists($currentModel, $options)) {
+            $options = [$currentModel => $currentModel] + $options;
+        }
+
+        return $options;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function fallbackOllamaModelOptions(): array
+    {
+        $currentModel = $this->currentOllamaModel();
+
+        return [$currentModel => $currentModel.' (取得失敗)'];
+    }
+
+    private function currentOllamaModel(): string
+    {
+        return (string) Cache::get('ollama_model', (string) config('ai.providers.ollama.model', 'gemma4:e2b'));
+    }
+
+    private function ollamaTagsUrl(): string
+    {
+        $baseUrl = rtrim((string) config('services.ollama.url', 'https://ollama.unicorn.tokyo'), '/');
+
+        if (str_ends_with($baseUrl, '/api/tags')) {
+            return $baseUrl;
+        }
+
+        if (str_ends_with($baseUrl, '/api')) {
+            return $baseUrl.'/tags';
+        }
+
+        return $baseUrl.'/api/tags';
     }
 }

@@ -288,17 +288,17 @@ class ArticleAiService
 
     private function ollamaGenerateUrl(): string
     {
-        $configuredBaseUrl = rtrim((string) config('ai.providers.ollama.url', 'https://ollama.unicorn.tokyo:11434'), '/');
+        $base = rtrim((string) config('ai.providers.ollama.url', 'https://ollama.unicorn.tokyo'), '/');
 
-        if (str_ends_with($configuredBaseUrl, '/api/generate')) {
-            return $configuredBaseUrl;
+        if (str_ends_with($base, '/api/generate')) {
+            return $base;
         }
 
-        if (str_ends_with($configuredBaseUrl, '/api')) {
-            return $configuredBaseUrl.'/generate';
+        if (str_ends_with($base, '/api')) {
+            return $base.'/generate';
         }
 
-        return $configuredBaseUrl.'/api/generate';
+        return $base.'/api/generate';
     }
 
     private function ollamaModel(): string

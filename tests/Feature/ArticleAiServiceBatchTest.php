@@ -25,14 +25,18 @@ class ArticleAiServiceBatchTest extends TestCase
     public function test_classify_and_rewrite_returns_structured_result_with_ollama_json_format(): void
     {
         Http::preventStrayRequests();
-        Http::fake([
-            'https://ollama.unicorn.tokyo:11434/api/generate' => Http::response([
-                'response' => json_encode([
-                    'category_id' => 10,
-                    'rewritten_title' => '完成タイトル',
-                ], JSON_UNESCAPED_UNICODE),
-            ]),
-        ]);
+        Http::fake(function ($request) {
+            if (str_ends_with($request->url(), '/api/generate')) {
+                return Http::response([
+                    'response' => json_encode([
+                        'category_id' => 10,
+                        'rewritten_title' => '完成タイトル',
+                    ], JSON_UNESCAPED_UNICODE),
+                ]);
+            }
+
+            return Http::response(null, 404);
+        });
 
         $result = $this->service->classifyAndRewrite(
             originalTitle: '元タイトル',
@@ -48,7 +52,7 @@ class ArticleAiServiceBatchTest extends TestCase
         Http::assertSent(function ($request): bool {
             $data = $request->data();
 
-            return $request->url() === 'https://ollama.unicorn.tokyo:11434/api/generate'
+            return str_ends_with($request->url(), '/api/generate')
                 && $data['stream'] === false
                 && $data['format'] === 'json'
                 && $data['model'] === 'gemma4:e2b';
@@ -58,11 +62,15 @@ class ArticleAiServiceBatchTest extends TestCase
     public function test_classify_and_rewrite_falls_back_when_json_is_invalid(): void
     {
         Http::preventStrayRequests();
-        Http::fake([
-            'https://ollama.unicorn.tokyo:11434/api/generate' => Http::response([
-                'response' => '{invalid-json}',
-            ]),
-        ]);
+        Http::fake(function ($request) {
+            if (str_ends_with($request->url(), '/api/generate')) {
+                return Http::response([
+                    'response' => '{invalid-json}',
+                ]);
+            }
+
+            return Http::response(null, 404);
+        });
 
         $result = $this->service->classifyAndRewrite(
             originalTitle: '元タイトル',
@@ -99,19 +107,23 @@ class ArticleAiServiceBatchTest extends TestCase
     public function test_classify_and_rewrite_batch_uses_json_schema_and_fills_missing_items_by_fallback(): void
     {
         Http::preventStrayRequests();
-        Http::fake([
-            'https://ollama.unicorn.tokyo:11434/api/generate' => Http::response([
-                'response' => json_encode([
-                    'results' => [
-                        [
-                            'article_id' => 1,
-                            'rewritten_title' => '完成タイトル',
-                            'category_id' => 10,
+        Http::fake(function ($request) {
+            if (str_ends_with($request->url(), '/api/generate')) {
+                return Http::response([
+                    'response' => json_encode([
+                        'results' => [
+                            [
+                                'article_id' => 1,
+                                'rewritten_title' => '完成タイトル',
+                                'category_id' => 10,
+                            ],
                         ],
-                    ],
-                ], JSON_UNESCAPED_UNICODE),
-            ]),
-        ]);
+                    ], JSON_UNESCAPED_UNICODE),
+                ]);
+            }
+
+            return Http::response(null, 404);
+        });
 
         $result = $this->service->classifyAndRewriteBatch(
             articles: [
@@ -132,7 +144,7 @@ class ArticleAiServiceBatchTest extends TestCase
         Http::assertSent(function ($request): bool {
             $data = $request->data();
 
-            return $request->url() === 'https://ollama.unicorn.tokyo:11434/api/generate'
+            return str_ends_with($request->url(), '/api/generate')
                 && $data['stream'] === false
                 && is_array($data['format'])
                 && ($data['format']['type'] ?? null) === 'object'
@@ -143,9 +155,13 @@ class ArticleAiServiceBatchTest extends TestCase
     public function test_classify_and_rewrite_batch_returns_full_fallback_on_connection_error(): void
     {
         Http::preventStrayRequests();
-        Http::fake([
-            'https://ollama.unicorn.tokyo:11434/api/generate' => Http::failedConnection(),
-        ]);
+        Http::fake(function ($request) {
+            if (str_ends_with($request->url(), '/api/generate')) {
+                return Http::failedConnection();
+            }
+
+            return Http::response(null, 404);
+        });
 
         $result = $this->service->classifyAndRewriteBatch(
             articles: [

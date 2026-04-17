@@ -84,15 +84,19 @@ class ProcessArticleBatchJobTest extends TestCase
 
         Http::preventStrayRequests();
         Log::spy();
-        Http::fake([
-            'https://ollama.unicorn.tokyo:11434/api/generate' => Http::response([
-                'response' => json_encode([
-                    'results' => [
-                        ['article_id' => 1, 'rewritten_title' => 'AIリライトタイトル', 'category_id' => $category->id],
-                    ],
-                ], JSON_UNESCAPED_UNICODE),
-            ]),
-        ]);
+        Http::fake(function ($request) use ($category) {
+            if (str_ends_with($request->url(), '/api/generate')) {
+                return Http::response([
+                    'response' => json_encode([
+                        'results' => [
+                            ['article_id' => 1, 'rewritten_title' => 'AIリライトタイトル', 'category_id' => $category->id],
+                        ],
+                    ], JSON_UNESCAPED_UNICODE),
+                ]);
+            }
+
+            return Http::response(null, 404);
+        });
 
         $job = new ProcessArticleBatchJob(
             siteId: $site->id,
@@ -185,15 +189,19 @@ class ProcessArticleBatchJobTest extends TestCase
 
         Http::preventStrayRequests();
         // AI は article_id=1 のみ返し、2 はサービス側フォールバックへ
-        Http::fake([
-            'https://ollama.unicorn.tokyo:11434/api/generate' => Http::response([
-                'response' => json_encode([
-                    'results' => [
-                        ['article_id' => 1, 'rewritten_title' => 'タイトル1', 'category_id' => $category->id],
-                    ],
-                ], JSON_UNESCAPED_UNICODE),
-            ]),
-        ]);
+        Http::fake(function ($request) use ($category) {
+            if (str_ends_with($request->url(), '/api/generate')) {
+                return Http::response([
+                    'response' => json_encode([
+                        'results' => [
+                            ['article_id' => 1, 'rewritten_title' => 'タイトル1', 'category_id' => $category->id],
+                        ],
+                    ], JSON_UNESCAPED_UNICODE),
+                ]);
+            }
+
+            return Http::response(null, 404);
+        });
 
         Log::spy();
 

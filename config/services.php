@@ -37,4 +37,8 @@ return [
         ],
     ],
 
+    'ollama' => [
+        'url' => env('OLLAMA_BASE_URL', 'https://ollama.unicorn.tokyo'),
+    ],
+
 ];

@@ -52,7 +52,7 @@ return [
     'providers' => [
         'ollama' => [
             'driver' => 'ollama',
-            'url' => env('OLLAMA_BASE_URL', 'https://ollama.unicorn.tokyo:11434'),
+            'url' => env('OLLAMA_BASE_URL', 'https://ollama.unicorn.tokyo'),
             'model' => env('OLLAMA_MODEL', 'gemma4:e2b'),
             'stream' => false,
             'options' => [

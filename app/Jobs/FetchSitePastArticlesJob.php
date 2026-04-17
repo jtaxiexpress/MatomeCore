@@ -149,7 +149,7 @@ class FetchSitePastArticlesJob implements ShouldQueue
                 }
 
                 // DB重複チェック
-                $existingUrls = Article::whereIn('url', $extractedUrls)->pluck('url')->toArray();
+                $existingUrls = $this->pluckExistingUrlsChunked($extractedUrls);
                 $newUrls = array_values(array_filter($extractedUrls, fn ($u) => ! in_array($u, $existingUrls)));
 
                 Log::info("[Fetch: {$this->site->name}] 新規URL: ".count($newUrls).'件 / 重複スキップ: '.(count($extractedUrls) - count($newUrls)).'件');
@@ -277,7 +277,7 @@ class FetchSitePastArticlesJob implements ShouldQueue
                     }
 
                     // 4. DB重複チェック（純粋な新規URLのみ抽出）
-                    $existingUrls = Article::whereIn('url', $cleanedPageUrls)->pluck('url')->toArray();
+                    $existingUrls = $this->pluckExistingUrlsChunked($cleanedPageUrls);
                     $newUrls = array_values(array_filter($cleanedPageUrls, fn ($u) => ! in_array($u, $existingUrls)));
                     $skippedCount = count($cleanedPageUrls) - count($newUrls);
 
@@ -394,6 +394,24 @@ class FetchSitePastArticlesJob implements ShouldQueue
         }
 
         return $urls;
+    }
+
+    /**
+     * @param  string[]  $urls
+     * @return string[]
+     */
+    private function pluckExistingUrlsChunked(array $urls): array
+    {
+        $existingUrls = [];
+
+        foreach (array_chunk($urls, 1000) as $chunkedUrls) {
+            $existingUrls = array_merge(
+                $existingUrls,
+                Article::whereIn('url', $chunkedUrls)->pluck('url')->toArray()
+            );
+        }
+
+        return array_values(array_unique($existingUrls));
     }
 
     private function shareLogContext(): void

@@ -5,7 +5,9 @@ namespace App\Filament\Resources;
 use App\Actions\CategorizeArticleAction;
 use App\Filament\Resources\ArticleResource\Pages;
 use App\Models\Article;
+use App\Models\Category;
 use Filament\Actions\Action;
+use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -21,6 +23,7 @@ use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Storage;
 
 class ArticleResource extends Resource
@@ -58,18 +61,7 @@ class ArticleResource extends Resource
                             ->relationship(
                                 name: 'category',
                                 titleAttribute: 'name',
-                                modifyQueryUsing: function (Builder $query): Builder {
-                                    $tenant = Filament::getTenant();
-
-                                    if (! $tenant) {
-                                        return $query->whereRaw('1 = 0');
-                                    }
-
-                                    return $query
-                                        ->whereBelongsTo($tenant, 'app')
-                                        ->orderBy('sort_order')
-                                        ->orderBy('name');
-                                },
+                                modifyQueryUsing: fn (Builder $query): Builder => self::scopeCategoryQueryToTenant($query),
                             )
                             ->searchable()
                             ->preload(),
@@ -181,9 +173,69 @@ class ArticleResource extends Resource
                     ->modalSubmitActionLabel('更新する'),
             ])
             ->bulkActions([
-                BulkActionGroup::make([DeleteBulkAction::make()]),
+                BulkActionGroup::make([
+                    BulkAction::make('changeCategory')
+                        ->label('カテゴリを一括変更')
+                        ->icon('heroicon-o-arrows-right-left')
+                        ->requiresConfirmation()
+                        ->modalWidth('4xl')
+                        ->modalHeading('選択した記事のカテゴリを変更')
+                        ->modalDescription('選択した記事をまとめて別のカテゴリへ移動します。')
+                        ->form([
+                            Select::make('new_category_id')
+                                ->label('移動先カテゴリ')
+                                ->options(fn (): array => self::getTenantCategoryOptions())
+                                ->searchable()
+                                ->required(),
+                        ])
+                        ->action(function (Collection $records, array $data): void {
+                            $records->toQuery()->update([
+                                'category_id' => (int) $data['new_category_id'],
+                            ]);
+
+                            Notification::make()
+                                ->title($records->count().'件の記事のカテゴリを変更しました')
+                                ->success()
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                    DeleteBulkAction::make(),
+                ]),
             ])
             ->defaultSort('published_at', 'desc');
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function getTenantCategoryOptions(): array
+    {
+        $tenant = Filament::getTenant();
+
+        if (! $tenant) {
+            return [];
+        }
+
+        return Category::query()
+            ->whereBelongsTo($tenant, 'app')
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->pluck('name', 'id')
+            ->toArray();
+    }
+
+    private static function scopeCategoryQueryToTenant(Builder $query): Builder
+    {
+        $tenant = Filament::getTenant();
+
+        if (! $tenant) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query
+            ->whereBelongsTo($tenant, 'app')
+            ->orderBy('sort_order')
+            ->orderBy('name');
     }
 
     public static function getPages(): array
