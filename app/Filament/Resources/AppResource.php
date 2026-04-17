@@ -17,7 +17,6 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\TimePicker;
 use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
-use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\ColorColumn;
@@ -41,18 +40,11 @@ class AppResource extends Resource
     {
         return $form
             ->schema([
-                Grid::make([
-                    'default' => 1,
-                    'xl' => 3,
-                ])
-                    ->extraAttributes(['class' => 'gap-6'])
-                    ->schema([
-                        self::getGeneralDetailsSection()->columnSpan(['xl' => 2]),
-                        self::getStatusSection()->columnSpan(['xl' => 1]),
-                        self::getAppearanceSection()->columnSpan(['xl' => 2]),
-                        self::getScheduleSection()->columnSpan(['xl' => 2]),
-                        self::getAiSettingsSection()->columnSpan(['xl' => 2]),
-                    ]),
+                self::getGeneralDetailsSection(),
+                self::getAppearanceSection(),
+                self::getStatusSection(),
+                self::getScheduleSection(),
+                self::getAiSettingsSection(),
             ]);
     }
 
@@ -128,8 +120,7 @@ class AppResource extends Resource
     private static function getStatusSection(): Section
     {
         return Section::make('公開設定')
-            ->description('頻繁には触れないため、サイドエリアに配置しています。')
-            ->aside()
+            ->description('公開/停止の切り替えをここで行います。')
             ->secondary()
             ->compact()
             ->schema([
