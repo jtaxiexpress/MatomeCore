@@ -9,6 +9,7 @@ use App\Models\Article;
 use App\Models\Category;
 use App\Models\Site;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class PublicFeedApiTest extends TestCase
@@ -25,6 +26,8 @@ class PublicFeedApiTest extends TestCase
         $activeApp = AppModel::factory()->create([
             'name' => 'Main App',
             'api_slug' => 'main-app',
+            'icon_path' => 'app-icons/main-app-icon.svg',
+            'theme_color' => '#2563EB',
             'is_active' => true,
         ]);
 
@@ -40,6 +43,8 @@ class PublicFeedApiTest extends TestCase
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.slug', 'main-app')
             ->assertJsonPath('data.0.name', 'Main App')
+            ->assertJsonPath('data.0.theme_color', '#2563EB')
+            ->assertJsonPath('data.0.icon_url', Storage::disk('public')->url('app-icons/main-app-icon.svg'))
             ->assertJsonPath(
                 'data.0.links.categories',
                 url('/api/v1/apps/'.$activeApp->api_slug.'/categories')

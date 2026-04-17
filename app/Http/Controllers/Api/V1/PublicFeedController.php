@@ -18,7 +18,7 @@ class PublicFeedController extends Controller
     public function apps(): AnonymousResourceCollection
     {
         $apps = App::query()
-            ->select(['id', 'name', 'api_slug', 'theme_color', 'is_active'])
+            ->select(['id', 'name', 'api_slug', 'icon_path', 'theme_color', 'is_active'])
             ->where('is_active', true)
             ->orderBy('id')
             ->get();

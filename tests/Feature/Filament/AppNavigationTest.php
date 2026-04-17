@@ -51,6 +51,7 @@ class AppNavigationTest extends TestCase
             ->getTable();
 
         $this->assertSame([
+            'icon_path',
             'name',
             'api_slug',
             'sites_count',
