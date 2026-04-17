@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Filament\Pages;
 
+use App\Filament\Resources\Concerns\AuthorizesAdminScreenPage;
+use App\Support\AdminScreen;
 use App\Support\Slack\ExceptionAlertClassifier;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Concerns\InteractsWithForms;
@@ -16,13 +18,14 @@ use Illuminate\Support\Facades\Cache;
 
 class ExceptionAlerts extends Page implements HasForms
 {
+    use AuthorizesAdminScreenPage;
     use InteractsWithForms;
 
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-bell-alert';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'システム設定';
+    protected static string|\UnitEnum|null $navigationGroup = '監視';
 
-    protected static ?int $navigationSort = 5;
+    protected static ?int $navigationSort = 3;
 
     protected static ?string $navigationLabel = '通知ルール管理';
 
@@ -31,6 +34,11 @@ class ExceptionAlerts extends Page implements HasForms
     protected string $view = 'filament.pages.exception-alerts';
 
     public ?array $data = [];
+
+    protected static function adminScreen(): ?AdminScreen
+    {
+        return AdminScreen::NotificationRuleManagement;
+    }
 
     public function mount(): void
     {

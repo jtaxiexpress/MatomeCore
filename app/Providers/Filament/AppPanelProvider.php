@@ -11,6 +11,7 @@ use App\Filament\Widgets\SystemStatsOverview;
 use App\Http\Middleware\ShareTenantLogContext;
 use App\Livewire\Filament\ScopedDatabaseNotifications;
 use App\Models\App;
+use App\Support\AdminScreen;
 use Filament\Actions\Action;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
@@ -80,12 +81,14 @@ class AppPanelProvider extends PanelProvider
                 NavigationItem::make('ログビューア')
                     ->url(fn (): string => route('log-viewer.index'))
                     ->icon('heroicon-o-document-text')
-                    ->group('コンテンツ管理')
-                    ->sort(4)
-                    ->openUrlInNewTab(),
+                    ->group('監視')
+                    ->sort(1)
+                    ->openUrlInNewTab()
+                    ->visible(fn (): bool => auth()->user()?->canAccessAdminScreen(AdminScreen::LogViewer) ?? false),
             ])
             ->navigationGroups([
                 'コンテンツ管理',
+                '監視',
             ])
             ->middleware([
                 EncryptCookies::class,

@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace Tests\Feature\Filament;
 
 use App\Filament\Pages\ExceptionAlerts;
+use App\Filament\Pages\SystemSettings;
+use App\Filament\Resources\AppResource;
 use App\Filament\Resources\ArticleResource;
 use App\Filament\Resources\CategoryResource;
 use App\Filament\Resources\QueueMonitorResource;
 use App\Filament\Resources\SiteResource;
+use App\Filament\Resources\Users\UserResource;
 use App\Filament\Widgets\ArticleTrendChart;
 use App\Filament\Widgets\InactiveSitesTable;
 use App\Filament\Widgets\SystemStatsOverview;
@@ -17,6 +20,7 @@ use App\Models\App as AppModel;
 use App\Models\User;
 use App\Providers\Filament\AdminPanelProvider;
 use App\Providers\Filament\AppPanelProvider;
+use App\Support\AdminScreen;
 use Filament\Navigation\MenuItem;
 use Filament\Navigation\NavigationItem;
 use Filament\Panel;
@@ -115,6 +119,15 @@ class PanelNavigationLinksTest extends TestCase
 
     public function test_app_panel_has_log_viewer_navigation_item(): void
     {
+        $app = AppModel::factory()->create();
+        $admin = User::factory()->create([
+            'is_admin' => true,
+            'admin_screen_permissions' => [AdminScreen::LogViewer->value],
+        ]);
+        $admin->apps()->attach($app);
+
+        $this->actingAs($admin);
+
         $panel = (new AppPanelProvider($this->app))->panel(Panel::make());
         $navigationItems = $panel->getNavigationItems();
 
@@ -122,26 +135,86 @@ class PanelNavigationLinksTest extends TestCase
         $this->assertInstanceOf(NavigationItem::class, $navigationItems[0]);
         $this->assertSame('ログビューア', $navigationItems[0]->getLabel());
         $this->assertSame(route('log-viewer.index'), $navigationItems[0]->getUrl());
-        $this->assertSame('コンテンツ管理', $navigationItems[0]->getGroup());
+        $this->assertSame('監視', $navigationItems[0]->getGroup());
+        $this->assertTrue($navigationItems[0]->isVisible());
         $this->assertTrue($navigationItems[0]->shouldOpenUrlInNewTab());
     }
 
-    public function test_app_panel_navigation_labels_match_requested_content_ia(): void
+    public function test_app_panel_hides_log_viewer_navigation_item_for_users_without_permission(): void
     {
+        $app = AppModel::factory()->create();
+        $user = User::factory()->create(['is_admin' => false]);
+        $user->apps()->attach($app);
+
+        $this->actingAs($user);
+
+        $panel = (new AppPanelProvider($this->app))->panel(Panel::make());
+        $navigationItem = collect($panel->getNavigationItems())
+            ->first(fn (NavigationItem $item): bool => $item->getLabel() === 'ログビューア');
+
+        $this->assertInstanceOf(NavigationItem::class, $navigationItem);
+        $this->assertFalse($navigationItem->isVisible());
+    }
+
+    public function test_admin_panel_navigation_matches_requested_content_ia(): void
+    {
+        $panel = (new AdminPanelProvider($this->app))->panel(Panel::make());
+
+        $this->assertSame(['プラットフォーム管理', 'システム設定', '監視'], array_values($panel->getNavigationGroups()));
+        $this->assertSame('アプリ管理', AppResource::getNavigationLabel());
+        $this->assertSame(1, AppResource::getNavigationSort());
+        $this->assertSame('ユーザー管理', UserResource::getNavigationLabel());
+        $this->assertSame(2, UserResource::getNavigationSort());
+        $this->assertSame('システム設定', SystemSettings::getNavigationLabel());
+        $this->assertSame(1, SystemSettings::getNavigationSort());
         $this->assertSame('サイト管理', SiteResource::getNavigationLabel());
         $this->assertSame(1, SiteResource::getNavigationSort());
         $this->assertSame('カテゴリー管理', CategoryResource::getNavigationLabel());
         $this->assertSame(2, CategoryResource::getNavigationSort());
         $this->assertSame('記事管理', ArticleResource::getNavigationLabel());
         $this->assertSame(3, ArticleResource::getNavigationSort());
+        $this->assertSame('ジョブ管理', QueueMonitorResource::getNavigationLabel());
+        $this->assertSame('監視', QueueMonitorResource::getNavigationGroup());
+        $this->assertSame(2, QueueMonitorResource::getNavigationSort());
+        $this->assertSame('通知ルール管理', ExceptionAlerts::getNavigationLabel());
+        $this->assertSame('監視', ExceptionAlerts::getNavigationGroup());
+        $this->assertSame(3, ExceptionAlerts::getNavigationSort());
     }
 
-    public function test_admin_panel_places_jobs_above_notification_rules(): void
+    public function test_admin_panel_hides_log_viewer_navigation_item_when_not_permitted(): void
     {
-        $this->assertSame('通知ルール管理', ExceptionAlerts::getNavigationLabel());
-        $this->assertSame('システム設定', ExceptionAlerts::getNavigationGroup());
-        $this->assertSame(5, ExceptionAlerts::getNavigationSort());
-        $this->assertSame('Jobs', QueueMonitorResource::getNavigationLabel());
+        $admin = User::factory()->create([
+            'is_admin' => true,
+            'admin_screen_permissions' => [AdminScreen::AppManagement->value],
+        ]);
+
+        $this->actingAs($admin);
+
+        $panel = (new AdminPanelProvider($this->app))->panel(Panel::make());
+        $navigationItem = collect($panel->getNavigationItems())
+            ->first(fn (NavigationItem $item): bool => $item->getLabel() === 'ログビューア');
+
+        $this->assertInstanceOf(NavigationItem::class, $navigationItem);
+        $this->assertFalse($navigationItem->isVisible());
+    }
+
+    public function test_admin_panel_shows_log_viewer_navigation_item_when_permitted(): void
+    {
+        $admin = User::factory()->create([
+            'is_admin' => true,
+            'admin_screen_permissions' => [AdminScreen::LogViewer->value],
+        ]);
+
+        $this->actingAs($admin);
+
+        $panel = (new AdminPanelProvider($this->app))->panel(Panel::make());
+        $navigationItem = collect($panel->getNavigationItems())
+            ->first(fn (NavigationItem $item): bool => $item->getLabel() === 'ログビューア');
+
+        $this->assertInstanceOf(NavigationItem::class, $navigationItem);
+        $this->assertTrue($navigationItem->isVisible());
+        $this->assertSame('監視', $navigationItem->getGroup());
+        $this->assertSame(1, $navigationItem->getSort());
         $this->assertLessThan(
             ExceptionAlerts::getNavigationSort(),
             QueueMonitorResource::getNavigationSort(),

@@ -4,8 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Filament;
 
+use App\Filament\Pages\ExceptionAlerts;
+use App\Filament\Pages\SystemSettings;
+use App\Filament\Resources\AppResource;
+use App\Filament\Resources\QueueMonitorResource;
+use App\Filament\Resources\Users\UserResource;
 use App\Models\App as AppModel;
 use App\Models\User;
+use App\Support\AdminScreen;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -72,6 +78,48 @@ class PanelAccessTest extends TestCase
 
         $this->actingAs($admin)
             ->get('/app/'.$app->api_slug)
+            ->assertOk();
+    }
+
+    public function test_admin_user_with_limited_screen_permissions_can_access_only_selected_admin_screens(): void
+    {
+        $admin = User::factory()->create([
+            'is_admin' => true,
+            'admin_screen_permissions' => [AdminScreen::AppManagement->value],
+        ]);
+
+        $this->actingAs($admin)
+            ->get('/admin')
+            ->assertOk();
+
+        $this->actingAs($admin)
+            ->get(AppResource::getUrl(panel: 'admin'))
+            ->assertOk();
+
+        $this->actingAs($admin)
+            ->get(UserResource::getUrl(panel: 'admin'))
+            ->assertForbidden();
+
+        $this->actingAs($admin)
+            ->get(SystemSettings::getUrl(panel: 'admin'))
+            ->assertForbidden();
+
+        $this->actingAs($admin)
+            ->get(QueueMonitorResource::getUrl(panel: 'admin'))
+            ->assertForbidden();
+
+        $this->actingAs($admin)
+            ->get(ExceptionAlerts::getUrl(panel: 'admin'))
+            ->assertForbidden();
+
+        $this->actingAs($admin)
+            ->get(route('log-viewer.index'))
+            ->assertForbidden();
+    }
+
+    public function test_guest_can_access_admin_login_page_without_screen_permissions(): void
+    {
+        $this->get('/admin/login')
             ->assertOk();
     }
 }

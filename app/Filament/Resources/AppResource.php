@@ -4,7 +4,9 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\AppResource\Pages;
 use App\Filament\Resources\AppResource\RelationManagers;
+use App\Filament\Resources\Concerns\AuthorizesAdminScreenResource;
 use App\Models\App;
+use App\Support\AdminScreen;
 use Carbon\Carbon;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -28,6 +30,8 @@ use Illuminate\Support\Str;
 
 class AppResource extends Resource
 {
+    use AuthorizesAdminScreenResource;
+
     protected static ?string $model = App::class;
 
     protected static string|\UnitEnum|null $navigationGroup = 'プラットフォーム管理';
@@ -37,6 +41,11 @@ class AppResource extends Resource
     protected static ?string $navigationLabel = 'アプリ管理';
 
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-device-phone-mobile';
+
+    protected static function adminScreen(): ?AdminScreen
+    {
+        return AdminScreen::AppManagement;
+    }
 
     public static function form(Schema $form): Schema
     {

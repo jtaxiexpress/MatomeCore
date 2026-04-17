@@ -2,8 +2,10 @@
 
 namespace App\Filament\Resources\Users;
 
+use App\Filament\Resources\Concerns\AuthorizesAdminScreenResource;
 use App\Filament\Resources\Users\Pages\ManageUsers;
 use App\Models\User;
+use App\Support\AdminScreen;
 use BackedEnum;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
@@ -13,6 +15,7 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\IconColumn;
@@ -21,6 +24,8 @@ use Filament\Tables\Table;
 
 class UserResource extends Resource
 {
+    use AuthorizesAdminScreenResource;
+
     protected static ?string $model = User::class;
 
     protected static string|\UnitEnum|null $navigationGroup = 'システム設定';
@@ -30,6 +35,11 @@ class UserResource extends Resource
     protected static ?string $navigationLabel = 'ユーザー管理';
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+
+    protected static function adminScreen(): ?AdminScreen
+    {
+        return AdminScreen::UserManagement;
+    }
 
     public static function form(Schema $schema): Schema
     {
@@ -55,7 +65,18 @@ class UserResource extends Resource
                 Toggle::make('is_admin')
                     ->label('システム管理者（全アプリアクセス）')
                     ->default(false)
+                    ->live()
                     ->inline(false),
+                Select::make('admin_screen_permissions')
+                    ->label('アクセス可能画面')
+                    ->options(AdminScreen::selectableOptions())
+                    ->multiple()
+                    ->searchable()
+                    ->preload()
+                    ->visible(fn (Get $get): bool => (bool) $get('is_admin'))
+                    ->dehydratedWhenHidden()
+                    ->helperText('ダッシュボードとログイン画面は権限不要です。system admin のときだけ、必要な画面を選択してください。')
+                    ->columnSpanFull(),
                 Select::make('apps')
                     ->label('アクセス可能アプリ')
                     ->relationship('apps', 'name')

@@ -2,8 +2,10 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Resources\Concerns\AuthorizesAdminScreenPage;
 use App\Jobs\CheckDeadLinksJob;
 use App\Models\Article;
+use App\Support\AdminScreen;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Forms\Components\Select;
@@ -24,6 +26,7 @@ use Throwable;
 
 class SystemSettings extends Page implements HasForms
 {
+    use AuthorizesAdminScreenPage;
     use InteractsWithForms;
 
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-cog-6-tooth';
@@ -37,6 +40,11 @@ class SystemSettings extends Page implements HasForms
     protected static ?string $title = 'システム設定';
 
     public ?array $data = [];
+
+    protected static function adminScreen(): ?AdminScreen
+    {
+        return AdminScreen::SystemSettings;
+    }
 
     protected function getHeaderActions(): array
     {

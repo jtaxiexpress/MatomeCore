@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Support\AdminScreen;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -28,7 +29,7 @@ class AppServiceProvider extends ServiceProvider
         });
 
         LogViewer::auth(function (Request $request): bool {
-            return auth()->check();
+            return auth()->user()?->canAccessAdminScreen(AdminScreen::LogViewer) ?? false;
         });
     }
 }
