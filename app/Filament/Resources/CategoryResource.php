@@ -38,9 +38,11 @@ class CategoryResource extends Resource
 
     protected static ?string $model = Category::class;
 
-    protected static string|\UnitEnum|null $navigationGroup = 'マスター管理';
+    protected static string|\UnitEnum|null $navigationGroup = 'コンテンツ管理';
 
     protected static ?int $navigationSort = 2;
+
+    protected static ?string $navigationLabel = 'カテゴリー管理';
 
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-tag';
 

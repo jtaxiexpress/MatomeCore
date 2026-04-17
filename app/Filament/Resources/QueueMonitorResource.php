@@ -11,7 +11,11 @@ use Illuminate\Support\Facades\Artisan;
 
 class QueueMonitorResource extends BaseQueueMonitorResource
 {
-    protected static ?string $navigationLabel = 'ジョブ監視';
+    protected static ?string $navigationLabel = 'ジョブ状態';
+
+    protected static string|\UnitEnum|null $navigationGroup = 'システム設定';
+
+    protected static ?int $navigationSort = 4;
 
     protected static ?string $modelLabel = 'ジョブ';
 

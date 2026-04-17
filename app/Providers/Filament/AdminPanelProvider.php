@@ -2,9 +2,11 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Pages\ExceptionAlerts;
 use App\Filament\Pages\SystemSettings;
 use App\Filament\Resources\AppResource;
 use App\Filament\Resources\Users\UserResource;
+use App\Livewire\Filament\ScopedDatabaseNotifications;
 use Croustibat\FilamentJobsMonitor\FilamentJobsMonitorPlugin;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -15,8 +17,6 @@ use Filament\Pages;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
-use Filament\View\PanelsRenderHook;
-use Illuminate\Contracts\View\View;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -48,7 +48,10 @@ class AdminPanelProvider extends PanelProvider
             ->pages([
                 Pages\Dashboard::class,
                 SystemSettings::class,
+                ExceptionAlerts::class,
             ])
+            ->databaseNotifications(livewireComponent: ScopedDatabaseNotifications::class)
+            ->databaseNotificationsPolling('30s')
             ->userMenuItems([
                 MenuItem::make()
                     ->label('アプリ管理 (Appパネル) へ')
@@ -61,14 +64,14 @@ class AdminPanelProvider extends PanelProvider
                 NavigationItem::make('ログビューア')
                     ->url(fn (): string => route('log-viewer.index'))
                     ->icon('heroicon-o-document-text')
-                    ->group('システム管理')
-                    ->sort(99),
+                    ->group('システム設定')
+                    ->sort(3),
+            ])
+            ->navigationGroups([
+                'プラットフォーム管理',
+                'システム設定',
             ])
             ->plugin(FilamentJobsMonitorPlugin::make())
-            ->renderHook(
-                PanelsRenderHook::SIDEBAR_FOOTER,
-                fn (): View => view('filament.sidebar-footer'),
-            )
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,

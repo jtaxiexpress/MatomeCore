@@ -23,7 +23,7 @@ class UserResource extends Resource
 {
     protected static ?string $model = User::class;
 
-    protected static string|\UnitEnum|null $navigationGroup = 'システム管理';
+    protected static string|\UnitEnum|null $navigationGroup = 'システム設定';
 
     protected static ?int $navigationSort = 2;
 

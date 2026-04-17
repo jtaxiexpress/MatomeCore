@@ -10,6 +10,7 @@ use App\Models\App as AppModel;
 use App\Models\Article;
 use App\Models\Category;
 use App\Models\Site;
+use App\Models\User;
 use App\Services\ArticleAiService;
 use App\Services\ArticleScraperService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -81,6 +82,9 @@ class ProcessArticleBatchJobTest extends TestCase
         $category = Category::factory()->for($appModel)->create();
         /** @var Site $site */
         $site = Site::factory()->for($appModel)->create();
+        $admin = User::factory()->admin()->create();
+        $appUser = User::factory()->create();
+        $appUser->apps()->attach($appModel);
 
         Http::preventStrayRequests();
         Log::spy();
@@ -120,6 +124,21 @@ class ProcessArticleBatchJobTest extends TestCase
             'site_id' => $site->id,
             'category_id' => $category->id,
         ]);
+
+        $this->assertDatabaseCount('notifications', 2);
+
+        $admin->refresh();
+        $appUser->refresh();
+
+        $adminNotification = $admin->notifications()->first();
+        $appNotification = $appUser->notifications()->first();
+
+        $this->assertNotNull($adminNotification);
+        $this->assertNotNull($appNotification);
+        $this->assertSame("{$site->name} - RSS新規記事取得", $adminNotification->data['title']);
+        $this->assertSame('rss', $adminNotification->data['source']);
+        $this->assertSame("{$site->name} - RSS新規記事取得", $appNotification->data['title']);
+        $this->assertStringContainsString('保存 1件 / AI漏れ 0件', $adminNotification->data['body']);
 
         $expectedMessage = sprintf(
             '保存完了:| リライト前 %s | リライト後: %s | カテゴリID: %d(%s) | %s |',

@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Actions\SendArticleFetchResultNotificationAction;
 use App\Jobs\ProcessArticleBatchJob;
 use App\Models\Article;
 use App\Models\Site;
@@ -52,6 +53,14 @@ class CrawlSiteCommand extends Command
             }
             $this->info('Dispatched '.count($chunks).' batch jobs.');
             Log::info('CrawlSiteCommand: Dispatched '.count($chunks)." batch jobs for Site ID: {$site->id}.");
+        } else {
+            app(SendArticleFetchResultNotificationAction::class)->execute(
+                site: $site,
+                fetchSource: 'rss',
+                savedCount: 0,
+                missedCount: 0,
+                detail: 'RSS新規記事はありませんでした。',
+            );
         }
 
         return 0;
@@ -296,6 +305,15 @@ class CrawlSiteCommand extends Command
                 $site->update(['failing_since' => now()]);
             }
             $this->error('フィード解析エラー: '.$e->getMessage());
+
+            app(SendArticleFetchResultNotificationAction::class)->execute(
+                site: $site,
+                fetchSource: 'rss',
+                savedCount: 0,
+                missedCount: 0,
+                detail: 'RSS新規記事取得の処理中にエラーが発生しました: '.$e->getMessage(),
+                failed: true,
+            );
         }
     }
 

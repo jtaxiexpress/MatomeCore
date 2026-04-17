@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Filament;
 
+use App\Filament\Pages\ExceptionAlerts;
+use App\Filament\Resources\ArticleResource;
+use App\Filament\Resources\CategoryResource;
+use App\Filament\Resources\QueueMonitorResource;
+use App\Filament\Resources\SiteResource;
 use App\Filament\Widgets\ArticleTrendChart;
 use App\Filament\Widgets\InactiveSitesTable;
 use App\Filament\Widgets\SystemStatsOverview;
@@ -15,10 +20,13 @@ use App\Providers\Filament\AppPanelProvider;
 use Filament\Navigation\MenuItem;
 use Filament\Navigation\NavigationItem;
 use Filament\Panel;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class PanelNavigationLinksTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_log_viewer_returns_to_admin_panel(): void
     {
         $this->assertSame(rtrim((string) config('app.url', ''), '/').'/admin', config('log-viewer.back_to_system_url'));
@@ -36,8 +44,11 @@ class PanelNavigationLinksTest extends TestCase
         $this->assertSame('/app', $userMenuItems[0]->getUrl());
     }
 
-    public function test_app_panel_user_menu_links_to_admin_panel(): void
+    public function test_app_panel_user_menu_shows_admin_panel_link_for_admin_user(): void
     {
+        $admin = User::factory()->admin()->create();
+        $this->actingAs($admin);
+
         $panel = (new AppPanelProvider($this->app))->panel(Panel::make());
         $userMenuItems = $this->getPanelUserMenuItems($panel);
 
@@ -50,6 +61,22 @@ class PanelNavigationLinksTest extends TestCase
         $this->assertInstanceOf(MenuItem::class, $menuItem);
         $this->assertSame('システム管理 (Adminパネル) へ', $menuItem->getLabel());
         $this->assertSame('/admin', $menuItem->getUrl());
+        $this->assertTrue($menuItem->isVisible());
+    }
+
+    public function test_app_panel_user_menu_hides_admin_panel_link_for_non_admin_user(): void
+    {
+        $user = User::factory()->create(['is_admin' => false]);
+        $this->actingAs($user);
+
+        $panel = (new AppPanelProvider($this->app))->panel(Panel::make());
+        $userMenuItems = $this->getPanelUserMenuItems($panel);
+
+        $menuItem = collect($userMenuItems)
+            ->first(fn ($item): bool => $item instanceof MenuItem);
+
+        $this->assertInstanceOf(MenuItem::class, $menuItem);
+        $this->assertFalse($menuItem->isVisible());
     }
 
     public function test_app_panel_home_is_not_fixed_to_admin_tenant(): void
@@ -95,8 +122,30 @@ class PanelNavigationLinksTest extends TestCase
         $this->assertInstanceOf(NavigationItem::class, $navigationItems[0]);
         $this->assertSame('ログビューア', $navigationItems[0]->getLabel());
         $this->assertSame(route('log-viewer.index'), $navigationItems[0]->getUrl());
-        $this->assertSame('システム管理', $navigationItems[0]->getGroup());
+        $this->assertSame('コンテンツ管理', $navigationItems[0]->getGroup());
         $this->assertTrue($navigationItems[0]->shouldOpenUrlInNewTab());
+    }
+
+    public function test_app_panel_navigation_labels_match_requested_content_ia(): void
+    {
+        $this->assertSame('サイト管理', SiteResource::getNavigationLabel());
+        $this->assertSame(1, SiteResource::getNavigationSort());
+        $this->assertSame('カテゴリー管理', CategoryResource::getNavigationLabel());
+        $this->assertSame(2, CategoryResource::getNavigationSort());
+        $this->assertSame('記事管理', ArticleResource::getNavigationLabel());
+        $this->assertSame(3, ArticleResource::getNavigationSort());
+    }
+
+    public function test_admin_panel_places_jobs_above_notification_rules(): void
+    {
+        $this->assertSame('通知ルール管理', ExceptionAlerts::getNavigationLabel());
+        $this->assertSame('システム設定', ExceptionAlerts::getNavigationGroup());
+        $this->assertSame(5, ExceptionAlerts::getNavigationSort());
+        $this->assertSame('Jobs', QueueMonitorResource::getNavigationLabel());
+        $this->assertLessThan(
+            ExceptionAlerts::getNavigationSort(),
+            QueueMonitorResource::getNavigationSort(),
+        );
     }
 
     public function test_app_panel_registers_tenant_log_context_middleware(): void
@@ -126,15 +175,32 @@ class PanelNavigationLinksTest extends TestCase
             ->assertSee('href="/admin"', false);
     }
 
+    public function test_app_page_hides_sidebar_back_link_for_non_admin_user(): void
+    {
+        $app = AppModel::factory()->create([
+            'name' => 'Member App',
+            'api_slug' => 'member-app',
+        ]);
+
+        $user = User::factory()->create(['is_admin' => false]);
+        $user->apps()->attach($app);
+
+        $this->actingAs($user)
+            ->get('/app/member-app')
+            ->assertOk()
+            ->assertDontSee('Adminに戻る', false)
+            ->assertDontSee('href="/admin"', false);
+    }
+
     /**
-     * @return array<int, MenuItem>
+     * @return array<int|string, mixed>
      */
     private function getPanelUserMenuItems(Panel $panel): array
     {
         $property = new \ReflectionProperty($panel, 'userMenuItems');
         $property->setAccessible(true);
 
-        /** @var array<int, MenuItem> $userMenuItems */
+        /** @var array<int|string, mixed> $userMenuItems */
         $userMenuItems = $property->getValue($panel);
 
         return $userMenuItems;

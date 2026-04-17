@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Actions\CleanArticleTitleAction;
+use App\Actions\SendArticleFetchResultNotificationAction;
 use App\Models\Article;
 use App\Models\Site;
 use App\Services\ArticleAiService;
@@ -85,6 +86,13 @@ class ProcessArticleBatchJob implements ShouldQueue
             if (empty($validArticles)) {
                 Log::info("[ProcessArticleBatchJob] Site ID {$this->siteId}: 処理対象の有効な記事が0件のため終了します。");
 
+                $this->notifyFetchResult(
+                    site: $site,
+                    savedCount: 0,
+                    missedCount: 0,
+                    detail: '処理対象の記事がありませんでした。',
+                );
+
                 return;
             }
 
@@ -94,7 +102,13 @@ class ProcessArticleBatchJob implements ShouldQueue
             $aiResults = $aiService->classifyAndRewriteBatch($validArticles, $categories, $site->app);
 
             // ③ 結果の保存と漏れ検出
-            $this->persistResults($validArticles, $aiResults, $site);
+            $summary = $this->persistResults($validArticles, $aiResults, $site);
+
+            $this->notifyFetchResult(
+                site: $site,
+                savedCount: $summary['savedCount'],
+                missedCount: $summary['missedCount'],
+            );
 
         } catch (\Throwable $e) {
             report($e);
@@ -103,6 +117,17 @@ class ProcessArticleBatchJob implements ShouldQueue
                 'site_id' => $this->siteId,
                 'message' => $e->getMessage(),
             ]);
+
+            if (isset($site) && $site instanceof Site && $site->app) {
+                $this->notifyFetchResult(
+                    site: $site,
+                    savedCount: 0,
+                    missedCount: 0,
+                    detail: '記事取得の処理中にエラーが発生しました: '.$e->getMessage(),
+                    failed: true,
+                );
+            }
+
             $this->fail($e);
         }
     }
@@ -161,8 +186,9 @@ class ProcessArticleBatchJob implements ShouldQueue
      *
      * @param  array<int, array{id: int, url: string, title: string, metaData: array<string, mixed>}>  $validArticles
      * @param  array<int, array{category_id: int, rewritten_title: string}>  $aiResults
+     * @return array{savedCount: int, missedCount: int}
      */
-    private function persistResults(array $validArticles, array $aiResults, Site $site): void
+    private function persistResults(array $validArticles, array $aiResults, Site $site): array
     {
         $savedCount = 0;
         $missedCount = 0;
@@ -221,6 +247,11 @@ class ProcessArticleBatchJob implements ShouldQueue
         }
 
         Log::info("[ProcessArticleBatchJob] Site ID {$site->id}: 保存={$savedCount}件 / AI漏れ={$missedCount}件");
+
+        return [
+            'savedCount' => $savedCount,
+            'missedCount' => $missedCount,
+        ];
     }
 
     /**
@@ -272,5 +303,22 @@ class ProcessArticleBatchJob implements ShouldQueue
             'app_slug' => (string) data_get($site, 'app.api_slug'),
             'batch_size' => count($this->articles),
         ]);
+    }
+
+    private function notifyFetchResult(
+        Site $site,
+        int $savedCount,
+        int $missedCount,
+        ?string $detail = null,
+        bool $failed = false,
+    ): void {
+        app(SendArticleFetchResultNotificationAction::class)->execute(
+            site: $site,
+            fetchSource: $this->fetchSource ?? 'rss',
+            savedCount: $savedCount,
+            missedCount: $missedCount,
+            detail: $detail,
+            failed: $failed,
+        );
     }
 }

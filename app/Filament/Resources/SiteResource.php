@@ -32,9 +32,11 @@ class SiteResource extends Resource
 {
     protected static ?string $model = Site::class;
 
-    protected static string|\UnitEnum|null $navigationGroup = 'マスター管理';
+    protected static string|\UnitEnum|null $navigationGroup = 'コンテンツ管理';
 
-    protected static ?int $navigationSort = 3;
+    protected static ?int $navigationSort = 1;
+
+    protected static ?string $navigationLabel = 'サイト管理';
 
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-globe-alt';
 

@@ -30,7 +30,9 @@ class SystemSettings extends Page implements HasForms
 
     protected string $view = 'filament.pages.system-settings';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'システム管理';
+    protected static string|\UnitEnum|null $navigationGroup = 'システム設定';
+
+    protected static ?int $navigationSort = 1;
 
     protected static ?string $title = 'システム設定';
 

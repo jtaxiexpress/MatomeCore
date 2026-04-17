@@ -30,9 +30,11 @@ class AppResource extends Resource
 {
     protected static ?string $model = App::class;
 
-    protected static string|\UnitEnum|null $navigationGroup = 'マスター管理';
+    protected static string|\UnitEnum|null $navigationGroup = 'プラットフォーム管理';
 
     protected static ?int $navigationSort = 1;
+
+    protected static ?string $navigationLabel = 'アプリ管理';
 
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-device-phone-mobile';
 

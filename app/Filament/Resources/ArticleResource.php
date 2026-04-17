@@ -6,6 +6,8 @@ use App\Actions\ReprocessSelectedArticlesAction;
 use App\Filament\Resources\ArticleResource\Pages;
 use App\Models\Article;
 use App\Models\Category;
+use App\Notifications\FilamentDatabaseNotification;
+use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -14,6 +16,7 @@ use Filament\Facades\Filament;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Events\DatabaseNotificationsSent;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
@@ -28,6 +31,12 @@ use Illuminate\Support\Facades\Storage;
 class ArticleResource extends Resource
 {
     protected static ?string $model = Article::class;
+
+    protected static string|\UnitEnum|null $navigationGroup = 'コンテンツ管理';
+
+    protected static ?int $navigationSort = 3;
+
+    protected static ?string $navigationLabel = '記事管理';
 
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-document-text';
 
@@ -185,6 +194,11 @@ class ArticleResource extends Resource
                                 ->title($updatedCount.'件の記事のタイトルとカテゴリを再処理しました')
                                 ->success()
                                 ->send();
+
+                            self::sendAppReprocessNotification(
+                                title: 'AI再処理が完了しました',
+                                body: $updatedCount.'件の記事のタイトルとカテゴリを再処理しました',
+                            );
                         })
                         ->deselectRecordsAfterCompletion(),
                     BulkAction::make('rewriteSelectedArticleTitles')
@@ -212,6 +226,11 @@ class ArticleResource extends Resource
                                 ->title($updatedCount.'件の記事のタイトルを再リライトしました')
                                 ->success()
                                 ->send();
+
+                            self::sendAppReprocessNotification(
+                                title: 'AIタイトル再リライトが完了しました',
+                                body: $updatedCount.'件の記事のタイトルを再リライトしました',
+                            );
                         })
                         ->deselectRecordsAfterCompletion(),
                     BulkAction::make('reclassifySelectedArticleCategories')
@@ -239,6 +258,11 @@ class ArticleResource extends Resource
                                 ->title($updatedCount.'件の記事のカテゴリを再振り分けしました')
                                 ->success()
                                 ->send();
+
+                            self::sendAppReprocessNotification(
+                                title: 'AIカテゴリ再振り分けが完了しました',
+                                body: $updatedCount.'件の記事のカテゴリを再振り分けしました',
+                            );
                         })
                         ->deselectRecordsAfterCompletion(),
                     BulkAction::make('changeCategory')
@@ -303,6 +327,33 @@ class ArticleResource extends Resource
             ->whereBelongsTo($tenant, 'app')
             ->orderBy('sort_order')
             ->orderBy('name');
+    }
+
+    private static function sendAppReprocessNotification(string $title, string $body): void
+    {
+        $tenant = Filament::getTenant();
+        $user = Filament::auth()->user();
+
+        if (! $tenant || ! $user) {
+            return;
+        }
+
+        $payload = Notification::make()
+            ->title($title)
+            ->success()
+            ->body($body)
+            ->actions([
+                Action::make('markAsRead')
+                    ->label('既読にする')
+                    ->button()
+                    ->markAsRead(),
+            ])
+            ->getDatabaseMessage();
+
+        $payload['app_id'] = $tenant->getKey();
+
+        $user->notify(new FilamentDatabaseNotification($payload));
+        DatabaseNotificationsSent::dispatch($user);
     }
 
     public static function getPages(): array

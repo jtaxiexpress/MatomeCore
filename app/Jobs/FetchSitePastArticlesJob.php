@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Actions\SendArticleFetchResultNotificationAction;
 use App\Models\Article;
 use App\Models\Site;
 use Exception;
@@ -317,12 +318,31 @@ class FetchSitePastArticlesJob implements ShouldQueue
             Log::info($successMessage);
             $this->output = $successMessage;
 
+            if ($dispatchedCount === 0) {
+                app(SendArticleFetchResultNotificationAction::class)->execute(
+                    site: $this->site,
+                    fetchSource: $sourceType,
+                    savedCount: 0,
+                    missedCount: 0,
+                    detail: '新規記事はありませんでした。',
+                );
+            }
+
             return $successMessage;
 
         } catch (Exception $e) {
             $errorMessage = "失敗: {$this->site->name} の過去記事一括取得処理中にエラーが発生しました: ".$e->getMessage();
             Log::error($errorMessage."\n".$e->getTraceAsString());
             $this->output = $errorMessage;
+
+            app(SendArticleFetchResultNotificationAction::class)->execute(
+                site: $this->site,
+                fetchSource: $this->site->crawler_type === 'sitemap' ? 'fetch_past_sitemap' : 'fetch_past_html',
+                savedCount: 0,
+                missedCount: 0,
+                detail: '過去記事一括取得の処理中にエラーが発生しました: '.$e->getMessage(),
+                failed: true,
+            );
 
             return $errorMessage;
         }

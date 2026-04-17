@@ -6,12 +6,20 @@ namespace Tests\Unit;
 
 use App\Support\Slack\ExceptionAlertClassifier;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Cache;
 use PDOException;
 use RuntimeException;
 use Tests\TestCase;
 
 class ExceptionAlertClassifierTest extends TestCase
 {
+    protected function tearDown(): void
+    {
+        Cache::forget(ExceptionAlertClassifier::CACHE_KEY);
+
+        parent::tearDown();
+    }
+
     public function test_it_detects_database_connection_errors(): void
     {
         $previous = new PDOException('SQLSTATE[HY000] [2002] Connection refused');
@@ -38,5 +46,20 @@ class ExceptionAlertClassifierTest extends TestCase
         $classifier = new ExceptionAlertClassifier;
 
         $this->assertFalse($classifier->shouldNotify($exception));
+    }
+
+    public function test_it_uses_cached_custom_rules(): void
+    {
+        Cache::put(ExceptionAlertClassifier::CACHE_KEY, [
+            'database_markers' => ['custom-db-marker'],
+            'timeout_markers' => ['custom-timeout-marker'],
+            'ollama_markers' => ['custom-ollama-marker'],
+        ]);
+
+        $classifier = new ExceptionAlertClassifier;
+
+        $this->assertTrue($classifier->shouldNotify(new RuntimeException('custom-db-marker')));
+        $this->assertTrue($classifier->shouldNotify(new RuntimeException('custom-timeout-marker')));
+        $this->assertFalse($classifier->shouldNotify(new RuntimeException('custom-ollama-marker')));
     }
 }
