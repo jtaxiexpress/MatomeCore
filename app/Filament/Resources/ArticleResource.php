@@ -2,11 +2,10 @@
 
 namespace App\Filament\Resources;
 
-use App\Actions\CategorizeArticleAction;
+use App\Actions\ReprocessSelectedArticlesAction;
 use App\Filament\Resources\ArticleResource\Pages;
 use App\Models\Article;
 use App\Models\Category;
-use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -153,19 +152,6 @@ class ArticleResource extends Resource
             ])
             ->filters([])
             ->actions([
-                Action::make('categorize')
-                    ->label('AI自動分類')
-                    ->icon('heroicon-o-sparkles')
-                    ->color('primary')
-                    ->action(function (Article $record, CategorizeArticleAction $action) {
-                        $action->execute($record);
-                        Notification::make()
-                            ->title('AIによるカテゴリ分類が完了しました')
-                            ->success()
-                            ->send();
-                    })
-                    ->requiresConfirmation()
-                    ->modalHeading('この記事をAIで自動分類しますか？'),
                 EditAction::make()
                     ->modalWidth('4xl')
                     ->modalHeading('記事の編集')
@@ -174,6 +160,87 @@ class ArticleResource extends Resource
             ])
             ->bulkActions([
                 BulkActionGroup::make([
+                    BulkAction::make('reprocessSelectedArticles')
+                        ->label('AIで再処理（タイトル+カテゴリ）')
+                        ->icon('heroicon-o-sparkles')
+                        ->color('primary')
+                        ->requiresConfirmation()
+                        ->modalWidth('4xl')
+                        ->modalHeading('選択した記事のタイトルとカテゴリをAIで再処理しますか？')
+                        ->modalDescription('選択した記事をまとめてAIで再分類し、タイトルとカテゴリの両方を更新します。')
+                        ->modalSubmitActionLabel('実行する')
+                        ->action(function (Collection $records, ReprocessSelectedArticlesAction $reprocessSelectedArticlesAction): void {
+                            $updatedCount = $reprocessSelectedArticlesAction->executeCombined($records);
+
+                            if ($updatedCount === 0) {
+                                Notification::make()
+                                    ->title('AIで再処理できる記事がありませんでした')
+                                    ->warning()
+                                    ->send();
+
+                                return;
+                            }
+
+                            Notification::make()
+                                ->title($updatedCount.'件の記事のタイトルとカテゴリを再処理しました')
+                                ->success()
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                    BulkAction::make('rewriteSelectedArticleTitles')
+                        ->label('AIでタイトルのみ再リライト')
+                        ->icon('heroicon-o-pencil-square')
+                        ->color('warning')
+                        ->requiresConfirmation()
+                        ->modalWidth('4xl')
+                        ->modalHeading('選択した記事のタイトルのみをAIで再リライトしますか？')
+                        ->modalDescription('選択した記事のカテゴリはそのままにして、タイトルだけをAIで整えます。')
+                        ->modalSubmitActionLabel('実行する')
+                        ->action(function (Collection $records, ReprocessSelectedArticlesAction $reprocessSelectedArticlesAction): void {
+                            $updatedCount = $reprocessSelectedArticlesAction->executeTitleOnly($records);
+
+                            if ($updatedCount === 0) {
+                                Notification::make()
+                                    ->title('AIで再リライトできる記事がありませんでした')
+                                    ->warning()
+                                    ->send();
+
+                                return;
+                            }
+
+                            Notification::make()
+                                ->title($updatedCount.'件の記事のタイトルを再リライトしました')
+                                ->success()
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                    BulkAction::make('reclassifySelectedArticleCategories')
+                        ->label('AIでカテゴリのみ再振り分け')
+                        ->icon('heroicon-o-tag')
+                        ->color('info')
+                        ->requiresConfirmation()
+                        ->modalWidth('4xl')
+                        ->modalHeading('選択した記事のカテゴリのみをAIで再振り分けしますか？')
+                        ->modalDescription('選択した記事のタイトルはそのままにして、カテゴリだけをAIで見直します。')
+                        ->modalSubmitActionLabel('実行する')
+                        ->action(function (Collection $records, ReprocessSelectedArticlesAction $reprocessSelectedArticlesAction): void {
+                            $updatedCount = $reprocessSelectedArticlesAction->executeCategoryOnly($records);
+
+                            if ($updatedCount === 0) {
+                                Notification::make()
+                                    ->title('AIで再振り分けできる記事がありませんでした')
+                                    ->warning()
+                                    ->send();
+
+                                return;
+                            }
+
+                            Notification::make()
+                                ->title($updatedCount.'件の記事のカテゴリを再振り分けしました')
+                                ->success()
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
                     BulkAction::make('changeCategory')
                         ->label('カテゴリを一括変更')
                         ->icon('heroicon-o-arrows-right-left')
