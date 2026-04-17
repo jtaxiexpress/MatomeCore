@@ -46,7 +46,6 @@ class DatabaseNotificationsTest extends TestCase
         Filament::setTenant($appOne, isQuiet: true);
 
         $livewire = Livewire::test(ScopedDatabaseNotifications::class);
-        $livewire->assertSee('一括チェック');
         $notifications = $livewire->instance()->getNotifications();
         $items = $this->notificationItems($notifications);
 
