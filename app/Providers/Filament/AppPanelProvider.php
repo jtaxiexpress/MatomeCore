@@ -10,6 +10,7 @@ use App\Filament\Widgets\InactiveSitesTable;
 use App\Filament\Widgets\SystemStatsOverview;
 use App\Http\Middleware\ShareTenantLogContext;
 use App\Models\App;
+use Filament\Actions\Action;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -21,7 +22,6 @@ use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
 use Filament\View\PanelsRenderHook;
-use Filament\Widgets\AccountWidget;
 use Illuminate\Contracts\View\View;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -61,13 +61,13 @@ class AppPanelProvider extends PanelProvider
                     ->label('システム管理 (Adminパネル) へ')
                     ->url('/admin')
                     ->icon('heroicon-o-cog-8-tooth'),
+                'logout' => fn (Action $action): Action => $action->hidden(),
             ])
             ->renderHook(
                 PanelsRenderHook::SIDEBAR_FOOTER,
                 fn (): View => view('filament.app-sidebar-footer'),
             )
             ->widgets([
-                AccountWidget::class,
                 SystemStatsOverview::class,
                 ArticleTrendChart::class,
                 InactiveSitesTable::class,

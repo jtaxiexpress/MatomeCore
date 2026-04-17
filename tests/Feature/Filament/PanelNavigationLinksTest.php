@@ -15,7 +15,6 @@ use App\Providers\Filament\AppPanelProvider;
 use Filament\Navigation\MenuItem;
 use Filament\Navigation\NavigationItem;
 use Filament\Panel;
-use Filament\Widgets\AccountWidget;
 use Tests\TestCase;
 
 class PanelNavigationLinksTest extends TestCase
@@ -42,10 +41,15 @@ class PanelNavigationLinksTest extends TestCase
         $panel = (new AppPanelProvider($this->app))->panel(Panel::make());
         $userMenuItems = $this->getPanelUserMenuItems($panel);
 
-        $this->assertCount(1, $userMenuItems);
-        $this->assertInstanceOf(MenuItem::class, $userMenuItems[0]);
-        $this->assertSame('システム管理 (Adminパネル) へ', $userMenuItems[0]->getLabel());
-        $this->assertSame('/admin', $userMenuItems[0]->getUrl());
+        $this->assertArrayHasKey('logout', $userMenuItems);
+        $this->assertIsCallable($userMenuItems['logout']);
+
+        $menuItem = collect($userMenuItems)
+            ->first(fn ($item): bool => $item instanceof MenuItem);
+
+        $this->assertInstanceOf(MenuItem::class, $menuItem);
+        $this->assertSame('システム管理 (Adminパネル) へ', $menuItem->getLabel());
+        $this->assertSame('/admin', $menuItem->getUrl());
     }
 
     public function test_app_panel_home_is_not_fixed_to_admin_tenant(): void
@@ -60,11 +64,26 @@ class PanelNavigationLinksTest extends TestCase
         $panel = (new AppPanelProvider($this->app))->panel(Panel::make());
 
         $this->assertSame([
-            AccountWidget::class,
             SystemStatsOverview::class,
             ArticleTrendChart::class,
             InactiveSitesTable::class,
         ], $panel->getWidgets());
+    }
+
+    public function test_app_dashboard_does_not_show_account_widget_ui(): void
+    {
+        $user = User::factory()->admin()->create();
+        AppModel::factory()->create([
+            'name' => 'App 3',
+            'api_slug' => 'app-3',
+        ]);
+
+        $this->actingAs($user)
+            ->get('/app/app-3')
+            ->assertOk()
+            ->assertDontSee('ようこそ', false)
+            ->assertDontSee('ログアウト', false)
+            ->assertDontSee('fi-account-widget', false);
     }
 
     public function test_app_panel_has_log_viewer_navigation_item(): void
