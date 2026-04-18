@@ -18,10 +18,10 @@
                     @forelse($items as $item)
                         <tr class="bg-white dark:bg-gray-900 border-b dark:border-gray-700">
                             <td class="px-4 py-3 border-x dark:border-gray-700 align-top">
-                                @if($item['image'] !== 'なし')
+                                @if(! str_starts_with($item['image'], 'なし'))
                                     <img src="{{ $item['image'] }}" alt="Thumbnail" class="w-20 h-20 object-cover rounded">
                                 @else
-                                    <span class="text-gray-400">なし</span>
+                                    <span class="text-gray-400">{{ $item['image'] }}</span>
                                 @endif
                             </td>
                             <td class="px-4 py-3 border-x dark:border-gray-700 align-top font-medium text-gray-900 dark:text-white font-bold">

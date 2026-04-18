@@ -45,7 +45,7 @@ class SiteResource extends Resource
         return $form->schema([
             Section::make('基本情報')
                 ->description('サイトの基本的な情報を入力します。')
-                ->columns(2)
+                ->columns(1)
                 ->schema([
                     TextInput::make('name')
                         ->label('サイト名')
@@ -60,6 +60,19 @@ class SiteResource extends Resource
                         ->label('クローリング有効')
                         ->default(true)
                         ->inline(false),
+                ]),
+
+            Section::make('【共通】除外・フィルタリング設定')
+                ->description('日々の自動取得（RSS等）と過去記事の一括取得の両方に共通して適用される除外ルールです。')
+                ->schema([
+                    TagsInput::make('ng_url_keywords')
+                        ->label('除外キーワード（対象外にするURL条件）')
+                        ->helperText('特定の文字がURLに含まれる記事は取得しません（例: pr, promotion, special など）'),
+
+                    TagsInput::make('ng_image_urls')
+                        ->label('NGサムネイル画像URL（除外画像リスト）')
+                        ->helperText('サイトのデフォルト画像（ヘッダーロゴ等）のURLをここに登録すると、その画像はサムネイルとして使用しません。完全一致で照合します。')
+                        ->placeholder('https://example.com/logo.png を入力してEnter'),
                 ]),
 
             Section::make('【定期更新】日々の最新記事取得')
@@ -109,15 +122,6 @@ class SiteResource extends Resource
                         ->helperText('変化する数字の部分を `{page}` と記述します。（例：`https://example.com/page/{page}`）')
                         ->nullable()
                         ->visible(fn ($get) => $get('crawler_type') === 'html'),
-
-                    TagsInput::make('ng_url_keywords')
-                        ->label('除外キーワード（対象外にするURL条件）')
-                        ->helperText('特定の文字がURLに含まれる記事は取得しません（例: pr, promotion, special など）'),
-
-                    TagsInput::make('ng_image_urls')
-                        ->label('NGサムネイル画像URL（除外画像リスト）')
-                        ->helperText('サイトのデフォルト画像（ヘッダーロゴ等）のURLをここに登録すると、その画像はサムネイルとして使用しません。完全一致で照合します。')
-                        ->placeholder('https://example.com/logo.png を入力してEnter'),
 
                     Section::make('高度な抽出設定（エンジニア向け設定）')
                         ->description('標準の方法でうまく記事だけを読み取れない場合、手動で目印となるCSSセレクタを指定できます。')
@@ -366,6 +370,7 @@ class SiteResource extends Resource
                                 if (count($samples) > 0) {
                                     $sampleOutput .= '<strong>【サンプル抽出テスト (最初の3件)】</strong><br>';
                                     $sampleOutput .= "<div style='max-height: 350px; overflow-y: auto; background-color: rgba(255,255,255,0.1); padding: 10px; border-radius: 6px; margin-bottom: 10px;'>";
+                                    $ngImageUrls = $record->ng_image_urls ?? [];
                                     foreach ($samples as $index => $u) {
                                         $num = $index + 1;
                                         $title = '未取得';
@@ -378,6 +383,9 @@ class SiteResource extends Resource
                                             $title = $scrapeResult['data']['title'] ?? '取得失敗(タイトル見つからず)';
 
                                             $imgUrl = $scrapeResult['data']['image'] ?? null;
+                                            if (! empty($imgUrl) && in_array($imgUrl, $ngImageUrls, true)) {
+                                                $imgUrl = 'なし (NGサムネイル画像として除外)';
+                                            }
                                             if (empty($imgUrl)) {
                                                 $imgUrl = 'なし ('.($scrapeResult['error_message'] ?? '画像見つからず').')';
                                             }
@@ -498,7 +506,14 @@ class SiteResource extends Resource
 
                                 $results = [];
                                 $scrapedCount = 0;
-                                foreach (array_slice($items, 0, 10) as $item) {
+                                $ngKeywords = $record->ng_url_keywords ?? [];
+                                $ngImageUrls = $record->ng_image_urls ?? [];
+
+                                foreach ($items as $item) {
+                                    if (count($results) >= 10) {
+                                        break;
+                                    }
+
                                     // ① タイトル
                                     $titleStr = (string) $item->title;
                                     $title = $titleStr !== '' ? trim($titleStr) : 'なし';
@@ -516,6 +531,14 @@ class SiteResource extends Resource
                                         }
                                     }
                                     $url = empty($url) ? 'なし' : $url;
+
+                                    if ($url !== 'なし') {
+                                        foreach ($ngKeywords as $ng) {
+                                            if ($ng !== '' && str_contains($url, $ng)) {
+                                                continue 2;
+                                            }
+                                        }
+                                    }
 
                                     // ③ 公開日 (RSSからの取得)
                                     $publishedAtRaw = (string) $item->pubDate
@@ -550,6 +573,10 @@ class SiteResource extends Resource
                                         }
                                     }
 
+                                    if ($imageUrl !== 'なし' && in_array($imageUrl, $ngImageUrls, true)) {
+                                        $imageUrl = 'なし';
+                                    }
+
                                     // ⑤ 欠損データのスクレイピング補完 (最大5件まで)
                                     if (($imageUrl === 'なし' || $date === 'なし') && $url !== 'なし' && $scrapedCount < 5) {
                                         $scrapedCount++;
@@ -561,7 +588,14 @@ class SiteResource extends Resource
                                                 $date = $scrapeResult['data']['date'] ?? 'なし ('.($scrapeResult['error_message'] ?? '日付見つからず').')';
                                             }
                                             if ($imageUrl === 'なし') {
-                                                $imageUrl = $scrapeResult['data']['image'] ?? 'なし ('.($scrapeResult['error_message'] ?? '画像見つからず').')';
+                                                $scrapedImageUrl = $scrapeResult['data']['image'] ?? null;
+                                                if (! empty($scrapedImageUrl)) {
+                                                    $imageUrl = in_array($scrapedImageUrl, $ngImageUrls, true)
+                                                        ? 'なし (NGサムネイル画像として除外)'
+                                                        : $scrapedImageUrl;
+                                                } else {
+                                                    $imageUrl = 'なし ('.($scrapeResult['error_message'] ?? '画像見つからず').')';
+                                                }
                                             }
                                         } elseif (! empty($scrapeResult['error_message'])) {
                                             if ($date === 'なし') {
@@ -571,6 +605,10 @@ class SiteResource extends Resource
                                                 $imageUrl = 'なし ('.$scrapeResult['error_message'].')';
                                             }
                                         }
+                                    }
+
+                                    if (is_string($imageUrl) && $imageUrl !== 'なし' && in_array($imageUrl, $ngImageUrls, true)) {
+                                        $imageUrl = 'なし (NGサムネイル画像として除外)';
                                     }
 
                                     $results[] = [
