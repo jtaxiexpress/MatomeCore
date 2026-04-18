@@ -9,9 +9,8 @@ use App\Actions\SendArticleFetchResultNotificationAction;
 use App\Models\Article;
 use App\Models\Site;
 use App\Services\ArticleAiService;
+use App\Services\ArticleMetadataResolverService;
 use App\Services\ArticleScraperService;
-use App\Support\DateParser;
-use Exception;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -49,6 +48,7 @@ class ProcessArticleBatchJob implements ShouldQueue
         ArticleAiService $aiService,
         ArticleScraperService $scraper,
         CleanArticleTitleAction $cleanTitleAction,
+        ArticleMetadataResolverService $metadataResolver,
     ): void {
         $this->shareLogContext();
 
@@ -81,7 +81,7 @@ class ProcessArticleBatchJob implements ShouldQueue
 
         try {
             // ① メタデータ解決と前処理
-            $validArticles = $this->resolveValidArticles($scraper, $cleanTitleAction, $site);
+            $validArticles = $this->resolveValidArticles($metadataResolver, $scraper, $cleanTitleAction, $site);
 
             if (empty($validArticles)) {
                 Log::info("[ProcessArticleBatchJob] Site ID {$this->siteId}: 処理対象の有効な記事が0件のため終了します。");
@@ -139,6 +139,7 @@ class ProcessArticleBatchJob implements ShouldQueue
      * @return array<int, array{id: int, url: string, title: string, metaData: array{title: string|null, image: string|null, date: string}}>
      */
     private function resolveValidArticles(
+        ArticleMetadataResolverService $metadataResolver,
         ArticleScraperService $scraper,
         CleanArticleTitleAction $cleanTitleAction,
         Site $site,
@@ -160,7 +161,13 @@ class ProcessArticleBatchJob implements ShouldQueue
                 continue;
             }
 
-            $metaData = $this->resolveMetaData($scraper, $url, $rawMetaData, $site);
+            $metaData = $metadataResolver->resolve(
+                scraper: $scraper,
+                url: $url,
+                rawMetaData: $rawMetaData,
+                site: $site,
+                logPrefix: "[ProcessArticleBatchJob] {$url}",
+            );
             $cleanedTitle = $cleanTitleAction->execute((string) ($metaData['title'] ?? ''), $site->name);
 
             if (empty($cleanedTitle) || mb_strlen($cleanedTitle) < 5) {
@@ -251,47 +258,6 @@ class ProcessArticleBatchJob implements ShouldQueue
         return [
             'savedCount' => $savedCount,
             'missedCount' => $missedCount,
-        ];
-    }
-
-    /**
-     * 記事のメタデータを解決します。不足分はスクレイピングで補完します。
-     *
-     * @param  array<string, mixed>  $rawMetaData
-     * @return array{title: string|null, image: string|null, date: string}
-     */
-    private function resolveMetaData(
-        ArticleScraperService $scraper,
-        string $url,
-        array $rawMetaData,
-        Site $site,
-    ): array {
-        $title = $rawMetaData['raw_title'] ?? null;
-        $thumbnailUrl = $rawMetaData['thumbnail_url'] ?? null;
-        $rawPublishedAt = $rawMetaData['published_at'] ?? null;
-        $publishedAt = $rawPublishedAt ? DateParser::parse($rawPublishedAt)?->toDateTimeString() : null;
-
-        if (empty($title) || empty($thumbnailUrl) || empty($publishedAt)) {
-            try {
-                $siteNgImages = $site->ng_image_urls ?? [];
-                $scrapeResult = $scraper->scrape($url, $site->date_selector ?? null, $siteNgImages);
-
-                if ($scrapeResult['success']) {
-                    $title = empty($title) && ! empty($scrapeResult['data']['title']) ? $scrapeResult['data']['title'] : $title;
-                    $thumbnailUrl = empty($thumbnailUrl) && ! empty($scrapeResult['data']['image']) ? $scrapeResult['data']['image'] : $thumbnailUrl;
-                    $publishedAt = empty($publishedAt) && ! empty($scrapeResult['data']['date']) ? $scrapeResult['data']['date'] : $publishedAt;
-                } else {
-                    Log::warning("[ProcessArticleBatchJob] スクレイピング補完失敗: {$url} - ".($scrapeResult['error_message'] ?? '不明'));
-                }
-            } catch (Exception $e) {
-                Log::error("[ProcessArticleBatchJob] スクレイピングエラー: {$url} - ".$e->getMessage());
-            }
-        }
-
-        return [
-            'title' => $title,
-            'image' => $thumbnailUrl,
-            'date' => $publishedAt ?: now()->toDateTimeString(),
         ];
     }
 

@@ -293,6 +293,7 @@ class ArticleResource extends Resource
                     DeleteBulkAction::make(),
                 ]),
             ])
+            ->modifyQueryUsing(fn (Builder $query): Builder => $query->with(['category', 'site']))
             ->defaultSort('published_at', 'desc');
     }
 

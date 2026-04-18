@@ -12,6 +12,7 @@ use App\Models\Category;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\ArticleAiService;
+use App\Services\ArticleMetadataResolverService;
 use App\Services\ArticleScraperService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -40,6 +41,7 @@ class ProcessArticleBatchJobTest extends TestCase
             app(ArticleAiService::class),
             app(ArticleScraperService::class),
             app(CleanArticleTitleAction::class),
+            app(ArticleMetadataResolverService::class),
         );
 
         $this->assertDatabaseCount('articles', 0);
@@ -62,6 +64,7 @@ class ProcessArticleBatchJobTest extends TestCase
             app(ArticleAiService::class),
             app(ArticleScraperService::class),
             app(CleanArticleTitleAction::class),
+            app(ArticleMetadataResolverService::class),
         );
 
         $this->assertDatabaseCount('articles', 0);
@@ -116,6 +119,7 @@ class ProcessArticleBatchJobTest extends TestCase
             app(ArticleAiService::class),
             app(ArticleScraperService::class),
             app(CleanArticleTitleAction::class),
+            app(ArticleMetadataResolverService::class),
         );
 
         $this->assertDatabaseHas('articles', [
@@ -187,6 +191,7 @@ class ProcessArticleBatchJobTest extends TestCase
             app(ArticleAiService::class),
             app(ArticleScraperService::class),
             app(CleanArticleTitleAction::class),
+            app(ArticleMetadataResolverService::class),
         );
 
         // 重複のため新しい記事は追加されない
@@ -236,6 +241,7 @@ class ProcessArticleBatchJobTest extends TestCase
             app(ArticleAiService::class),
             app(ArticleScraperService::class),
             app(CleanArticleTitleAction::class),
+            app(ArticleMetadataResolverService::class),
         );
 
         // article_id=1 はAI結果で保存される

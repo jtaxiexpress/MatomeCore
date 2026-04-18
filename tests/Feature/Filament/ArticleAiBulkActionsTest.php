@@ -12,10 +12,12 @@ use App\Models\Site;
 use App\Models\User;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
+use RuntimeException;
 use Tests\TestCase;
 
 class ArticleAiBulkActionsTest extends TestCase
@@ -206,6 +208,43 @@ class ArticleAiBulkActionsTest extends TestCase
         $this->assertSame('現在のタイトル2', $secondArticle->title);
         $this->assertSame($targetCategory->id, $secondArticle->category_id);
         $this->assertSame('元の記事1', $firstArticle->original_title);
+    }
+
+    public function test_manage_articles_table_does_not_lazy_load_category_or_site_relations(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $tenant = AppModel::factory()->create();
+        $site = Site::factory()->for($tenant, 'app')->create();
+        $category = Category::factory()->for($tenant, 'app')->create();
+
+        $article = Article::factory()
+            ->for($tenant, 'app')
+            ->for($site, 'site')
+            ->for($category, 'category')
+            ->create([
+                'title' => '遅延ロード検知テスト',
+                'thumbnail_url' => null,
+            ]);
+
+        Filament::setTenant($tenant, isQuiet: true);
+
+        Model::preventLazyLoading();
+        Model::handleLazyLoadingViolationUsing(static function (Model $model, string $relation): void {
+            if ($model instanceof Article && in_array($relation, ['category', 'site'], true)) {
+                throw new RuntimeException("Unexpected lazy loading: {$relation}");
+            }
+        });
+
+        try {
+            Livewire::actingAs($admin)
+                ->test(ManageArticles::class)
+                ->assertCanSeeTableRecords([$article]);
+
+            $this->assertTrue(true);
+        } finally {
+            Model::preventLazyLoading(false);
+            Model::handleLazyLoadingViolationUsing(static function (): void {});
+        }
     }
 
     private function fakeBatchResponse(array $results): void

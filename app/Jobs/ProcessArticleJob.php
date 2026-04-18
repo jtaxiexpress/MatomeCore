@@ -8,8 +8,8 @@ use App\Actions\CleanArticleTitleAction;
 use App\Models\Article;
 use App\Models\Site;
 use App\Services\ArticleAiService;
+use App\Services\ArticleMetadataResolverService;
 use App\Services\ArticleScraperService;
-use App\Support\DateParser;
 use Exception;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -43,7 +43,8 @@ class ProcessArticleJob implements ShouldQueue
     public function handle(
         ArticleAiService $aiService,
         ArticleScraperService $scraper,
-        CleanArticleTitleAction $cleanTitleAction
+        CleanArticleTitleAction $cleanTitleAction,
+        ArticleMetadataResolverService $metadataResolver,
     ): void {
         $this->shareLogContext();
 
@@ -79,7 +80,13 @@ class ProcessArticleJob implements ShouldQueue
                 return;
             }
 
-            $metaData = $this->resolveMetaData($scraper);
+            $metaData = $metadataResolver->resolve(
+                scraper: $scraper,
+                url: $this->url,
+                rawMetaData: $this->metaData,
+                site: $this->site,
+                logPrefix: "[Process: {$this->url}]",
+            );
 
             $title = $cleanTitleAction->execute($metaData['title'], $this->site->name);
 
@@ -109,44 +116,6 @@ class ProcessArticleJob implements ShouldQueue
             // 処理完了または例外発生時に必ずロックを解放する
             $lock->release();
         }
-    }
-
-    /**
-     * @return array{title: string|null, image: string|null, date: string}
-     */
-    private function resolveMetaData(ArticleScraperService $scraper): array
-    {
-        $title = $this->metaData['raw_title'] ?? null;
-        $thumbnailUrl = $this->metaData['thumbnail_url'] ?? null;
-        $rawPublishedAt = $this->metaData['published_at'] ?? null;
-        $publishedAt = $rawPublishedAt ? DateParser::parse($rawPublishedAt)?->toDateTimeString() : null;
-
-        $needsScraping = empty($title) || empty($thumbnailUrl) || empty($publishedAt);
-
-        if ($needsScraping) {
-            try {
-                Log::info("[Process: {$this->url}] 不足データ(title/thumbnail/date)の補完のためHTMLスクレイピングを開始します");
-                // ④ サイト固有のNG画像URLリストをスクレイパーに渡す
-                $siteNgImages = $this->site->ng_image_urls ?? [];
-                $scrapeResult = $scraper->scrape($this->url, $this->site->date_selector ?? null, $siteNgImages);
-
-                if ($scrapeResult['success']) {
-                    $title = empty($title) && ! empty($scrapeResult['data']['title']) ? $scrapeResult['data']['title'] : $title;
-                    $thumbnailUrl = empty($thumbnailUrl) && ! empty($scrapeResult['data']['image']) ? $scrapeResult['data']['image'] : $thumbnailUrl;
-                    $publishedAt = empty($publishedAt) && ! empty($scrapeResult['data']['date']) ? $scrapeResult['data']['date'] : $publishedAt;
-                } else {
-                    Log::warning("[Process: {$this->url}] スクレイピング補完に失敗しました: ".($scrapeResult['error_message'] ?? '不明なエラー'));
-                }
-            } catch (Exception $e) {
-                Log::error("ProcessArticleJob: Failed to fetch/parse metadata for URL {$this->url} - ".$e->getMessage());
-            }
-        }
-
-        return [
-            'title' => $title,
-            'image' => $thumbnailUrl,
-            'date' => $publishedAt ?: now()->toDateTimeString(),
-        ];
     }
 
     /**
