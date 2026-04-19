@@ -5,7 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\SiteResource\Pages;
 use App\Jobs\FetchSitePastArticlesJob;
 use App\Models\Site;
-use App\Services\ArticleScraperService;
+use App\Services\SiteAnalyzerService;
 use Carbon\Carbon;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
@@ -19,14 +19,16 @@ use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\ToggleColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\HtmlString;
-use Symfony\Component\DomCrawler\Crawler;
+use RuntimeException;
+use Throwable;
 
 class SiteResource extends Resource
 {
@@ -55,7 +57,106 @@ class SiteResource extends Resource
                         ->label('サイトURL')
                         ->required()
                         ->maxLength(255)
-                        ->url(),
+                        ->url()
+                        ->hintActions([
+                            Action::make('ai_infer_site_settings')
+                                ->label('✨ AIで設定を自動推論')
+                                ->icon('heroicon-o-sparkles')
+                                ->color('primary')
+                                ->action(function (Get $get, Set $set, SiteAnalyzerService $siteAnalyzerService): void {
+                                    $url = trim((string) $get('url'));
+
+                                    if ($url === '') {
+                                        Notification::make()
+                                            ->danger()
+                                            ->title('サイトURLを入力してください')
+                                            ->send();
+
+                                        return;
+                                    }
+
+                                    try {
+                                        $analysis = $siteAnalyzerService->analyze($url);
+
+                                        $set('rss_url', $analysis['rss_url']);
+                                        $set('crawler_type', $analysis['crawler_type']);
+                                        $set('sitemap_url', $analysis['sitemap_url']);
+                                        $set('crawl_start_url', $analysis['crawl_start_url']);
+                                        $set('list_item_selector', $analysis['list_item_selector']);
+                                        $set('link_selector', $analysis['link_selector']);
+                                        $set('pagination_url_template', $analysis['pagination_url_template']);
+                                        $set('ng_image_urls', $analysis['ng_image_urls']);
+
+                                        $diagnostics = collect($analysis['diagnostics'] ?? [])->implode('<br>');
+
+                                        Notification::make()
+                                            ->success()
+                                            ->title('AIでサイト設定を推論しました')
+                                            ->body(new HtmlString($diagnostics !== '' ? $diagnostics : '推論が完了しました。'))
+                                            ->send();
+                                    } catch (Throwable $e) {
+                                        Notification::make()
+                                            ->danger()
+                                            ->title('AI推論に失敗しました')
+                                            ->body($e->getMessage())
+                                            ->persistent()
+                                            ->send();
+                                    }
+                                }),
+                            Action::make('test_current_extraction')
+                                ->label('🧪 現在の設定でテスト抽出')
+                                ->icon('heroicon-o-beaker')
+                                ->color('info')
+                                ->action(function (Get $get, SiteAnalyzerService $siteAnalyzerService): void {
+                                    $state = self::buildStateFromGet($get);
+
+                                    if (trim((string) ($state['rss_url'] ?? '')) !== '') {
+                                        $rssPreview = $siteAnalyzerService->previewRssFetch($state);
+
+                                        if (($rssPreview['error'] ?? null) !== null) {
+                                            Notification::make()
+                                                ->danger()
+                                                ->title('RSSテストに失敗しました')
+                                                ->body((string) $rssPreview['error'])
+                                                ->persistent()
+                                                ->send();
+
+                                            return;
+                                        }
+
+                                        Notification::make()
+                                            ->success()
+                                            ->title('RSSテストに成功しました')
+                                            ->body(self::buildRssPreviewBody($rssPreview['items'] ?? []))
+                                            ->persistent()
+                                            ->send();
+
+                                        return;
+                                    }
+
+                                    $crawlPreview = $siteAnalyzerService->previewCrawlExtraction($state);
+
+                                    if (($crawlPreview['error'] ?? null) !== null) {
+                                        Notification::make()
+                                            ->danger()
+                                            ->title('抽出に失敗しました')
+                                            ->body((string) $crawlPreview['error'])
+                                            ->persistent()
+                                            ->send();
+
+                                        return;
+                                    }
+
+                                    $titleText = 'URL抽出テストに成功しました 【抽出件数】 '.((int) ($crawlPreview['total_count'] ?? 0)).'件';
+
+                                    Notification::make()
+                                        ->success()
+                                        ->title($titleText)
+                                        ->body(self::buildCrawlPreviewBody($crawlPreview))
+                                        ->persistent()
+                                        ->send();
+                                }),
+                        ]),
                     Toggle::make('is_active')
                         ->label('クローリング有効')
                         ->default(true)
@@ -174,262 +275,23 @@ class SiteResource extends Resource
                         ->label('クローラ抽出テスト')
                         ->icon('heroicon-o-bug-ant')
                         ->color('warning')
-                        ->action(function (Site $record) {
+                        ->action(function (Site $record, SiteAnalyzerService $siteAnalyzerService): void {
                             try {
-                                if ($record->crawler_type === 'sitemap') {
-                                    $url = $record->sitemap_url;
-                                    if (empty($url)) {
-                                        throw new \Exception('サイトマップURLが設定されていません。');
-                                    }
+                                $preview = $siteAnalyzerService->previewCrawlExtraction(self::buildStateFromRecord($record));
 
-                                    $response = Http::withHeaders([
-                                        'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                                    ])->timeout(10)->get($url);
-                                    if (! $response->successful()) {
-                                        throw new \Exception('HTTP通信に失敗: '.$response->status());
-                                    }
-
-                                    $xml = simplexml_load_string($response->body());
-                                    if ($xml === false) {
-                                        throw new \Exception('XMLのパースに失敗しました。');
-                                    }
-
-                                    if (isset($xml->sitemap)) {
-                                        $sitemaps = $xml->sitemap;
-                                        $targetSitemapUrl = (string) $sitemaps[count($sitemaps) - 1]->loc;
-
-                                        $response = Http::withHeaders([
-                                            'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                                        ])->timeout(10)->get($targetSitemapUrl);
-
-                                        if (! $response->successful()) {
-                                            throw new \Exception('子サイトマップのHTTP通信に失敗: '.$response->status());
-                                        }
-
-                                        $xml = simplexml_load_string($response->body());
-                                        if ($xml === false) {
-                                            throw new \Exception('子サイトマップのXMLパースに失敗しました。');
-                                        }
-                                    }
-
-                                    $urls = [];
-                                    $allUrls = $xml->url ?? [];
-                                    foreach ($allUrls as $urlEntry) {
-                                        $urls[] = (string) $urlEntry->loc;
-                                    }
-
-                                    $ngKeywords = $record->ng_url_keywords ?? [];
-                                    $siteUrl = rtrim($record->url, '/');
-                                    $startUrl = rtrim($record->crawl_start_url ?? '', '/');
-
-                                    $requiredSubstring = null;
-                                    if (! empty($record->link_selector) && preg_match('/href\*?=[\'"]([^\'"]+)[\'"]/', $record->link_selector, $matches)) {
-                                        $requiredSubstring = $matches[1];
-                                    }
-
-                                    $urls = collect($urls)
-                                        ->filter(function ($url) use ($requiredSubstring) {
-                                            if ($requiredSubstring && ! str_contains($url, $requiredSubstring)) {
-                                                return false;
-                                            }
-
-                                            return true;
-                                        })
-                                        ->reject(function ($url) use ($ngKeywords, $siteUrl, $startUrl) {
-                                            $cleanUrl = rtrim($url, '/');
-                                            if ($cleanUrl === $siteUrl || ($startUrl !== '' && $cleanUrl === $startUrl)) {
-                                                return true;
-                                            }
-                                            if (str_contains($url, '/page/') || str_contains($url, '?page=')) {
-                                                return true;
-                                            }
-                                            foreach ($ngKeywords as $ng) {
-                                                if ($ng !== '' && str_contains($url, $ng)) {
-                                                    return true;
-                                                }
-                                            }
-
-                                            return false;
-                                        })
-                                        ->values()
-                                        ->all();
-                                    $count = count($urls);
-                                    $totalCount = $count;
-                                } else {
-                                    $url = $record->crawl_start_url;
-                                    if (empty($url)) {
-                                        throw new \Exception('クロール開始URLが設定されていません。');
-                                    }
-
-                                    $response = Http::withHeaders([
-                                        'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                                    ])->timeout(10)->get($url);
-
-                                    if (! $response->successful()) {
-                                        throw new \Exception('HTTP通信に失敗: '.$response->status());
-                                    }
-
-                                    $crawler = new Crawler($response->body(), $url);
-
-                                    $listSelector = $record->list_item_selector;
-                                    $linkSelector = $record->link_selector;
-                                    $urls = [];
-
-                                    if (empty($listSelector)) {
-                                        if (empty($linkSelector)) {
-                                            throw new \Exception('リストブロックまたは記事リンクのセレクタが未設定です。');
-                                        }
-                                        $items = $crawler->filter($linkSelector);
-                                        $items->each(function ($node) use (&$urls) {
-                                            try {
-                                                $linkUrl = null;
-                                                if ($node->nodeName() === 'a') {
-                                                    $linkUrl = $node->link()->getUri();
-                                                } elseif ($node->filter('a')->count() > 0) {
-                                                    $linkUrl = $node->filter('a')->first()->link()->getUri();
-                                                }
-                                                if ($linkUrl) {
-                                                    $urls[] = $linkUrl;
-                                                }
-                                            } catch (\Exception $e) {
-                                            }
-                                        });
-                                    } else {
-                                        $items = $crawler->filter($listSelector);
-                                        $items->each(function ($node) use (&$urls, $linkSelector) {
-                                            try {
-                                                $linkUrl = null;
-                                                if (! empty($linkSelector) && $node->filter($linkSelector)->count() > 0) {
-                                                    $linkUrl = $node->filter($linkSelector)->first()->link()->getUri();
-                                                } elseif ($node->nodeName() === 'a') {
-                                                    $linkUrl = $node->link()->getUri();
-                                                } elseif ($node->filter('a')->count() > 0) {
-                                                    $linkUrl = $node->filter('a')->first()->link()->getUri();
-                                                }
-                                                if ($linkUrl) {
-                                                    $urls[] = $linkUrl;
-                                                }
-                                            } catch (\Exception $e) {
-                                            }
-                                        });
-                                    }
-
-                                    $nextUrl = 'なし';
-                                    if ($record->next_page_selector && $crawler->filter($record->next_page_selector)->count() > 0) {
-                                        $nextUrl = $crawler->filter($record->next_page_selector)->first()->link()->getUri();
-                                        $nextUrl = "<a href='{$nextUrl}' target='_blank' style='color:#3b82f6;'>{$nextUrl}</a>";
-                                    }
-
-                                    $totalCount = $items->count();
-
-                                    $ngKeywords = $record->ng_url_keywords ?? [];
-                                    $siteUrl = rtrim($record->url, '/');
-                                    $startUrl = rtrim($record->crawl_start_url ?? '', '/');
-
-                                    $requiredSubstring = null;
-                                    if (! empty($linkSelector) && preg_match('/href\*?=[\'"]([^\'"]+)[\'"]/', $linkSelector, $matches)) {
-                                        $requiredSubstring = $matches[1];
-                                    }
-
-                                    $urls = collect($urls)
-                                        ->filter(function ($url) use ($requiredSubstring) {
-                                            if ($requiredSubstring && ! str_contains($url, $requiredSubstring)) {
-                                                return false;
-                                            }
-
-                                            return true;
-                                        })
-                                        ->reject(function ($url) use ($ngKeywords, $siteUrl, $startUrl) {
-                                            $cleanUrl = rtrim($url, '/');
-                                            if ($cleanUrl === $siteUrl || ($startUrl !== '' && $cleanUrl === $startUrl)) {
-                                                return true;
-                                            }
-                                            if (str_contains($url, '/page/') || str_contains($url, '?page=')) {
-                                                return true;
-                                            }
-                                            foreach ($ngKeywords as $ng) {
-                                                if ($ng !== '' && str_contains($url, $ng)) {
-                                                    return true;
-                                                }
-                                            }
-
-                                            return false;
-                                        })
-                                        ->values()
-                                        ->all();
-
-                                    $count = count($urls);
+                                if (($preview['error'] ?? null) !== null) {
+                                    throw new RuntimeException((string) $preview['error']);
                                 }
 
-                                $previewText = collect($urls)
-                                    ->map(fn ($u, $index) => ($index + 1).'. <a href="'.$u.'" target="_blank" style="color:#3b82f6;">'.$u.'</a>')
-                                    ->implode('<br>');
-
-                                $sampleOutput = '';
-                                $samples = array_slice($urls, 0, 3);
-                                if (count($samples) > 0) {
-                                    $sampleOutput .= '<strong>【サンプル抽出テスト (最初の3件)】</strong><br>';
-                                    $sampleOutput .= "<div style='max-height: 350px; overflow-y: auto; background-color: rgba(255,255,255,0.1); padding: 10px; border-radius: 6px; margin-bottom: 10px;'>";
-                                    $ngImageUrls = $record->ng_image_urls ?? [];
-                                    foreach ($samples as $index => $u) {
-                                        $num = $index + 1;
-                                        $title = '未取得';
-                                        $imgUrl = '未取得';
-                                        $date = '未取得';
-                                        $scraper = app(ArticleScraperService::class);
-                                        $scrapeResult = $scraper->scrape($u);
-
-                                        if ($scrapeResult['success']) {
-                                            $title = $scrapeResult['data']['title'] ?? '取得失敗(タイトル見つからず)';
-
-                                            $imgUrl = $scrapeResult['data']['image'] ?? null;
-                                            if (! empty($imgUrl) && in_array($imgUrl, $ngImageUrls, true)) {
-                                                $imgUrl = 'なし (NGサムネイル画像として除外)';
-                                            }
-                                            if (empty($imgUrl)) {
-                                                $imgUrl = 'なし ('.($scrapeResult['error_message'] ?? '画像見つからず').')';
-                                            }
-
-                                            $date = $scrapeResult['data']['date'] ?? null;
-                                            if (empty($date)) {
-                                                $date = 'なし ('.($scrapeResult['error_message'] ?? '日付見つからず').')';
-                                            }
-                                        } else {
-                                            $title = '取得失敗('.($scrapeResult['error_message'] ?? '不明なエラー').')';
-                                        }
-
-                                        $sampleOutput .= "<strong>{$num}件目:</strong><br>";
-                                        $sampleOutput .= '【タイトル】 '.htmlspecialchars($title).'<br>';
-                                        $sampleOutput .= "【記事URL】 <a href='{$u}' target='_blank' style='color:#3b82f6;'>{$u}</a><br>";
-                                        $sampleOutput .= '【画像URL】 '.htmlspecialchars($imgUrl).'<br>';
-                                        $sampleOutput .= '【投稿日】 '.htmlspecialchars($date).'<br>';
-                                        if ($index < count($samples) - 1) {
-                                            $sampleOutput .= "<hr style='margin: 8px 0; border-top: 1px solid rgba(128,128,128,0.3);'>";
-                                        }
-                                    }
-                                    $sampleOutput .= '</div>';
-                                }
-
-                                $nextUrlHtml = isset($nextUrl) ? "<strong>【次へボタンURL】</strong><br>{$nextUrl}<br><br>" : '';
-
-                                $htmlBody = new HtmlString(
-                                    $nextUrlHtml.
-                                    $sampleOutput.
-                                    "<strong>【取得URL（全{$count}件）】</strong><br>".
-                                    "<div style='max-height: 200px; overflow-y: auto; padding: 10px; background-color: rgba(128,128,128,0.1); border-radius: 6px; font-size: 0.85em; white-space: nowrap;'>".
-                                    $previewText.
-                                    '</div>'
-                                );
-
-                                $titleText = "URL抽出テストに成功しました 【抽出件数】 {$totalCount}件";
+                                $titleText = 'URL抽出テストに成功しました 【抽出件数】 '.((int) ($preview['total_count'] ?? 0)).'件';
 
                                 Notification::make()
                                     ->success()
                                     ->title($titleText)
-                                    ->body($htmlBody)
+                                    ->body(self::buildCrawlPreviewBody($preview))
                                     ->persistent()
                                     ->send();
-                            } catch (\Exception $e) {
+                            } catch (Throwable $e) {
                                 Notification::make()
                                     ->danger()
                                     ->title('抽出に失敗しました')
@@ -468,6 +330,46 @@ class SiteResource extends Resource
                                 ->title('バックグラウンドで一括取得を開始しました')
                                 ->send();
                         }),
+                    Action::make('reanalyze_with_ai')
+                        ->label('🔄 AIで再解析・修復')
+                        ->icon('heroicon-o-sparkles')
+                        ->color('primary')
+                        ->requiresConfirmation()
+                        ->modalHeading('AIで再解析・修復')
+                        ->modalDescription('現在のサイトURLを再解析し、RSS/サイトマップ/抽出セレクタを自動更新します。')
+                        ->modalSubmitActionLabel('再解析して更新')
+                        ->action(function (Site $record, SiteAnalyzerService $siteAnalyzerService): void {
+                            try {
+                                $analysis = $siteAnalyzerService->analyze($record->url);
+
+                                $record->update([
+                                    'rss_url' => $analysis['rss_url'],
+                                    'crawler_type' => $analysis['crawler_type'],
+                                    'sitemap_url' => $analysis['sitemap_url'],
+                                    'crawl_start_url' => $analysis['crawl_start_url'],
+                                    'list_item_selector' => $analysis['list_item_selector'],
+                                    'link_selector' => $analysis['link_selector'],
+                                    'pagination_url_template' => $analysis['pagination_url_template'],
+                                    'ng_image_urls' => $analysis['ng_image_urls'],
+                                    'failing_since' => null,
+                                ]);
+
+                                $diagnostics = collect($analysis['diagnostics'] ?? [])->implode('<br>');
+
+                                Notification::make()
+                                    ->success()
+                                    ->title('AIで再解析し、設定を更新しました')
+                                    ->body(new HtmlString($diagnostics !== '' ? $diagnostics : '更新が完了しました。'))
+                                    ->send();
+                            } catch (Throwable $e) {
+                                Notification::make()
+                                    ->danger()
+                                    ->title('再解析に失敗しました')
+                                    ->body($e->getMessage())
+                                    ->persistent()
+                                    ->send();
+                            }
+                        }),
                     Action::make('test_rss_fetch')
                         ->label('RSSテスト')
                         ->icon('heroicon-o-rss')
@@ -477,153 +379,14 @@ class SiteResource extends Resource
                         ->modalSubmitAction(false)
                         ->modalCancelActionLabel('閉じる')
                         ->modalWidth('6xl')
-                        ->modalContent(function (Site $record) {
-                            $rssUrl = $record->rss_url;
-                            if (empty($rssUrl)) {
-                                return view('filament.actions.rss-preview', ['error' => 'RSS URLが設定されていません。']);
+                        ->modalContent(function (Site $record, SiteAnalyzerService $siteAnalyzerService) {
+                            $preview = $siteAnalyzerService->previewRssFetch(self::buildStateFromRecord($record));
+
+                            if (($preview['error'] ?? null) !== null) {
+                                return view('filament.actions.rss-preview', ['error' => $preview['error']]);
                             }
 
-                            try {
-                                $response = Http::withHeaders([
-                                    'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                                    'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                                    'Accept-Language' => 'ja,en-US;q=0.9,en;q=0.8',
-                                ])->withOptions(['verify' => false])->timeout(10)->get($rssUrl);
-
-                                if (! $response->successful()) {
-                                    return view('filament.actions.rss-preview', ['error' => "HTTP通信に失敗しました (ステータスコード: {$response->status()})"]);
-                                }
-
-                                $xml = @simplexml_load_string($response->body(), 'SimpleXMLElement', LIBXML_NOCDATA);
-                                if ($xml === false) {
-                                    return view('filament.actions.rss-preview', ['error' => 'XMLのパースに失敗しました。フィードが正しい形式か確認してください。']);
-                                }
-
-                                $items = $xml->xpath('//*[local-name()="item"] | //*[local-name()="entry"]');
-                                if (! $items) {
-                                    return view('filament.actions.rss-preview', ['error' => '記事アイテム (<item> または <entry>) が見つかりませんでした。']);
-                                }
-
-                                $results = [];
-                                $scrapedCount = 0;
-                                $ngKeywords = $record->ng_url_keywords ?? [];
-                                $ngImageUrls = $record->ng_image_urls ?? [];
-
-                                foreach ($items as $item) {
-                                    if (count($results) >= 10) {
-                                        break;
-                                    }
-
-                                    // ① タイトル
-                                    $titleStr = (string) $item->title;
-                                    $title = $titleStr !== '' ? trim($titleStr) : 'なし';
-
-                                    // ② URL (必ずtrimする)
-                                    $urlStr = (string) $item->link;
-                                    $url = $urlStr !== '' ? trim($urlStr) : '';
-                                    if (! $url && isset($item->link['href'])) {
-                                        $url = trim((string) $item->link['href']);
-                                    }
-                                    if (empty($url)) {
-                                        $guids = $item->xpath('.//*[local-name()="guid"] | .//*[local-name()="id"]') ?: [];
-                                        if (! empty($guids) && filter_var(trim((string) $guids[0]), FILTER_VALIDATE_URL)) {
-                                            $url = trim((string) $guids[0]);
-                                        }
-                                    }
-                                    $url = empty($url) ? 'なし' : $url;
-
-                                    if ($url !== 'なし') {
-                                        foreach ($ngKeywords as $ng) {
-                                            if ($ng !== '' && str_contains($url, $ng)) {
-                                                continue 2;
-                                            }
-                                        }
-                                    }
-
-                                    // ③ 公開日 (RSSからの取得)
-                                    $publishedAtRaw = (string) $item->pubDate
-                                        ?: (string) $item->children('dc', true)->date
-                                        ?: (string) $item->updated
-                                        ?: (string) $item->published
-                                        ?: (string) $item->date;
-
-                                    $date = 'なし';
-                                    if (! empty(trim($publishedAtRaw))) {
-                                        try {
-                                            $date = Carbon::parse(trim($publishedAtRaw))->toDateTimeString();
-                                        } catch (\Exception $e) {
-                                            $date = 'なし';
-                                        }
-                                    }
-
-                                    // ④ 画像URL (RSSからの取得)
-                                    $imageUrl = 'なし';
-                                    if (isset($item->enclosure) && isset($item->enclosure['url'])) {
-                                        $imageUrl = trim((string) $item->enclosure['url']);
-                                    } elseif ($item->children('media', true)->content && isset($item->children('media', true)->content->attributes()->url)) {
-                                        $imageUrl = trim((string) $item->children('media', true)->content->attributes()->url);
-                                    } elseif ($item->children('media', true)->thumbnail && isset($item->children('media', true)->thumbnail->attributes()->url)) {
-                                        $imageUrl = trim((string) $item->children('media', true)->thumbnail->attributes()->url);
-                                    }
-
-                                    if ($imageUrl === 'なし') {
-                                        $content = (string) $item->children('content', true)->encoded ?: (string) $item->description;
-                                        if (preg_match('/<img[^>]+src=[\'"]([^\'"]+)[\'"]/i', $content, $matches)) {
-                                            $imageUrl = trim($matches[1]);
-                                        }
-                                    }
-
-                                    if ($imageUrl !== 'なし' && in_array($imageUrl, $ngImageUrls, true)) {
-                                        $imageUrl = 'なし';
-                                    }
-
-                                    // ⑤ 欠損データのスクレイピング補完 (最大5件まで)
-                                    if (($imageUrl === 'なし' || $date === 'なし') && $url !== 'なし' && $scrapedCount < 5) {
-                                        $scrapedCount++;
-                                        $scraper = app(ArticleScraperService::class);
-                                        $scrapeResult = $scraper->scrape($url);
-
-                                        if ($scrapeResult['success']) {
-                                            if ($date === 'なし') {
-                                                $date = $scrapeResult['data']['date'] ?? 'なし ('.($scrapeResult['error_message'] ?? '日付見つからず').')';
-                                            }
-                                            if ($imageUrl === 'なし') {
-                                                $scrapedImageUrl = $scrapeResult['data']['image'] ?? null;
-                                                if (! empty($scrapedImageUrl)) {
-                                                    $imageUrl = in_array($scrapedImageUrl, $ngImageUrls, true)
-                                                        ? 'なし (NGサムネイル画像として除外)'
-                                                        : $scrapedImageUrl;
-                                                } else {
-                                                    $imageUrl = 'なし ('.($scrapeResult['error_message'] ?? '画像見つからず').')';
-                                                }
-                                            }
-                                        } elseif (! empty($scrapeResult['error_message'])) {
-                                            if ($date === 'なし') {
-                                                $date = 'なし ('.$scrapeResult['error_message'].')';
-                                            }
-                                            if ($imageUrl === 'なし') {
-                                                $imageUrl = 'なし ('.$scrapeResult['error_message'].')';
-                                            }
-                                        }
-                                    }
-
-                                    if (is_string($imageUrl) && $imageUrl !== 'なし' && in_array($imageUrl, $ngImageUrls, true)) {
-                                        $imageUrl = 'なし (NGサムネイル画像として除外)';
-                                    }
-
-                                    $results[] = [
-                                        'title' => $title,
-                                        'url' => $url,
-                                        'date' => $date,
-                                        'image' => $imageUrl,
-                                    ];
-                                }
-
-                                return view('filament.actions.rss-preview', ['items' => $results]);
-
-                            } catch (\Exception $e) {
-                                return view('filament.actions.rss-preview', ['error' => '通信エラーが発生しました: '.$e->getMessage()]);
-                            }
+                            return view('filament.actions.rss-preview', ['items' => $preview['items'] ?? []]);
                         }),
                 ])->label('テスト実行')->icon('heroicon-m-beaker'),
                 EditAction::make()
@@ -644,5 +407,140 @@ class SiteResource extends Resource
         return [
             'index' => Pages\ManageSites::route('/'),
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function buildStateFromRecord(Site $record): array
+    {
+        return [
+            'url' => $record->url,
+            'rss_url' => $record->rss_url,
+            'crawler_type' => $record->crawler_type,
+            'sitemap_url' => $record->sitemap_url,
+            'crawl_start_url' => $record->crawl_start_url,
+            'pagination_url_template' => $record->pagination_url_template,
+            'list_item_selector' => $record->list_item_selector,
+            'link_selector' => $record->link_selector,
+            'next_page_selector' => $record->next_page_selector,
+            'ng_url_keywords' => $record->ng_url_keywords ?? [],
+            'ng_image_urls' => $record->ng_image_urls ?? [],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function buildStateFromGet(Get $get): array
+    {
+        return [
+            'url' => (string) $get('url'),
+            'rss_url' => (string) $get('rss_url'),
+            'crawler_type' => (string) $get('crawler_type'),
+            'sitemap_url' => (string) $get('sitemap_url'),
+            'crawl_start_url' => (string) $get('crawl_start_url'),
+            'pagination_url_template' => (string) $get('pagination_url_template'),
+            'list_item_selector' => (string) $get('list_item_selector'),
+            'link_selector' => (string) $get('link_selector'),
+            'next_page_selector' => (string) $get('next_page_selector'),
+            'ng_url_keywords' => $get('ng_url_keywords') ?? [],
+            'ng_image_urls' => $get('ng_image_urls') ?? [],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $preview
+     */
+    private static function buildCrawlPreviewBody(array $preview): HtmlString
+    {
+        $urls = is_array($preview['urls'] ?? null) ? $preview['urls'] : [];
+        $sampleItems = is_array($preview['sample_items'] ?? null) ? $preview['sample_items'] : [];
+        $nextUrl = $preview['next_url'] ?? null;
+        $count = (int) ($preview['count'] ?? count($urls));
+
+        $previewText = collect($urls)
+            ->map(static fn ($url, $index): string => ($index + 1).'. <a href="'.(string) $url.'" target="_blank" style="color:#3b82f6;">'.(string) $url.'</a>')
+            ->implode('<br>');
+
+        $sampleOutput = '';
+
+        if ($sampleItems !== []) {
+            $sampleOutput .= '<strong>【サンプル抽出テスト (最初の3件)】</strong><br>';
+            $sampleOutput .= "<div style='max-height: 350px; overflow-y: auto; background-color: rgba(255,255,255,0.1); padding: 10px; border-radius: 6px; margin-bottom: 10px;'>";
+
+            foreach ($sampleItems as $index => $sample) {
+                if (! is_array($sample)) {
+                    continue;
+                }
+
+                $num = $index + 1;
+                $title = htmlspecialchars((string) ($sample['title'] ?? '未取得'));
+                $url = (string) ($sample['url'] ?? '');
+                $image = htmlspecialchars((string) ($sample['image'] ?? '未取得'));
+                $date = htmlspecialchars((string) ($sample['date'] ?? '未取得'));
+
+                $sampleOutput .= "<strong>{$num}件目:</strong><br>";
+                $sampleOutput .= '【タイトル】 '.$title.'<br>';
+                $sampleOutput .= "【記事URL】 <a href='{$url}' target='_blank' style='color:#3b82f6;'>{$url}</a><br>";
+                $sampleOutput .= '【画像URL】 '.$image.'<br>';
+                $sampleOutput .= '【投稿日】 '.$date.'<br>';
+
+                if ($index < count($sampleItems) - 1) {
+                    $sampleOutput .= "<hr style='margin: 8px 0; border-top: 1px solid rgba(128,128,128,0.3);'>";
+                }
+            }
+
+            $sampleOutput .= '</div>';
+        }
+
+        $nextUrlHtml = '';
+
+        if (is_string($nextUrl) && $nextUrl !== '') {
+            $nextUrlHtml = "<strong>【次へボタンURL】</strong><br><a href='{$nextUrl}' target='_blank' style='color:#3b82f6;'>{$nextUrl}</a><br><br>";
+        }
+
+        return new HtmlString(
+            $nextUrlHtml.
+            $sampleOutput.
+            "<strong>【取得URL（全{$count}件）】</strong><br>".
+            "<div style='max-height: 200px; overflow-y: auto; padding: 10px; background-color: rgba(128,128,128,0.1); border-radius: 6px; font-size: 0.85em; white-space: nowrap;'>".
+            $previewText.
+            '</div>'
+        );
+    }
+
+    /**
+     * @param  array<int, array{title: string, url: string, date: string, image: string}>  $items
+     */
+    private static function buildRssPreviewBody(array $items): HtmlString
+    {
+        if ($items === []) {
+            return new HtmlString('RSSから記事が見つかりませんでした。');
+        }
+
+        $body = collect($items)
+            ->take(10)
+            ->values()
+            ->map(function (array $item, int $index): string {
+                $title = htmlspecialchars((string) ($item['title'] ?? 'なし'));
+                $url = (string) ($item['url'] ?? 'なし');
+                $image = htmlspecialchars((string) ($item['image'] ?? 'なし'));
+                $date = htmlspecialchars((string) ($item['date'] ?? 'なし'));
+                $number = $index + 1;
+
+                return "<strong>{$number}件目:</strong><br>".
+                    "【タイトル】 {$title}<br>".
+                    "【URL】 <a href='{$url}' target='_blank' style='color:#3b82f6;'>{$url}</a><br>".
+                    "【画像】 {$image}<br>".
+                    "【公開日】 {$date}";
+            })
+            ->implode("<hr style='margin: 8px 0; border-top: 1px solid rgba(128,128,128,0.3);'>");
+
+        return new HtmlString(
+            "<div style='max-height: 350px; overflow-y: auto; padding: 10px; background-color: rgba(128,128,128,0.1); border-radius: 6px; font-size: 0.85em;'>".
+            $body.
+            '</div>'
+        );
     }
 }

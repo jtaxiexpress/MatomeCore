@@ -8,6 +8,7 @@ use App\Filament\Resources\SiteResource\Pages\ManageSites;
 use App\Models\App as AppModel;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\SiteAnalyzerService;
 use Carbon\Carbon;
 use Filament\Actions\Testing\TestAction;
 use Filament\Notifications\Livewire\Notifications as NotificationsComponent;
@@ -161,6 +162,53 @@ HTML),
         $this->assertSame('URL抽出テストに成功しました 【抽出件数】 3件', $notification->toArray()['title']);
         $this->assertStringContainsString('なし (NGサムネイル画像として除外)', (string) $notification->toArray()['body']);
         $this->assertStringContainsString('https://example.com/allowed-thumb.jpg', (string) $notification->toArray()['body']);
+    }
+
+    public function test_reanalyze_with_ai_action_updates_site_settings_and_clears_failing_since(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $appModel = AppModel::factory()->create();
+
+        $site = Site::factory()->for($appModel)->create([
+            'url' => 'https://example.com',
+            'crawler_type' => 'html',
+            'crawl_start_url' => 'https://example.com/old',
+            'list_item_selector' => '.old-list',
+            'link_selector' => '.old-link',
+            'failing_since' => now()->subDays(2),
+        ]);
+
+        $mock = \Mockery::mock(SiteAnalyzerService::class);
+        $mock->shouldReceive('analyze')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn([
+                'rss_url' => null,
+                'crawler_type' => 'html',
+                'sitemap_url' => null,
+                'crawl_start_url' => 'https://example.com/news',
+                'list_item_selector' => '.article-item:not(.pr-item)',
+                'link_selector' => 'a.article-link',
+                'pagination_url_template' => 'https://example.com/news/page/{page}',
+                'ng_image_urls' => ['https://example.com/logo.png'],
+                'analysis_method' => 'llm',
+                'diagnostics' => ['Crawl4AI + Gemini によるHTML解析を実行しました。'],
+            ]);
+
+        $this->app->instance(SiteAnalyzerService::class, $mock);
+
+        Livewire::actingAs($admin)
+            ->test(ManageSites::class)
+            ->callAction(TestAction::make('reanalyze_with_ai')->table($site));
+
+        $site->refresh();
+
+        $this->assertNull($site->failing_since);
+        $this->assertSame('https://example.com/news', $site->crawl_start_url);
+        $this->assertSame('.article-item:not(.pr-item)', $site->list_item_selector);
+        $this->assertSame('a.article-link', $site->link_selector);
+        $this->assertSame('https://example.com/news/page/{page}', $site->pagination_url_template);
+        $this->assertSame(['https://example.com/logo.png'], $site->ng_image_urls);
     }
 
     /**
