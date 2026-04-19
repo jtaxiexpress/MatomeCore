@@ -63,6 +63,43 @@ class SiteResource extends Resource
                                 ->label('✨ AIで設定を自動推論')
                                 ->icon('heroicon-o-sparkles')
                                 ->color('primary')
+                                ->requiresConfirmation()
+                                ->modalHeading('AI推論結果の確認')
+                                ->modalDescription('推論結果とテスト抽出プレビューを確認し、問題なければ「承認して反映」を押してください。')
+                                ->modalSubmitActionLabel('承認して反映')
+                                ->modalCancelActionLabel('キャンセル')
+                                ->modalWidth('7xl')
+                                ->modalContent(function (Get $get, SiteAnalyzerService $siteAnalyzerService) {
+                                    $url = trim((string) $get('url'));
+
+                                    if ($url === '') {
+                                        return view('filament.actions.site-analysis-preview', [
+                                            'error' => 'サイトURLを入力してください。',
+                                        ]);
+                                    }
+
+                                    try {
+                                        $analysis = $siteAnalyzerService->analyze($url);
+                                        $previewState = self::buildStateFromAnalysis($url, $analysis);
+
+                                        $rssPreview = $analysis['rss_url'] !== null
+                                            ? $siteAnalyzerService->previewRssFetch($previewState)
+                                            : ['error' => 'RSSは検出されませんでした。'];
+
+                                        $crawlPreview = $siteAnalyzerService->previewCrawlExtraction($previewState);
+
+                                        return view('filament.actions.site-analysis-preview', [
+                                            'analysis' => $analysis,
+                                            'rssPreview' => $rssPreview,
+                                            'crawlPreview' => $crawlPreview,
+                                            'error' => null,
+                                        ]);
+                                    } catch (Throwable $e) {
+                                        return view('filament.actions.site-analysis-preview', [
+                                            'error' => $e->getMessage(),
+                                        ]);
+                                    }
+                                })
                                 ->action(function (Get $get, Set $set, SiteAnalyzerService $siteAnalyzerService): void {
                                     $url = trim((string) $get('url'));
 
@@ -426,6 +463,27 @@ class SiteResource extends Resource
             'next_page_selector' => $record->next_page_selector,
             'ng_url_keywords' => $record->ng_url_keywords ?? [],
             'ng_image_urls' => $record->ng_image_urls ?? [],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $analysis
+     * @return array<string, mixed>
+     */
+    private static function buildStateFromAnalysis(string $url, array $analysis): array
+    {
+        return [
+            'url' => $url,
+            'rss_url' => $analysis['rss_url'] ?? null,
+            'crawler_type' => $analysis['crawler_type'] ?? 'html',
+            'sitemap_url' => $analysis['sitemap_url'] ?? null,
+            'crawl_start_url' => $analysis['crawl_start_url'] ?? $url,
+            'pagination_url_template' => $analysis['pagination_url_template'] ?? null,
+            'list_item_selector' => $analysis['list_item_selector'] ?? null,
+            'link_selector' => $analysis['link_selector'] ?? null,
+            'next_page_selector' => null,
+            'ng_url_keywords' => [],
+            'ng_image_urls' => $analysis['ng_image_urls'] ?? [],
         ];
     }
 

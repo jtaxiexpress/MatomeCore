@@ -56,10 +56,16 @@ class SiteAnalyzerService
 
         if ($rssUrl !== null) {
             $result['rss_url'] = $rssUrl;
-            $result['analysis_method'] = 'rss';
-            $result['diagnostics'][] = 'RSSフィードを検出しました。';
+            $result['diagnostics'][] = 'サイト内RSSフィードを検出しました。';
+        } else {
+            $morssUrl = $this->detectMorssFeedUrl($normalizedUrl);
 
-            return $result;
+            if ($morssUrl !== null) {
+                $result['rss_url'] = $morssUrl;
+                $result['diagnostics'][] = 'RSSが見つからなかったため、morss.it のフィードを利用します。';
+            } else {
+                $result['diagnostics'][] = 'RSSは検出できませんでした（morss.it でも取得不可）。';
+            }
         }
 
         $sitemapUrl = $this->detectSitemapUrl($normalizedUrl);
@@ -68,27 +74,38 @@ class SiteAnalyzerService
             $result['crawler_type'] = 'sitemap';
             $result['sitemap_url'] = $sitemapUrl;
             $result['crawl_start_url'] = null;
-            $result['analysis_method'] = 'sitemap';
-            $result['diagnostics'][] = 'サイトマップを検出しました。';
+            $result['analysis_method'] = $result['rss_url'] !== null ? 'rss+sitemap' : 'sitemap';
+            $result['diagnostics'][] = '記事URLを抽出可能なサイトマップを検出しました。';
 
             return $result;
         }
 
         try {
-            $llmResult = $this->analyzeHtmlStructureWithLlm($normalizedUrl);
+            $feedSampleUrls = $this->collectFeedSampleUrls($result['rss_url']);
+            $llmResult = $this->analyzeHtmlStructureWithLlm($normalizedUrl, $feedSampleUrls);
+            $llmResult['rss_url'] = $result['rss_url'];
 
-            return array_merge($result, $llmResult, [
-                'analysis_method' => 'llm',
-                'diagnostics' => ['Crawl4AI + Gemini によるHTML解析を実行しました。'],
+            $result = array_merge($result, $llmResult, [
+                'analysis_method' => $result['rss_url'] !== null ? 'rss+llm' : 'llm',
             ]);
+
+            $result['diagnostics'][] = 'サイトマップが見つからなかったため、一覧ページ抽出ルールを推論しました。';
+
+            return $result;
         } catch (Throwable $e) {
             Log::warning('[SiteAnalyzerService] LLM解析に失敗しました。フォールバックします。', [
                 'url' => $normalizedUrl,
                 'message' => $e->getMessage(),
             ]);
 
-            $result['analysis_method'] = 'fallback';
-            $result['diagnostics'][] = 'LLM解析に失敗したため、URLのみを設定しました。';
+            $result['crawler_type'] = 'html';
+            $result['crawl_start_url'] = $normalizedUrl;
+            $result['sitemap_url'] = null;
+            $result['list_item_selector'] = 'article, .post, .entry, .list-item, li';
+            $result['link_selector'] = 'a';
+            $result['pagination_url_template'] = null;
+            $result['analysis_method'] = $result['rss_url'] !== null ? 'rss+fallback' : 'fallback';
+            $result['diagnostics'][] = 'サイトマップ未検出かつLLM解析に失敗したため、汎用HTML抽出ルールを設定しました。';
 
             return $result;
         }
@@ -482,7 +499,7 @@ class SiteAnalyzerService
      *     ng_image_urls: array<int, string>
      * }
      */
-    private function analyzeHtmlStructureWithLlm(string $url): array
+    private function analyzeHtmlStructureWithLlm(string $url, array $feedSampleUrls = []): array
     {
         $crawlResult = $this->crawl4AiService->crawl($url);
         $markdown = trim((string) ($crawlResult['markdown'] ?? ''));
@@ -502,7 +519,7 @@ class SiteAnalyzerService
                 ];
             },
         )->prompt(
-            $this->buildAnalyzerPrompt($url, $markdown),
+            $this->buildAnalyzerPrompt($url, $markdown, $feedSampleUrls),
             provider: 'gemini',
             model: $this->geminiModel(),
             timeout: 120,
@@ -591,7 +608,23 @@ class SiteAnalyzerService
         $candidates = $this->buildSitemapCandidates($url);
 
         foreach ($candidates as $candidate) {
-            if ($this->isSitemapDocument($candidate)) {
+            if ($this->sitemapContainsArticleUrls($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private function detectMorssFeedUrl(string $url): ?string
+    {
+        $candidates = [
+            'https://morss.it/?url='.rawurlencode($url),
+            'https://morss.it/'.rawurlencode($url),
+        ];
+
+        foreach (array_values(array_unique($candidates)) as $candidate) {
+            if ($this->isFeedDocument($candidate)) {
                 return $candidate;
             }
         }
@@ -730,13 +763,19 @@ class SiteAnalyzerService
         );
     }
 
-    private function buildAnalyzerPrompt(string $url, string $markdown): string
+    private function buildAnalyzerPrompt(string $url, string $markdown, array $feedSampleUrls = []): string
     {
         $truncatedMarkdown = mb_substr($markdown, 0, 60000);
+        $feedSampleText = $feedSampleUrls === []
+            ? 'なし'
+            : implode("\n", array_map(static fn (string $sampleUrl): string => '- '.$sampleUrl, $feedSampleUrls));
 
         return <<<PROMPT
 対象サイトURL:
 {$url}
+
+RSS/morssから取得したサンプル記事URL（あれば参考にしてください）:
+{$feedSampleText}
 
 以下はCrawl4AIで抽出したMarkdownです。記事一覧を抽出するためのセレクタとページネーションURLテンプレートを推論してください。
 PR記事・広告バナーを除外する場合は、必ず :not() 疑似クラスを使ってセレクタを構築してください。
@@ -745,6 +784,95 @@ PR記事・広告バナーを除外する場合は、必ず :not() 疑似クラ�
 {$truncatedMarkdown}
 --- END MARKDOWN ---
 PROMPT;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function collectFeedSampleUrls(?string $rssUrl): array
+    {
+        if ($rssUrl === null || $rssUrl === '') {
+            return [];
+        }
+
+        $preview = $this->previewRssFetch([
+            'rss_url' => $rssUrl,
+            'ng_url_keywords' => [],
+            'ng_image_urls' => [],
+        ]);
+
+        if (($preview['error'] ?? null) !== null) {
+            return [];
+        }
+
+        return collect($preview['items'] ?? [])
+            ->map(static fn ($item): string => is_array($item) ? (string) ($item['url'] ?? '') : '')
+            ->filter(static fn (string $itemUrl): bool => $itemUrl !== '' && $itemUrl !== 'なし' && (bool) filter_var($itemUrl, FILTER_VALIDATE_URL))
+            ->take(5)
+            ->values()
+            ->all();
+    }
+
+    private function sitemapContainsArticleUrls(string $url, int $depth = 0): bool
+    {
+        if ($depth > 1) {
+            return false;
+        }
+
+        try {
+            $response = Http::withHeaders([
+                'User-Agent' => self::USER_AGENT,
+                'Accept' => 'application/xml,text/xml;q=0.9,*/*;q=0.8',
+            ])->timeout(8)->get($url);
+
+            if (! $response->successful()) {
+                return false;
+            }
+
+            $xml = @simplexml_load_string($response->body(), 'SimpleXMLElement', LIBXML_NOCDATA);
+
+            if ($xml === false) {
+                return false;
+            }
+
+            $locEntries = $xml->xpath('//*[local-name()="loc"]') ?: [];
+
+            if ($locEntries === []) {
+                return false;
+            }
+
+            $childSitemaps = [];
+
+            foreach ($locEntries as $loc) {
+                $locUrl = trim((string) $loc);
+
+                if (! filter_var($locUrl, FILTER_VALIDATE_URL)) {
+                    continue;
+                }
+
+                $path = strtolower((string) parse_url($locUrl, PHP_URL_PATH));
+
+                if ($path !== '' && str_ends_with($path, '.xml')) {
+                    $childSitemaps[] = $locUrl;
+
+                    continue;
+                }
+
+                if ($path !== '' && $path !== '/') {
+                    return true;
+                }
+            }
+
+            foreach (array_slice(array_values(array_unique($childSitemaps)), 0, 3) as $childSitemapUrl) {
+                if ($this->sitemapContainsArticleUrls($childSitemapUrl, $depth + 1)) {
+                    return true;
+                }
+            }
+
+            return false;
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     /**

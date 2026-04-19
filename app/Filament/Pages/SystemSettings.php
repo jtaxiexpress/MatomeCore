@@ -155,7 +155,7 @@ class SystemSettings extends Page implements HasForms
                             ->label('バルク処理一時停止 (キルスイッチ)')
                             ->helperText('オンにするとキューに入っている記事詳細取得・AI推論のジョブが処理されずに1分後に再スケジュールされ、一時停止状態になります。'),
                     ]),
-                Section::make('AIモデル設定')
+                Section::make('AIモデル設定（記事）')
                     ->schema([
                         Select::make('ollama_model')
                             ->label('Ollamaモデル名')
@@ -163,13 +163,6 @@ class SystemSettings extends Page implements HasForms
                             ->searchable()
                             ->default(fn (): string => $this->currentOllamaModel())
                             ->helperText('Ollamaサーバーの /api/tags から取得したインストール済みモデル一覧から選択してください。')
-                            ->required(),
-                        Select::make('gemini_model')
-                            ->label('Geminiモデル名')
-                            ->options(fn (): array => $this->getGeminiModelOptions())
-                            ->searchable()
-                            ->default(fn (): string => $this->currentGeminiModel())
-                            ->helperText('Gemini APIの /v1beta/models から取得した生成可能な gemini-1.5 / gemini-2.0 系モデルのみ表示します。')
                             ->required(),
                         TextInput::make('ollama_num_predict')
                             ->label('Ollama 出力トークン上限 (num_predict)')
@@ -180,6 +173,16 @@ class SystemSettings extends Page implements HasForms
                             ->numeric()
                             ->default((int) config('ai.providers.ollama.options.num_ctx', 8192)),
                     ])->columns(2),
+                Section::make('AIモデル設定（サイト解析）')
+                    ->schema([
+                        Select::make('gemini_model')
+                            ->label('Geminiモデル名')
+                            ->options(fn (): array => $this->getGeminiModelOptions())
+                            ->searchable()
+                            ->default(fn (): string => $this->currentGeminiModel())
+                            ->helperText('Gemini APIの /v1beta/models から取得した generateContent 対応モデルを表示します。')
+                            ->required(),
+                    ]),
                 Section::make('AIプロンプト設定')
                     ->schema([
                         Textarea::make('ai_base_prompt')
@@ -268,21 +271,12 @@ PROMPT;
                     ->get($this->ollamaTagsUrl());
 
                 if (! $response->successful()) {
-                    Log::warning('[SystemSettings] Ollamaモデル一覧の取得に失敗しました', [
-                        'status' => $response->status(),
-                        'url' => $this->ollamaTagsUrl(),
-                    ]);
-
                     return $this->fallbackOllamaModelOptions();
                 }
 
                 $models = data_get($response->json(), 'models', []);
 
                 if (! is_array($models)) {
-                    Log::warning('[SystemSettings] Ollamaモデル一覧のJSON構造が不正です', [
-                        'url' => $this->ollamaTagsUrl(),
-                    ]);
-
                     return $this->fallbackOllamaModelOptions();
                 }
 
@@ -294,20 +288,11 @@ PROMPT;
                     ->all();
 
                 if ($options === []) {
-                    Log::warning('[SystemSettings] Ollamaモデル一覧が空でした', [
-                        'url' => $this->ollamaTagsUrl(),
-                    ]);
-
                     return $this->fallbackOllamaModelOptions();
                 }
 
                 return $this->ensureCurrentModelExists($options);
             } catch (Throwable $e) {
-                Log::warning('[SystemSettings] Ollamaモデル一覧の取得で例外が発生しました', [
-                    'message' => $e->getMessage(),
-                    'url' => $this->ollamaTagsUrl(),
-                ]);
-
                 return $this->fallbackOllamaModelOptions();
             }
         });
@@ -319,7 +304,7 @@ PROMPT;
     private function getGeminiModelOptions(): array
     {
         return Cache::remember('gemini_available_models', now()->addDay(), function (): array {
-            $apiKey = (string) config('ai.providers.gemini.key', '');
+            $apiKey = $this->currentGeminiApiKey();
 
             if ($apiKey === '') {
                 Log::warning('[SystemSettings] Gemini APIキーが未設定のためモデル一覧を取得できません。');
@@ -367,7 +352,7 @@ PROMPT;
                             return false;
                         }
 
-                        return str_contains($name, 'gemini-1.5') || str_contains($name, 'gemini-2.0');
+                        return true;
                     })
                     ->map(static fn (array $model): string => str_replace('models/', '', (string) $model['name']))
                     ->filter(static fn (string $name): bool => $name !== '')
@@ -455,6 +440,17 @@ PROMPT;
             'gemini_model',
             (string) config('ai.providers.gemini.models.text.default', 'gemini-2.0-flash')
         );
+    }
+
+    private function currentGeminiApiKey(): string
+    {
+        $apiKey = (string) config('ai.providers.gemini.key', '');
+
+        if ($apiKey !== '') {
+            return $apiKey;
+        }
+
+        return (string) ($_ENV['GEMINI_API_KEY'] ?? $_SERVER['GEMINI_API_KEY'] ?? '');
     }
 
     private function ollamaTagsUrl(): string
