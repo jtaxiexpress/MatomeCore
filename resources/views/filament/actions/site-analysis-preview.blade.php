@@ -78,99 +78,54 @@
             ];
         @endphp
 
-        <div class="rounded-2xl border p-5 shadow-sm {{ $summaryPanelStyles }}">
-            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div class="space-y-2">
-                    <div class="inline-flex items-center gap-2">
-                        <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/80 text-primary-600 shadow-sm ring-1 ring-black/5 dark:bg-gray-950/50 dark:text-primary-300">
-                            <x-heroicon-o-sparkles class="h-4 w-4" />
-                        </span>
-                        <p class="text-xs font-semibold uppercase tracking-[0.35em] text-gray-500/90 dark:text-gray-300/80">AI REVIEW</p>
-                    </div>
-                    <h3 class="text-xl font-bold text-gray-950 dark:text-white">AIで推論した設定を一目で確認</h3>
-                    <p class="max-w-3xl text-sm leading-6 text-gray-700/90 dark:text-gray-300">
-                        緑はそのまま承認可、黄色は要確認、赤は失敗です。RSS・過去記事・抽出条件の3点を上から確認してください。
-                    </p>
-                </div>
-
-                <div class="flex flex-col items-start gap-2 lg:items-end">
+        <x-filament::section
+            icon="heroicon-o-sparkles"
+            heading="AI推論結果の確認"
+            description="各項目を整理して表示します。緑なら承認可、黄色なら要確認、赤なら失敗です。"
+        >
+            <div class="space-y-4">
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-xs font-semibold uppercase tracking-[0.35em] text-gray-500 dark:text-gray-400">AI REVIEW</span>
                     <x-filament::badge :color="$badgeColors[$overallState]">
                         {{ $stateLabels[$overallState] }}
                     </x-filament::badge>
-                    <p class="text-xs leading-5 text-gray-600/90 dark:text-gray-300">{{ $summaryText }}</p>
+                    <x-filament::badge :color="$badgeColors[$rssState]">RSS {{ $rssCount }}件</x-filament::badge>
+                    <x-filament::badge :color="$badgeColors[$crawlState]">過去記事 {{ $crawlCount }}件</x-filament::badge>
+                    <x-filament::badge :color="$badgeColors[$ruleState]">{{ $crawlerTypeLabel }}</x-filament::badge>
+                </div>
+
+                <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">{{ $summaryText }}</p>
+
+                <div class="grid gap-3 md:grid-cols-3">
+                    <div class="rounded-xl border p-4 {{ $cardStyles[$rssState] }}">
+                        <p class="text-xs font-semibold uppercase tracking-[0.2em]">RSS</p>
+                        <p class="mt-2 text-2xl font-bold">{{ $rssCount }} 件</p>
+                        <p class="mt-1 text-sm">{{ $rssError ?? ($hasRssUrl ? '最新記事の取得を確認してください。' : 'RSSは未検出ですが、必要に応じてmorss経由で補完できます。') }}</p>
+                    </div>
+
+                    <div class="rounded-xl border p-4 {{ $cardStyles[$crawlState] }}">
+                        <p class="text-xs font-semibold uppercase tracking-[0.2em]">過去記事</p>
+                        <p class="mt-2 text-2xl font-bold">{{ $crawlCount }} 件</p>
+                        <p class="mt-1 text-sm">{{ $crawlError ?? ($crawlerTypeLabel.' で一覧抽出を構成しています。') }}</p>
+                    </div>
+
+                    <div class="rounded-xl border p-4 {{ $cardStyles[$ruleState] }}">
+                        <p class="text-xs font-semibold uppercase tracking-[0.2em]">抽出条件</p>
+                        <p class="mt-2 text-2xl font-bold">{{ $crawlerTypeLabel }}</p>
+                        <p class="mt-1 text-sm">{{ $crawlerType === 'sitemap' ? 'サイトマップURLを使って過去記事をまとめて取得します。' : '一覧ページから記事ブロックを推論しています。' }}</p>
+                    </div>
                 </div>
             </div>
+        </x-filament::section>
 
-            <div class="mt-5 grid gap-3 md:grid-cols-3">
-                <div class="rounded-2xl border p-4 {{ $cardStyles[$rssState] }}">
-                    <div class="flex items-center justify-between gap-2">
-                        <div class="flex items-center gap-2">
-                            <x-heroicon-o-rss class="h-4 w-4" />
-                            <p class="text-xs font-semibold uppercase tracking-[0.22em]">RSS</p>
-                        </div>
-                        <x-filament::badge :color="$badgeColors[$rssState]">
-                            {{ $stateLabels[$rssState] }}
-                        </x-filament::badge>
-                    </div>
-                    <p class="mt-3 text-2xl font-semibold">{{ $rssCount }} 件</p>
-                    <p class="mt-1 text-sm {{ $subtleTextStyles[$rssState] }}">
-                        {{ $rssError ?? ($hasRssUrl ? '最新記事の取得を確認してください。' : 'RSSは未検出ですが、必要に応じてmorss経由で補完できます。') }}
-                    </p>
-                </div>
-
-                <div class="rounded-2xl border p-4 {{ $cardStyles[$crawlState] }}">
-                    <div class="flex items-center justify-between gap-2">
-                        <div class="flex items-center gap-2">
-                            <x-heroicon-o-list-bullet class="h-4 w-4" />
-                            <p class="text-xs font-semibold uppercase tracking-[0.22em]">過去記事</p>
-                        </div>
-                        <x-filament::badge :color="$badgeColors[$crawlState]">
-                            {{ $stateLabels[$crawlState] }}
-                        </x-filament::badge>
-                    </div>
-                    <p class="mt-3 text-2xl font-semibold">{{ $crawlCount }} 件</p>
-                    <p class="mt-1 text-sm {{ $subtleTextStyles[$crawlState] }}">
-                        {{ $crawlError ?? ($crawlerTypeLabel.' で一覧抽出を構成しています。') }}
-                    </p>
-                </div>
-
-                <div class="rounded-2xl border p-4 {{ $cardStyles[$ruleState] }}">
-                    <div class="flex items-center justify-between gap-2">
-                        <div class="flex items-center gap-2">
-                            <x-heroicon-o-document-text class="h-4 w-4" />
-                            <p class="text-xs font-semibold uppercase tracking-[0.22em]">抽出条件</p>
-                        </div>
-                        <x-filament::badge :color="$badgeColors[$ruleState]">
-                            {{ $stateLabels[$ruleState] }}
-                        </x-filament::badge>
-                    </div>
-                    <p class="mt-3 text-2xl font-semibold">{{ $crawlerTypeLabel }}</p>
-                    <p class="mt-1 text-sm {{ $subtleTextStyles[$ruleState] }}">
-                        {{ $crawlerType === 'sitemap' ? 'サイトマップURLを使って過去記事をまとめて取得します。' : '一覧ページから記事ブロックを推論しています。' }}
-                    </p>
-                </div>
-            </div>
-        </div>
-
-        <div class="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <div class="grid gap-6 xl:grid-cols-2">
             <div class="space-y-6">
-                <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-                    <div class="flex flex-wrap items-start justify-between gap-3">
-                        <div class="flex items-center gap-2">
-                            <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary-50 text-primary-600 ring-1 ring-primary-100 dark:bg-primary-950/30 dark:text-primary-300 dark:ring-primary-900/50">
-                                <x-heroicon-o-document-text class="h-4 w-4" />
-                            </span>
-                            <div>
-                            <h4 class="text-sm font-semibold text-gray-900 dark:text-gray-100">反映される設定</h4>
-                            <p class="text-xs text-gray-500 dark:text-gray-400">承認するとこの値が保存されます。</p>
-                            </div>
-                        </div>
-                        <x-filament::badge :color="$badgeColors[$overallState]">
-                            {{ $analysisMethod }}
-                        </x-filament::badge>
-                    </div>
-
-                    <dl class="mt-4 grid gap-4 md:grid-cols-2">
+                <x-filament::section
+                    icon="heroicon-o-document-text"
+                    heading="反映される設定"
+                    description="承認するとこの値が保存されます。"
+                >
+                    <dl class="grid gap-3 md:grid-cols-2">
                         <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950">
                             <dt class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">RSS URL</dt>
                             <dd class="mt-1 break-all text-sm text-gray-900 dark:text-gray-100">{{ $analysis['rss_url'] ?? '未設定' }}</dd>
@@ -196,23 +151,15 @@
                             <dd class="mt-1 break-all font-mono text-sm text-gray-900 dark:text-gray-100">{{ $linkSelector !== '' ? $linkSelector : '未設定' }}</dd>
                         </div>
                     </dl>
-                </div>
+                </x-filament::section>
 
-                <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-                    <div class="flex items-center justify-between gap-3">
-                        <div class="flex items-center gap-2">
-                            <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gray-50 text-gray-600 ring-1 ring-gray-200 dark:bg-gray-950/50 dark:text-gray-300 dark:ring-gray-700">
-                                <x-heroicon-o-information-circle class="h-4 w-4" />
-                            </span>
-                            <div>
-                            <h4 class="text-sm font-semibold text-gray-900 dark:text-gray-100">診断メモ</h4>
-                            <p class="text-xs text-gray-500 dark:text-gray-400">AI が返した補足メッセージです。</p>
-                            </div>
-                        </div>
-                    </div>
-
+                <x-filament::section
+                    icon="heroicon-o-information-circle"
+                    heading="診断メモ"
+                    description="AI が返した補足メッセージです。"
+                >
                     @if($diagnostics !== [])
-                        <ul class="mt-4 space-y-2 text-sm text-gray-700 dark:text-gray-300">
+                        <ul class="space-y-2 text-sm text-gray-700 dark:text-gray-300">
                             @foreach($diagnostics as $diagnostic)
                                 <li class="flex gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-950">
                                     <span class="mt-0.5 inline-flex h-5 w-5 flex-none items-center justify-center rounded-full bg-primary-600 text-xs font-bold text-white">✓</span>
@@ -221,31 +168,20 @@
                             @endforeach
                         </ul>
                     @else
-                        <div class="mt-4 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400">
+                        <div class="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400">
                             診断メモはありません。
                         </div>
                     @endif
-                </div>
+                </x-filament::section>
             </div>
 
             <div class="space-y-6">
-                <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-                    <div class="flex flex-wrap items-start justify-between gap-3">
-                        <div class="flex items-center gap-2">
-                            <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-sky-50 text-sky-600 ring-1 ring-sky-100 dark:bg-sky-950/30 dark:text-sky-300 dark:ring-sky-900/50">
-                                <x-heroicon-o-rss class="h-4 w-4" />
-                            </span>
-                            <div>
-                            <h4 class="text-sm font-semibold text-gray-900 dark:text-gray-100">RSS取得テスト</h4>
-                            <p class="text-xs text-gray-500 dark:text-gray-400">最新記事の件数と取得結果を確認します。</p>
-                            </div>
-                        </div>
-                        <x-filament::badge :color="$badgeColors[$rssState]">
-                            {{ $stateLabels[$rssState] }}
-                        </x-filament::badge>
-                    </div>
-
-                    <div class="mt-4 flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950">
+                <x-filament::section
+                    icon="heroicon-o-rss"
+                    heading="RSS取得テスト"
+                    description="最新記事の件数と取得結果を確認します。"
+                >
+                    <div class="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-950">
                         <span class="text-gray-600 dark:text-gray-400">取得件数</span>
                         <span class="font-semibold text-gray-900 dark:text-gray-100">{{ $rssCount }} 件</span>
                     </div>
@@ -256,26 +192,26 @@
                         </div>
                     @else
                         <div class="mt-4 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
-                            <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-                                <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-800 dark:text-gray-400">
+                            <table class="w-full text-left text-sm text-gray-500 dark:text-gray-400">
+                                <thead class="bg-gray-50 text-xs uppercase text-gray-700 dark:bg-gray-800 dark:text-gray-400">
                                     <tr>
-                                        <th class="px-3 py-2 border-b dark:border-gray-700">タイトル</th>
-                                        <th class="px-3 py-2 border-b dark:border-gray-700">URL</th>
-                                        <th class="px-3 py-2 border-b dark:border-gray-700">公開日時</th>
+                                        <th class="border-b px-3 py-2 dark:border-gray-700">タイトル</th>
+                                        <th class="border-b px-3 py-2 dark:border-gray-700">URL</th>
+                                        <th class="border-b px-3 py-2 dark:border-gray-700">公開日時</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @forelse($rssItems as $item)
-                                        <tr class="bg-white dark:bg-gray-900 border-b dark:border-gray-700">
+                                        <tr class="border-b bg-white dark:border-gray-700 dark:bg-gray-900">
                                             <td class="px-3 py-2 align-top text-gray-900 dark:text-gray-100">{{ $item['title'] ?? 'なし' }}</td>
-                                            <td class="px-3 py-2 align-top break-all">
+                                            <td class="break-all px-3 py-2 align-top">
                                                 @if(($item['url'] ?? 'なし') !== 'なし')
                                                     <a href="{{ $item['url'] }}" target="_blank" class="text-primary-600 hover:underline">{{ $item['url'] }}</a>
                                                 @else
                                                     なし
                                                 @endif
                                             </td>
-                                            <td class="px-3 py-2 align-top whitespace-nowrap">{{ $item['date'] ?? 'なし' }}</td>
+                                            <td class="whitespace-nowrap px-3 py-2 align-top">{{ $item['date'] ?? 'なし' }}</td>
                                         </tr>
                                     @empty
                                         <tr>
@@ -286,25 +222,14 @@
                             </table>
                         </div>
                     @endif
-                </div>
+                </x-filament::section>
 
-                <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-                    <div class="flex flex-wrap items-start justify-between gap-3">
-                        <div class="flex items-center gap-2">
-                            <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-violet-50 text-violet-600 ring-1 ring-violet-100 dark:bg-violet-950/30 dark:text-violet-300 dark:ring-violet-900/50">
-                                <x-heroicon-o-list-bullet class="h-4 w-4" />
-                            </span>
-                            <div>
-                            <h4 class="text-sm font-semibold text-gray-900 dark:text-gray-100">過去記事一括取得テスト</h4>
-                            <p class="text-xs text-gray-500 dark:text-gray-400">一覧ページまたはサイトマップから取得できるURLを確認します。</p>
-                            </div>
-                        </div>
-                        <x-filament::badge :color="$badgeColors[$crawlState]">
-                            {{ $stateLabels[$crawlState] }}
-                        </x-filament::badge>
-                    </div>
-
-                    <div class="mt-4 grid gap-3 sm:grid-cols-3">
+                <x-filament::section
+                    icon="heroicon-o-list-bullet"
+                    heading="過去記事一括取得テスト"
+                    description="一覧ページまたはサイトマップから取得できるURLを確認します。"
+                >
+                    <div class="grid gap-3 sm:grid-cols-3">
                         <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950">
                             <p class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">抽出URL数</p>
                             <p class="mt-1 text-lg font-bold text-gray-900 dark:text-gray-100">{{ $crawlCount }} 件</p>
@@ -329,16 +254,16 @@
                         </div>
                     @else
                         <div class="mt-4 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
-                            <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-                                <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-800 dark:text-gray-400">
+                            <table class="w-full text-left text-sm text-gray-500 dark:text-gray-400">
+                                <thead class="bg-gray-50 text-xs uppercase text-gray-700 dark:bg-gray-800 dark:text-gray-400">
                                     <tr>
-                                        <th class="px-3 py-2 border-b dark:border-gray-700">抽出URL（先頭20件）</th>
+                                        <th class="border-b px-3 py-2 dark:border-gray-700">抽出URL（先頭20件）</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @forelse($crawlUrls as $crawlUrl)
-                                        <tr class="bg-white dark:bg-gray-900 border-b dark:border-gray-700">
-                                            <td class="px-3 py-2 break-all">
+                                        <tr class="border-b bg-white dark:border-gray-700 dark:bg-gray-900">
+                                            <td class="break-all px-3 py-2">
                                                 <a href="{{ $crawlUrl }}" target="_blank" class="text-primary-600 hover:underline">{{ $crawlUrl }}</a>
                                             </td>
                                         </tr>
@@ -351,7 +276,7 @@
                             </table>
                         </div>
                     @endif
-                </div>
+                </x-filament::section>
             </div>
         </div>
     @endif
