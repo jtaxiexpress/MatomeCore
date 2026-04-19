@@ -35,6 +35,7 @@ class SiteAnalyzerService
 
     /**
      * @return array{
+     *     site_title: string|null,
      *     rss_url: string|null,
      *     crawler_type: string,
      *     sitemap_url: string|null,
@@ -51,6 +52,26 @@ class SiteAnalyzerService
     {
         $normalizedUrl = $this->normalizeUrl($url);
         $result = $this->baseAnalysisResult($normalizedUrl);
+        $prefetchedHtmlAnalysis = null;
+
+        $siteTitle = $this->detectSiteTitle($normalizedUrl);
+        if ($siteTitle !== null) {
+            $result['site_title'] = $siteTitle;
+            $result['diagnostics'][] = 'サイトタイトル候補を取得しました。';
+        }
+
+        if ($this->isLivedoorBlogUrl($normalizedUrl)) {
+            $rootUrl = $this->rootUrl($normalizedUrl);
+
+            $result['rss_url'] = $rootUrl.'/index.rdf';
+            $result['crawler_type'] = 'sitemap';
+            $result['sitemap_url'] = $rootUrl.'/sitemap.xml';
+            $result['crawl_start_url'] = null;
+            $result['analysis_method'] = 'rss+sitemap';
+            $result['diagnostics'][] = 'ライブドアブログを検出したため、RSSを index.rdf、過去記事取得を sitemap.xml で固定設定しました。';
+
+            return $result;
+        }
 
         $rssUrl = $this->detectRssFeedUrl($normalizedUrl);
 
@@ -58,11 +79,25 @@ class SiteAnalyzerService
             $result['rss_url'] = $rssUrl;
             $result['diagnostics'][] = 'サイト内RSSフィードを検出しました。';
         } else {
-            $morssUrl = $this->detectMorssFeedUrl($normalizedUrl);
+            $morssListItemSelector = null;
+
+            try {
+                $prefetchedHtmlAnalysis = $this->analyzeHtmlStructureWithLlm($normalizedUrl);
+                $morssListItemSelector = $this->sanitizeNullableString($prefetchedHtmlAnalysis['list_item_selector'] ?? null);
+            } catch (Throwable $e) {
+                Log::info('[SiteAnalyzerService] morss 用セレクタ推論に失敗したため、通常候補で継続します。', [
+                    'url' => $normalizedUrl,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+
+            $morssUrl = $this->detectMorssFeedUrl($normalizedUrl, $morssListItemSelector);
 
             if ($morssUrl !== null) {
                 $result['rss_url'] = $morssUrl;
-                $result['diagnostics'][] = 'RSSが見つからなかったため、morss.it のフィードを利用します。';
+                $result['diagnostics'][] = str_contains($morssUrl, ':proxy:items=')
+                    ? 'RSSが見つからなかったため、Crawl4AIで推論したセレクタを適用した morss.it フィードを利用します。'
+                    : 'RSSが見つからなかったため、morss.it のフィードを利用します。';
             } else {
                 $result['diagnostics'][] = 'RSSは検出できませんでした（morss.it でも取得不可）。';
             }
@@ -71,25 +106,60 @@ class SiteAnalyzerService
         $sitemapUrl = $this->detectSitemapUrl($normalizedUrl);
 
         if ($sitemapUrl !== null) {
-            $result['crawler_type'] = 'sitemap';
-            $result['sitemap_url'] = $sitemapUrl;
-            $result['crawl_start_url'] = null;
-            $result['analysis_method'] = $result['rss_url'] !== null ? 'rss+sitemap' : 'sitemap';
             $result['diagnostics'][] = '記事URLを抽出可能なサイトマップを検出しました。';
 
-            return $result;
+            $sitemapState = [
+                'url' => $normalizedUrl,
+                'rss_url' => $result['rss_url'],
+                'crawler_type' => 'sitemap',
+                'sitemap_url' => $sitemapUrl,
+                'crawl_start_url' => null,
+                'pagination_url_template' => null,
+                'list_item_selector' => null,
+                'link_selector' => null,
+                'next_page_selector' => null,
+                'ng_url_keywords' => [],
+                'ng_image_urls' => $result['ng_image_urls'],
+            ];
+
+            $sitemapPreview = $this->previewCrawlExtraction($sitemapState);
+            $sitemapError = is_string($sitemapPreview['error'] ?? null)
+                ? (string) $sitemapPreview['error']
+                : null;
+            $sitemapSampleCompleteCount = (int) ($sitemapPreview['sample_complete_count'] ?? 0);
+
+            if ($sitemapError === null && $sitemapSampleCompleteCount > 0) {
+                $result['crawler_type'] = 'sitemap';
+                $result['sitemap_url'] = $sitemapUrl;
+                $result['crawl_start_url'] = null;
+                $result['analysis_method'] = $result['rss_url'] !== null ? 'rss+sitemap' : 'sitemap';
+                $result['diagnostics'][] = "サイトマップ検証に成功しました（完全抽出 {$sitemapSampleCompleteCount} 件）。";
+
+                return $result;
+            }
+
+            if ($sitemapError !== null) {
+                $result['diagnostics'][] = 'サイトマップ検証でエラーが発生したため、一覧ページ抽出へフォールバックします: '.$sitemapError;
+            } else {
+                $result['diagnostics'][] = 'サイトマップは検出できましたが、記事メタデータ（タイトル・URL・画像・公開日）を確認できなかったため、一覧ページ抽出へフォールバックします。';
+            }
         }
 
         try {
-            $feedSampleUrls = $this->collectFeedSampleUrls($result['rss_url']);
-            $llmResult = $this->analyzeHtmlStructureWithLlm($normalizedUrl, $feedSampleUrls);
+            if ($prefetchedHtmlAnalysis !== null) {
+                $llmResult = $prefetchedHtmlAnalysis;
+            } else {
+                $feedSampleUrls = $this->collectFeedSampleUrls($result['rss_url']);
+                $llmResult = $this->analyzeHtmlStructureWithLlm($normalizedUrl, $feedSampleUrls);
+            }
+
             $llmResult['rss_url'] = $result['rss_url'];
 
             $result = array_merge($result, $llmResult, [
                 'analysis_method' => $result['rss_url'] !== null ? 'rss+llm' : 'llm',
             ]);
 
-            $result['diagnostics'][] = 'サイトマップが見つからなかったため、一覧ページ抽出ルールを推論しました。';
+            $result['diagnostics'][] = '一覧ページ抽出ルールを推論しました。';
 
             return $result;
         } catch (Throwable $e) {
@@ -297,7 +367,9 @@ class SiteAnalyzerService
      *     count: int,
      *     total_count: int,
      *     next_url: string|null,
-     *     sample_items: array<int, array{title: string, url: string, image: string, date: string}>
+     *     sample_items: array<int, array{title: string, url: string, image: string, date: string}>,
+     *     sample_complete_count: int,
+     *     sample_checked_count: int
      * }
      */
     public function previewCrawlExtraction(array $state): array
@@ -431,6 +503,7 @@ class SiteAnalyzerService
             }
 
             $sampleItems = [];
+            $sampleCompleteCount = 0;
             $ngImageUrls = $this->sanitizeStringArray($state['ng_image_urls'] ?? []);
 
             foreach (array_slice($urls, 0, 3) as $sampleUrl) {
@@ -465,6 +538,10 @@ class SiteAnalyzerService
                     'image' => $image,
                     'date' => $date,
                 ];
+
+                if ($this->isSampleItemComplete($sampleItems[count($sampleItems) - 1])) {
+                    $sampleCompleteCount++;
+                }
             }
 
             return [
@@ -474,6 +551,8 @@ class SiteAnalyzerService
                 'total_count' => $totalCount,
                 'next_url' => $nextUrl,
                 'sample_items' => $sampleItems,
+                'sample_complete_count' => $sampleCompleteCount,
+                'sample_checked_count' => count($sampleItems),
             ];
         } catch (Throwable $e) {
             return [
@@ -483,6 +562,8 @@ class SiteAnalyzerService
                 'total_count' => 0,
                 'next_url' => null,
                 'sample_items' => [],
+                'sample_complete_count' => 0,
+                'sample_checked_count' => 0,
             ];
         }
     }
@@ -616,20 +697,136 @@ class SiteAnalyzerService
         return null;
     }
 
-    private function detectMorssFeedUrl(string $url): ?string
+    private function detectMorssFeedUrl(string $url, ?string $listItemSelector = null): ?string
     {
-        $candidates = [
-            'https://morss.it/?url='.rawurlencode($url),
-            'https://morss.it/'.rawurlencode($url),
-        ];
-
-        foreach (array_values(array_unique($candidates)) as $candidate) {
+        foreach ($this->buildMorssFeedCandidates($url, $listItemSelector) as $candidate) {
             if ($this->isFeedDocument($candidate)) {
                 return $candidate;
             }
         }
 
         return null;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function buildMorssFeedCandidates(string $url, ?string $listItemSelector = null): array
+    {
+        $candidates = [];
+        $morssItemsSelector = $this->toMorssItemsSelector($listItemSelector);
+
+        if ($morssItemsSelector !== null) {
+            $candidates[] = $this->buildMorssPathStyleFeedUrl(
+                $url,
+                $this->encodeMorssOptionValue($morssItemsSelector)
+            );
+        }
+
+        $candidates[] = 'https://morss.it/?url='.rawurlencode($url);
+        $candidates[] = 'https://morss.it/'.rawurlencode($url);
+
+        return array_values(array_unique($candidates));
+    }
+
+    private function buildMorssPathStyleFeedUrl(string $url, string $encodedItemsSelector): string
+    {
+        return "https://morss.it/:proxy:items={$encodedItemsSelector}/{$url}";
+    }
+
+    private function toMorssItemsSelector(?string $listItemSelector): ?string
+    {
+        $selector = trim((string) $listItemSelector);
+
+        if ($selector === '') {
+            return null;
+        }
+
+        if (str_starts_with($selector, '||')) {
+            return $selector;
+        }
+
+        if (preg_match('/^\[class=([^\]]+)\]$/u', $selector, $matches)) {
+            return '||*[class='.$matches[1].']';
+        }
+
+        if (preg_match('/^\.([A-Za-z0-9_-]+)$/u', $selector, $matches)) {
+            return '||*[class='.$matches[1].']';
+        }
+
+        if (preg_match('/\.([A-Za-z0-9_-]+)/u', $selector, $matches)) {
+            return '||*[class='.$matches[1].']';
+        }
+
+        return null;
+    }
+
+    private function encodeMorssOptionValue(string $value): string
+    {
+        return strtr(rawurlencode($value), [
+            '%2A' => '*',
+            '%3D' => '=',
+        ]);
+    }
+
+    private function detectSiteTitle(string $url): ?string
+    {
+        try {
+            $response = Http::withHeaders([
+                'User-Agent' => self::USER_AGENT,
+                'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language' => 'ja,en-US;q=0.9,en;q=0.8',
+            ])->timeout(10)->get($url);
+
+            if (! $response->successful()) {
+                return null;
+            }
+
+            $crawler = new Crawler($response->body(), $url);
+            $candidates = [];
+
+            if ($crawler->filter('meta[property="og:site_name"]')->count() > 0) {
+                $candidates[] = (string) $crawler->filter('meta[property="og:site_name"]')->first()->attr('content');
+            }
+
+            if ($crawler->filter('meta[name="application-name"]')->count() > 0) {
+                $candidates[] = (string) $crawler->filter('meta[name="application-name"]')->first()->attr('content');
+            }
+
+            if ($crawler->filter('title')->count() > 0) {
+                $candidates[] = (string) $crawler->filter('title')->first()->text();
+            }
+
+            foreach ($candidates as $candidate) {
+                $normalizedTitle = $this->normalizeSiteTitle((string) $candidate);
+
+                if ($normalizedTitle !== null) {
+                    return $normalizedTitle;
+                }
+            }
+
+            return null;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    private function normalizeSiteTitle(string $title): ?string
+    {
+        $normalized = preg_replace('/\s+/u', ' ', trim($title));
+
+        if (! is_string($normalized) || $normalized === '') {
+            return null;
+        }
+
+        $parts = preg_split('/\s*[|｜\-–—:：]\s*/u', $normalized);
+        $primary = trim((string) ($parts[0] ?? $normalized));
+
+        if ($primary === '') {
+            $primary = $normalized;
+        }
+
+        return mb_substr($primary, 0, 255);
     }
 
     /**
@@ -926,6 +1123,13 @@ PROMPT;
             ->all();
     }
 
+    private function isLivedoorBlogUrl(string $url): bool
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+
+        return $host === 'blog.livedoor.jp';
+    }
+
     private function normalizeUrl(string $url): string
     {
         $normalized = trim($url);
@@ -939,6 +1143,7 @@ PROMPT;
 
     /**
      * @return array{
+     *     site_title: string|null,
      *     rss_url: string|null,
      *     crawler_type: string,
      *     sitemap_url: string|null,
@@ -954,6 +1159,7 @@ PROMPT;
     private function baseAnalysisResult(string $url): array
     {
         return [
+            'site_title' => null,
             'rss_url' => null,
             'crawler_type' => 'html',
             'sitemap_url' => null,
@@ -965,6 +1171,44 @@ PROMPT;
             'analysis_method' => 'fallback',
             'diagnostics' => [],
         ];
+    }
+
+    /**
+     * @param  array{title: string, url: string, image: string, date: string}  $sampleItem
+     */
+    private function isSampleItemComplete(array $sampleItem): bool
+    {
+        $url = (string) ($sampleItem['url'] ?? '');
+        $title = (string) ($sampleItem['title'] ?? '');
+        $image = (string) ($sampleItem['image'] ?? '');
+        $date = (string) ($sampleItem['date'] ?? '');
+
+        if (! filter_var($url, FILTER_VALIDATE_URL)) {
+            return false;
+        }
+
+        return $this->isMeaningfulSampleValue($title)
+            && $this->isMeaningfulSampleValue($image)
+            && $this->isMeaningfulSampleValue($date);
+    }
+
+    private function isMeaningfulSampleValue(string $value): bool
+    {
+        $trimmed = trim($value);
+
+        if ($trimmed === '' || $trimmed === '未取得') {
+            return false;
+        }
+
+        if (str_starts_with($trimmed, 'なし')) {
+            return false;
+        }
+
+        if (str_starts_with($trimmed, '取得失敗')) {
+            return false;
+        }
+
+        return true;
     }
 
     /**

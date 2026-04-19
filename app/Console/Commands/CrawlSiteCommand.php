@@ -9,6 +9,7 @@ use App\Models\Site;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Console\Command;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\DomCrawler\Crawler;
@@ -86,25 +87,51 @@ class CrawlSiteCommand extends Command
                 'Accept-Language' => 'ja,en-US;q=0.7,en;q=0.3',
             ])->timeout(30)->get($feedUrl);
 
-            if (! $response->successful()) {
-                if (is_null($site->failing_since)) {
-                    $site->update(['failing_since' => now()]);
-                }
-                $this->error('フィード取得失敗: HTTP '.$response->status());
+            $usedMorssFallback = false;
 
-                return;
+            if (! $response->successful()) {
+                $fallbackFeed = $this->tryMorssFallbackFeed($site, $feedUrl);
+
+                if ($fallbackFeed === null) {
+                    if (is_null($site->failing_since)) {
+                        $site->update(['failing_since' => now()]);
+                    }
+                    $this->error('フィード取得失敗: HTTP '.$response->status());
+
+                    return;
+                }
+
+                $feedUrl = $fallbackFeed['url'];
+                $response = $fallbackFeed['response'];
+                $usedMorssFallback = true;
+                $this->warn('通常RSSの取得に失敗したため morss.it フォールバックで継続します。');
             }
 
             $xml = simplexml_load_string($response->body(), 'SimpleXMLElement', LIBXML_NOCDATA);
             libxml_clear_errors();
 
             if ($xml === false) {
-                if (is_null($site->failing_since)) {
-                    $site->update(['failing_since' => now()]);
-                }
-                $this->error('XMLのパースに失敗しました。');
+                if (! $usedMorssFallback) {
+                    $fallbackFeed = $this->tryMorssFallbackFeed($site, $feedUrl);
 
-                return;
+                    if ($fallbackFeed !== null) {
+                        $feedUrl = $fallbackFeed['url'];
+                        $response = $fallbackFeed['response'];
+                        $xml = simplexml_load_string($response->body(), 'SimpleXMLElement', LIBXML_NOCDATA);
+                        libxml_clear_errors();
+                        $usedMorssFallback = true;
+                        $this->warn('通常RSSのXML解析に失敗したため morss.it フォールバックで継続します。');
+                    }
+                }
+
+                if ($xml === false) {
+                    if (is_null($site->failing_since)) {
+                        $site->update(['failing_since' => now()]);
+                    }
+                    $this->error('XMLのパースに失敗しました。');
+
+                    return;
+                }
             }
 
             if (! is_null($site->failing_since)) {
@@ -119,6 +146,9 @@ class CrawlSiteCommand extends Command
             if (empty($entries)) {
                 $entries = $xml->xpath('//*[local-name()="loc"]') ?: [];
                 if (empty($entries)) {
+                    if (is_null($site->failing_since)) {
+                        $site->update(['failing_since' => now()]);
+                    }
                     $this->warn('フィード内に記事エントリが見つかりませんでした。');
 
                     return;
@@ -315,6 +345,123 @@ class CrawlSiteCommand extends Command
                 failed: true,
             );
         }
+    }
+
+    /**
+     * @return array{url: string, response: Response}|null
+     */
+    private function tryMorssFallbackFeed(Site $site, string $failedFeedUrl): ?array
+    {
+        $sourceUrl = (string) ($site->url ?: $failedFeedUrl);
+        $candidates = $this->buildMorssFallbackCandidates($sourceUrl, $site->list_item_selector);
+
+        foreach (array_values(array_unique($candidates)) as $candidate) {
+            $response = Http::withHeaders([
+                'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+                'Accept' => 'application/rss+xml,application/atom+xml,application/xml,text/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language' => 'ja,en-US;q=0.7,en;q=0.3',
+            ])->timeout(15)->get($candidate);
+
+            if (! $response->successful()) {
+                continue;
+            }
+
+            if (! $this->isFeedXml($response->body())) {
+                continue;
+            }
+
+            Log::info('CrawlSiteCommand: morss.it fallback succeeded.', [
+                'site_id' => $site->id,
+                'fallback_url' => $candidate,
+            ]);
+
+            return [
+                'url' => $candidate,
+                'response' => $response,
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function buildMorssFallbackCandidates(string $sourceUrl, ?string $listItemSelector): array
+    {
+        $candidates = [];
+        $morssItemsSelector = $this->toMorssItemsSelector($listItemSelector);
+
+        if ($morssItemsSelector !== null) {
+            $candidates[] = $this->buildMorssPathStyleFeedUrl(
+                $sourceUrl,
+                $this->encodeMorssOptionValue($morssItemsSelector)
+            );
+        }
+
+        $candidates[] = 'https://morss.it/?url='.rawurlencode($sourceUrl);
+        $candidates[] = 'https://morss.it/'.rawurlencode($sourceUrl);
+
+        return array_values(array_unique($candidates));
+    }
+
+    private function buildMorssPathStyleFeedUrl(string $sourceUrl, string $encodedItemsSelector): string
+    {
+        return "https://morss.it/:proxy:items={$encodedItemsSelector}/{$sourceUrl}";
+    }
+
+    private function toMorssItemsSelector(?string $listItemSelector): ?string
+    {
+        $selector = trim((string) $listItemSelector);
+
+        if ($selector === '') {
+            return null;
+        }
+
+        if (str_starts_with($selector, '||')) {
+            return $selector;
+        }
+
+        if (preg_match('/^\[class=([^\]]+)\]$/u', $selector, $matches)) {
+            return '||*[class='.$matches[1].']';
+        }
+
+        if (preg_match('/^\.([A-Za-z0-9_-]+)$/u', $selector, $matches)) {
+            return '||*[class='.$matches[1].']';
+        }
+
+        if (preg_match('/\.([A-Za-z0-9_-]+)/u', $selector, $matches)) {
+            return '||*[class='.$matches[1].']';
+        }
+
+        return null;
+    }
+
+    private function encodeMorssOptionValue(string $value): string
+    {
+        return strtr(rawurlencode($value), [
+            '%2A' => '*',
+            '%3D' => '=',
+        ]);
+    }
+
+    private function isFeedXml(string $xmlBody): bool
+    {
+        $xml = @simplexml_load_string($xmlBody, 'SimpleXMLElement', LIBXML_NOCDATA);
+
+        if ($xml === false) {
+            return false;
+        }
+
+        $rootName = strtolower($xml->getName());
+
+        if (in_array($rootName, ['rss', 'feed', 'rdf'], true)) {
+            return true;
+        }
+
+        $entries = $xml->xpath('//*[local-name()="item"] | //*[local-name()="entry"]') ?: [];
+
+        return $entries !== [];
     }
 
     protected function crawlHtml(Site $site, int $maxPages): void

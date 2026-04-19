@@ -126,6 +126,13 @@ class SiteResource extends Resource
                                         $set('pagination_url_template', $analysis['pagination_url_template']);
                                         $set('ng_image_urls', $analysis['ng_image_urls']);
 
+                                        $currentSiteName = trim((string) $get('name'));
+                                        $inferredSiteTitle = trim((string) ($analysis['site_title'] ?? ''));
+
+                                        if ($currentSiteName === '' && $inferredSiteTitle !== '') {
+                                            $set('name', $inferredSiteTitle);
+                                        }
+
                                         $diagnostics = collect($analysis['diagnostics'] ?? [])->implode('<br>');
 
                                         Notification::make()
@@ -382,6 +389,9 @@ class SiteResource extends Resource
                                 $analysis = $siteAnalyzerService->analyze($record->url);
 
                                 $record->update([
+                                    'name' => filled($record->name)
+                                        ? $record->name
+                                        : (($analysis['site_title'] ?? null) ?: $record->name),
                                     'rss_url' => $analysis['rss_url'],
                                     'crawler_type' => $analysis['crawler_type'],
                                     'sitemap_url' => $analysis['sitemap_url'],

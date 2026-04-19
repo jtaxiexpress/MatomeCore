@@ -170,6 +170,7 @@ HTML),
         $appModel = AppModel::factory()->create();
 
         $site = Site::factory()->for($appModel)->create([
+            'name' => '既存サイト名',
             'url' => 'https://example.com',
             'crawler_type' => 'html',
             'crawl_start_url' => 'https://example.com/old',
@@ -183,6 +184,7 @@ HTML),
             ->once()
             ->with('https://example.com')
             ->andReturn([
+                'site_title' => 'AI推論サイト名',
                 'rss_url' => null,
                 'crawler_type' => 'html',
                 'sitemap_url' => null,
@@ -204,6 +206,7 @@ HTML),
         $site->refresh();
 
         $this->assertNull($site->failing_since);
+        $this->assertSame('既存サイト名', $site->name);
         $this->assertSame('https://example.com/news', $site->crawl_start_url);
         $this->assertSame('.article-item:not(.pr-item)', $site->list_item_selector);
         $this->assertSame('a.article-link', $site->link_selector);
@@ -211,11 +214,52 @@ HTML),
         $this->assertSame(['https://example.com/logo.png'], $site->ng_image_urls);
     }
 
+    public function test_reanalyze_with_ai_sets_site_name_when_current_name_is_empty(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $appModel = AppModel::factory()->create();
+
+        $site = Site::factory()->for($appModel)->create([
+            'name' => '',
+            'url' => 'https://example.com',
+            'crawler_type' => 'html',
+        ]);
+
+        $mock = \Mockery::mock(SiteAnalyzerService::class);
+        $mock->shouldReceive('analyze')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn([
+                'site_title' => 'AI推論サイト名',
+                'rss_url' => null,
+                'crawler_type' => 'html',
+                'sitemap_url' => null,
+                'crawl_start_url' => 'https://example.com/news',
+                'list_item_selector' => '.article-item',
+                'link_selector' => 'a.article-link',
+                'pagination_url_template' => 'https://example.com/news/page/{page}',
+                'ng_image_urls' => [],
+                'analysis_method' => 'llm',
+                'diagnostics' => ['テスト用診断'],
+            ]);
+
+        $this->app->instance(SiteAnalyzerService::class, $mock);
+
+        Livewire::actingAs($admin)
+            ->test(ManageSites::class)
+            ->callAction(TestAction::make('reanalyze_with_ai')->table($site));
+
+        $site->refresh();
+
+        $this->assertSame('AI推論サイト名', $site->name);
+    }
+
     public function test_ai_infer_preview_view_highlights_verdict_and_key_sections(): void
     {
         $html = view('filament.actions.site-analysis-preview', [
             'analysis' => [
                 'analysis_method' => 'rss+sitemap',
+                'site_title' => 'Example News',
                 'rss_url' => 'https://example.com/feed.xml',
                 'crawler_type' => 'sitemap',
                 'sitemap_url' => 'https://example.com/sitemap.xml',
@@ -234,6 +278,7 @@ HTML),
                         'title' => '記事1',
                         'url' => 'https://example.com/articles/1',
                         'date' => '2026-04-18',
+                        'image' => 'https://example.com/thumb.jpg',
                     ],
                 ],
             ],
@@ -250,7 +295,11 @@ HTML),
         $this->assertStringContainsString('AI REVIEW', $html);
         $this->assertStringContainsString('承認可', $html);
         $this->assertStringContainsString('反映される設定', $html);
+        $this->assertStringContainsString('Example News', $html);
         $this->assertStringContainsString('RSS取得テスト', $html);
+        $this->assertStringContainsString('thumbnailURL', $html);
+        $this->assertStringContainsString('https://example.com/thumb.jpg', $html);
+        $this->assertStringContainsString('img src="https://example.com/thumb.jpg"', $html);
         $this->assertStringContainsString('過去記事一括取得テスト', $html);
         $this->assertStringContainsString('診断メモ', $html);
     }

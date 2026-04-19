@@ -10,21 +10,26 @@
             $crawlPreview = $crawlPreview ?? [];
             $rssItems = is_array($rssPreview['items'] ?? null) ? $rssPreview['items'] : [];
             $crawlUrls = is_array($crawlPreview['urls'] ?? null) ? $crawlPreview['urls'] : [];
+            $sampleItems = is_array($crawlPreview['sample_items'] ?? null) ? $crawlPreview['sample_items'] : [];
             $diagnostics = is_array($analysis['diagnostics'] ?? null) ? $analysis['diagnostics'] : [];
             $rssError = is_string($rssPreview['error'] ?? null) ? (string) $rssPreview['error'] : null;
             $crawlError = is_string($crawlPreview['error'] ?? null) ? (string) $crawlPreview['error'] : null;
             $analysisMethod = (string) ($analysis['analysis_method'] ?? '不明');
             $crawlerType = (string) ($analysis['crawler_type'] ?? 'html');
             $crawlerTypeLabel = $crawlerType === 'sitemap' ? 'サイトマップ' : 'HTML抽出';
+            $inferredSiteTitle = (string) ($analysis['site_title'] ?? '');
             $hasRssUrl = filled($analysis['rss_url'] ?? null);
             $hasSitemapUrl = filled($analysis['sitemap_url'] ?? null);
             $rssCount = count($rssItems);
             $crawlCount = count($crawlUrls);
+            $sampleCompleteCount = (int) ($crawlPreview['sample_complete_count'] ?? 0);
+            $sampleCheckedCount = (int) ($crawlPreview['sample_checked_count'] ?? count($sampleItems));
             $listItemSelector = (string) ($analysis['list_item_selector'] ?? '');
             $linkSelector = (string) ($analysis['link_selector'] ?? '');
             $paginationUrlTemplate = (string) ($analysis['pagination_url_template'] ?? '');
             $rssState = $rssError !== null ? 'danger' : ($rssCount > 0 ? 'success' : ($hasRssUrl ? 'warning' : 'gray'));
-            $crawlState = $crawlError !== null ? 'danger' : ($crawlCount > 0 ? 'success' : 'warning');
+            $isSitemapMetadataReady = $crawlerType !== 'sitemap' || $sampleCompleteCount > 0;
+            $crawlState = $crawlError !== null ? 'danger' : (($crawlCount > 0 && $isSitemapMetadataReady) ? 'success' : 'warning');
             $ruleState = $crawlerType === 'sitemap' && $hasSitemapUrl
                 ? 'success'
                 : (filled($listItemSelector) && filled($linkSelector) ? 'success' : 'warning');
@@ -118,7 +123,7 @@
             </div>
         </x-filament::section>
 
-        <div class="grid gap-6 xl:grid-cols-2">
+        <div class="grid gap-6 lg:grid-cols-2">
             <div class="space-y-6">
                 <x-filament::section
                     icon="heroicon-o-document-text"
@@ -126,6 +131,10 @@
                     description="承認するとこの値が保存されます。"
                 >
                     <dl class="grid gap-3 md:grid-cols-2">
+                        <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950">
+                            <dt class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">サイト名</dt>
+                            <dd class="mt-1 break-all text-sm text-gray-900 dark:text-gray-100">{{ $inferredSiteTitle !== '' ? $inferredSiteTitle : '未設定' }}</dd>
+                        </div>
                         <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950">
                             <dt class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">RSS URL</dt>
                             <dd class="mt-1 break-all text-sm text-gray-900 dark:text-gray-100">{{ $analysis['rss_url'] ?? '未設定' }}</dd>
@@ -195,6 +204,8 @@
                             <table class="w-full text-left text-sm text-gray-500 dark:text-gray-400">
                                 <thead class="bg-gray-50 text-xs uppercase text-gray-700 dark:bg-gray-800 dark:text-gray-400">
                                     <tr>
+                                        <th class="border-b px-3 py-2 dark:border-gray-700">サムネイル</th>
+                                        <th class="border-b px-3 py-2 dark:border-gray-700">thumbnailURL</th>
                                         <th class="border-b px-3 py-2 dark:border-gray-700">タイトル</th>
                                         <th class="border-b px-3 py-2 dark:border-gray-700">URL</th>
                                         <th class="border-b px-3 py-2 dark:border-gray-700">公開日時</th>
@@ -202,7 +213,27 @@
                                 </thead>
                                 <tbody>
                                     @forelse($rssItems as $item)
+                                        @php
+                                            $thumbnail = (string) ($item['image'] ?? 'なし');
+                                            $hasThumbnail = $thumbnail !== '' && ! str_starts_with($thumbnail, 'なし');
+                                        @endphp
                                         <tr class="border-b bg-white dark:border-gray-700 dark:bg-gray-900">
+                                            <td class="px-3 py-2 align-top">
+                                                @if($hasThumbnail)
+                                                    <a href="{{ $thumbnail }}" target="_blank" rel="noopener noreferrer" class="inline-block">
+                                                        <img src="{{ $thumbnail }}" alt="Thumbnail" class="h-16 w-16 rounded object-cover">
+                                                    </a>
+                                                @else
+                                                    <span class="text-gray-500">{{ $thumbnail !== '' ? $thumbnail : 'なし' }}</span>
+                                                @endif
+                                            </td>
+                                            <td class="break-all px-3 py-2 align-top">
+                                                @if($hasThumbnail)
+                                                    <a href="{{ $thumbnail }}" target="_blank" rel="noopener noreferrer" class="text-primary-600 hover:underline">{{ $thumbnail }}</a>
+                                                @else
+                                                    <span class="text-gray-500">{{ $thumbnail !== '' ? $thumbnail : 'なし' }}</span>
+                                                @endif
+                                            </td>
                                             <td class="px-3 py-2 align-top text-gray-900 dark:text-gray-100">{{ $item['title'] ?? 'なし' }}</td>
                                             <td class="break-all px-3 py-2 align-top">
                                                 @if(($item['url'] ?? 'なし') !== 'なし')
@@ -215,7 +246,7 @@
                                         </tr>
                                     @empty
                                         <tr>
-                                            <td colspan="3" class="px-3 py-4 text-center text-gray-500">記事が見つかりませんでした。</td>
+                                            <td colspan="5" class="px-3 py-4 text-center text-gray-500">記事が見つかりませんでした。</td>
                                         </tr>
                                     @endforelse
                                 </tbody>
@@ -229,7 +260,7 @@
                     heading="過去記事一括取得テスト"
                     description="一覧ページまたはサイトマップから取得できるURLを確認します。"
                 >
-                    <div class="grid gap-3 sm:grid-cols-3">
+                    <div class="grid gap-3 sm:grid-cols-4">
                         <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950">
                             <p class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">抽出URL数</p>
                             <p class="mt-1 text-lg font-bold text-gray-900 dark:text-gray-100">{{ $crawlCount }} 件</p>
@@ -246,6 +277,10 @@
                                 <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">なし</p>
                             @endif
                         </div>
+                        <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950">
+                            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">完全抽出</p>
+                            <p class="mt-1 text-lg font-bold text-gray-900 dark:text-gray-100">{{ $sampleCompleteCount }} / {{ $sampleCheckedCount }} 件</p>
+                        </div>
                     </div>
 
                     @if($crawlError !== null)
@@ -253,6 +288,39 @@
                             {{ $crawlError }}
                         </div>
                     @else
+                        <div class="mt-4 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
+                            <table class="w-full text-left text-sm text-gray-500 dark:text-gray-400">
+                                <thead class="bg-gray-50 text-xs uppercase text-gray-700 dark:bg-gray-800 dark:text-gray-400">
+                                    <tr>
+                                        <th class="border-b px-3 py-2 dark:border-gray-700">タイトル</th>
+                                        <th class="border-b px-3 py-2 dark:border-gray-700">記事URL</th>
+                                        <th class="border-b px-3 py-2 dark:border-gray-700">画像URL</th>
+                                        <th class="border-b px-3 py-2 dark:border-gray-700">公開日時</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @forelse($sampleItems as $sampleItem)
+                                        <tr class="border-b bg-white dark:border-gray-700 dark:bg-gray-900">
+                                            <td class="px-3 py-2 align-top text-gray-900 dark:text-gray-100">{{ $sampleItem['title'] ?? '未取得' }}</td>
+                                            <td class="break-all px-3 py-2 align-top">
+                                                @if(filled($sampleItem['url'] ?? null))
+                                                    <a href="{{ $sampleItem['url'] }}" target="_blank" class="text-primary-600 hover:underline">{{ $sampleItem['url'] }}</a>
+                                                @else
+                                                    なし
+                                                @endif
+                                            </td>
+                                            <td class="break-all px-3 py-2 align-top">{{ $sampleItem['image'] ?? 'なし' }}</td>
+                                            <td class="whitespace-nowrap px-3 py-2 align-top">{{ $sampleItem['date'] ?? 'なし' }}</td>
+                                        </tr>
+                                    @empty
+                                        <tr>
+                                            <td colspan="4" class="px-3 py-4 text-center text-gray-500">サンプル抽出結果がありません。</td>
+                                        </tr>
+                                    @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+
                         <div class="mt-4 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
                             <table class="w-full text-left text-sm text-gray-500 dark:text-gray-400">
                                 <thead class="bg-gray-50 text-xs uppercase text-gray-700 dark:bg-gray-800 dark:text-gray-400">
