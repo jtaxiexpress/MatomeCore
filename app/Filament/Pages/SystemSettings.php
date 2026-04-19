@@ -156,6 +156,7 @@ class SystemSettings extends Page implements HasForms
                             ->helperText('オンにするとキューに入っている記事詳細取得・AI推論のジョブが処理されずに1分後に再スケジュールされ、一時停止状態になります。'),
                     ]),
                 Section::make('AIモデル設定（記事）')
+                    ->description('記事生成で使うモデルと共通ベースプロンプトをまとめて設定します。')
                     ->schema([
                         Select::make('ollama_model')
                             ->label('Ollamaモデル名')
@@ -172,22 +173,10 @@ class SystemSettings extends Page implements HasForms
                             ->label('Ollama コンテキスト長 (num_ctx)')
                             ->numeric()
                             ->default((int) config('ai.providers.ollama.options.num_ctx', 8192)),
-                    ])->columns(2),
-                Section::make('AIモデル設定（サイト解析）')
-                    ->schema([
-                        Select::make('gemini_model')
-                            ->label('Geminiモデル名')
-                            ->options(fn (): array => $this->getGeminiModelOptions())
-                            ->searchable()
-                            ->default(fn (): string => $this->currentGeminiModel())
-                            ->helperText('Gemini APIの /v1beta/models から取得した generateContent 対応モデルを表示します。')
-                            ->required(),
-                    ]),
-                Section::make('AIプロンプト設定')
-                    ->schema([
                         Textarea::make('ai_base_prompt')
                             ->label('システム共通ベースプロンプト（役割と基本ルール）')
                             ->rows(15)
+                            ->columnSpanFull()
                             ->helperText('アプリ全体で共通してAIに与える役割や基本動作を定義します。※Structured Outputsを利用するため、JSONフォーマットや配列に関する指示は絶対に記述しないでください。また、{app_prompt}を配置した場所に個別アプリのプロンプトが展開されます。')
                             ->rule(function () {
                                 return function (string $attribute, $value, \Closure $fail) {
@@ -197,12 +186,26 @@ class SystemSettings extends Page implements HasForms
                                 };
                             })
                             ->required(),
+                    ])->columns(2),
+                Section::make('AIモデル設定（サイト解析）')
+                    ->description('サイト解析で使うモデルと推論プロンプトをまとめて設定します。')
+                    ->schema([
+                        Select::make('gemini_model')
+                            ->label('Geminiモデル名')
+                            ->options(fn (): array => $this->getGeminiModelOptions())
+                            ->searchable()
+                            ->default(fn (): string => $this->currentGeminiModel())
+                            ->columnSpanFull()
+                            ->helperText('Gemini APIの /v1beta/models から取得した generateContent 対応モデルをすべて表示します。')
+                            ->required(),
                         Textarea::make('site_analyzer_prompt')
                             ->label('AIサイト解析プロンプト')
                             ->rows(16)
+                            ->columnSpanFull()
                             ->helperText('サイト登録時の自動推論で、Geminiに与えるシステムプロンプトです。')
                             ->required(),
-                    ]),
+                    ])
+                    ->columns(2),
             ])->statePath('data');
     }
 
@@ -313,24 +316,10 @@ PROMPT;
             }
 
             try {
-                $response = Http::timeout(5)
-                    ->acceptJson()
-                    ->get('https://generativelanguage.googleapis.com/v1beta/models', [
-                        'key' => $apiKey,
-                    ]);
+                $models = $this->fetchGeminiModels($apiKey);
 
-                if (! $response->successful()) {
-                    Log::warning('[SystemSettings] Geminiモデル一覧の取得に失敗しました', [
-                        'status' => $response->status(),
-                    ]);
-
-                    return $this->fallbackGeminiModelOptions();
-                }
-
-                $models = data_get($response->json(), 'models', []);
-
-                if (! is_array($models)) {
-                    Log::warning('[SystemSettings] Geminiモデル一覧のJSON構造が不正です');
+                if ($models === []) {
+                    Log::warning('[SystemSettings] Geminiモデル一覧が空でした');
 
                     return $this->fallbackGeminiModelOptions();
                 }
@@ -377,6 +366,55 @@ PROMPT;
                 return $this->fallbackGeminiModelOptions();
             }
         });
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchGeminiModels(string $apiKey): array
+    {
+        $models = [];
+        $pageToken = '';
+        $visitedTokens = [];
+
+        while (true) {
+            $query = [
+                'key' => $apiKey,
+                'pageSize' => 1000,
+            ];
+
+            if ($pageToken !== '') {
+                $query['pageToken'] = $pageToken;
+            }
+
+            $response = Http::timeout(5)
+                ->acceptJson()
+                ->get('https://generativelanguage.googleapis.com/v1beta/models', $query);
+
+            if (! $response->successful()) {
+                throw new \RuntimeException('Geminiモデル一覧の取得に失敗しました。');
+            }
+
+            $json = $response->json();
+            $pageModels = data_get($json, 'models', []);
+
+            if (! is_array($pageModels)) {
+                throw new \RuntimeException('Geminiモデル一覧のJSON構造が不正です。');
+            }
+
+            $models = array_merge($models, $pageModels);
+
+            $nextPageToken = trim((string) data_get($json, 'nextPageToken', ''));
+
+            if ($nextPageToken === '' || in_array($nextPageToken, $visitedTokens, true)) {
+                break;
+            }
+
+            $visitedTokens[] = $nextPageToken;
+            $pageToken = $nextPageToken;
+        }
+
+        return $models;
     }
 
     /**

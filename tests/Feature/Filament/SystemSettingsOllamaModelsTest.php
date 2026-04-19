@@ -47,6 +47,30 @@ class SystemSettingsOllamaModelsTest extends TestCase
             ->assertOk();
     }
 
+    public function test_prompt_fields_appear_under_their_related_model_sections(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $ollamaTagsUrl = rtrim((string) config('services.ollama.url', 'https://ollama.unicorn.tokyo'), '/').'/api/tags';
+
+        config(['ai.providers.gemini.key' => '']);
+        Cache::put('ollama_model', 'qwen3.5:9b');
+        Http::preventStrayRequests();
+        Http::fake([
+            $ollamaTagsUrl => Http::failedConnection(),
+        ]);
+
+        Livewire::actingAs($admin)
+            ->test(SystemSettings::class)
+            ->assertSeeHtmlInOrder([
+                'AIモデル設定（記事）',
+                'システム共通ベースプロンプト（役割と基本ルール）',
+                'AIモデル設定（サイト解析）',
+                'AIサイト解析プロンプト',
+            ])
+            ->assertDontSeeHtml('AIプロンプト設定（記事）')
+            ->assertDontSeeHtml('AIプロンプト設定（サイト解析）');
+    }
+
     public function test_ollama_model_options_are_loaded_and_cached(): void
     {
         $page = new SystemSettings;
@@ -101,7 +125,7 @@ class SystemSettingsOllamaModelsTest extends TestCase
         ], $options);
     }
 
-    public function test_gemini_model_options_are_loaded_and_cached(): void
+    public function test_gemini_model_options_are_loaded_from_all_pages_and_cached(): void
     {
         config([
             'ai.providers.gemini.key' => 'test-gemini-key',
@@ -116,8 +140,27 @@ class SystemSettingsOllamaModelsTest extends TestCase
         Cache::forget('gemini_available_models');
 
         Http::preventStrayRequests();
-        Http::fake([
-            'https://generativelanguage.googleapis.com/v1beta/models*' => Http::response([
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), 'pageToken=page-2')) {
+                return Http::response([
+                    'models' => [
+                        [
+                            'name' => 'models/gemini-3.1-flash-lite',
+                            'supportedGenerationMethods' => ['generateContent'],
+                        ],
+                        [
+                            'name' => 'models/gemini-3.0-pro',
+                            'supportedGenerationMethods' => ['generateContent'],
+                        ],
+                        [
+                            'name' => 'models/gemini-2.0-image',
+                            'supportedGenerationMethods' => ['generateImages'],
+                        ],
+                    ],
+                ]);
+            }
+
+            return Http::response([
                 'models' => [
                     [
                         'name' => 'models/gemini-1.5-pro-latest',
@@ -127,17 +170,10 @@ class SystemSettingsOllamaModelsTest extends TestCase
                         'name' => 'models/gemini-2.0-flash',
                         'supportedGenerationMethods' => ['generateContent'],
                     ],
-                    [
-                        'name' => 'models/gemini-2.0-image',
-                        'supportedGenerationMethods' => ['generateImages'],
-                    ],
-                    [
-                        'name' => 'models/gemini-3.0-pro',
-                        'supportedGenerationMethods' => ['generateContent'],
-                    ],
                 ],
-            ]),
-        ]);
+                'nextPageToken' => 'page-2',
+            ]);
+        });
 
         $firstOptions = $method->invoke($page);
         $secondOptions = $method->invoke($page);
@@ -147,9 +183,10 @@ class SystemSettingsOllamaModelsTest extends TestCase
             'gemini-1.5-pro-latest' => 'gemini-1.5-pro-latest',
             'gemini-2.0-flash' => 'gemini-2.0-flash',
             'gemini-3.0-pro' => 'gemini-3.0-pro',
+            'gemini-3.1-flash-lite' => 'gemini-3.1-flash-lite',
         ], $firstOptions);
         $this->assertSame($firstOptions, $secondOptions);
-        Http::assertSentCount(1);
+        Http::assertSentCount(2);
     }
 
     public function test_gemini_model_options_fall_back_to_runtime_environment_key(): void

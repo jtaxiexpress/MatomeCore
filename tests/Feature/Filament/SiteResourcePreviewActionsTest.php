@@ -211,6 +211,50 @@ HTML),
         $this->assertSame(['https://example.com/logo.png'], $site->ng_image_urls);
     }
 
+    public function test_ai_infer_preview_view_highlights_verdict_and_key_sections(): void
+    {
+        $html = view('filament.actions.site-analysis-preview', [
+            'analysis' => [
+                'analysis_method' => 'rss+sitemap',
+                'rss_url' => 'https://example.com/feed.xml',
+                'crawler_type' => 'sitemap',
+                'sitemap_url' => 'https://example.com/sitemap.xml',
+                'crawl_start_url' => null,
+                'list_item_selector' => null,
+                'link_selector' => null,
+                'pagination_url_template' => null,
+                'diagnostics' => [
+                    'RSSフィードを検出しました。',
+                    'サイトマップを検出しました。',
+                ],
+            ],
+            'rssPreview' => [
+                'items' => [
+                    [
+                        'title' => '記事1',
+                        'url' => 'https://example.com/articles/1',
+                        'date' => '2026-04-18',
+                    ],
+                ],
+            ],
+            'crawlPreview' => [
+                'urls' => [
+                    'https://example.com/articles/1',
+                ],
+                'count' => 1,
+                'total_count' => 1,
+                'next_url' => null,
+            ],
+        ])->render();
+
+        $this->assertStringContainsString('AI REVIEW', $html);
+        $this->assertStringContainsString('承認可', $html);
+        $this->assertStringContainsString('反映される設定', $html);
+        $this->assertStringContainsString('RSS取得テスト', $html);
+        $this->assertStringContainsString('過去記事一括取得テスト', $html);
+        $this->assertStringContainsString('診断メモ', $html);
+    }
+
     /**
      * @param  array<int, array{title: string, url: string, image: ?string, date: string}>  $items
      */
