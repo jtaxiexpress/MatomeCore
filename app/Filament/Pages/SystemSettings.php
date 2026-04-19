@@ -26,6 +26,8 @@ use Throwable;
 
 class SystemSettings extends Page implements HasForms
 {
+    private const GEMINI_AVAILABLE_MODELS_CACHE_KEY = 'gemini_available_models_v2';
+
     use AuthorizesAdminScreenPage;
     use InteractsWithForms;
 
@@ -306,7 +308,7 @@ PROMPT;
      */
     private function getGeminiModelOptions(): array
     {
-        return Cache::remember('gemini_available_models', now()->addDay(), function (): array {
+        return Cache::remember(self::GEMINI_AVAILABLE_MODELS_CACHE_KEY, now()->addDay(), function (): array {
             $apiKey = $this->currentGeminiApiKey();
 
             if ($apiKey === '') {

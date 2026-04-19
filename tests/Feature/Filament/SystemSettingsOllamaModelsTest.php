@@ -22,6 +22,7 @@ class SystemSettingsOllamaModelsTest extends TestCase
         Cache::forget('ollama_available_models');
         Cache::forget('ollama_model');
         Cache::forget('gemini_available_models');
+        Cache::forget('gemini_available_models_v2');
         Cache::forget('gemini_model');
         putenv('GEMINI_API_KEY');
         unset($_ENV['GEMINI_API_KEY'], $_SERVER['GEMINI_API_KEY']);
