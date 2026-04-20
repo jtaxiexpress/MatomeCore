@@ -32,7 +32,7 @@ class ExceptionAlertClassifierTest extends TestCase
 
     public function test_it_detects_external_api_timeout_errors(): void
     {
-        $exception = new RuntimeException('Crawl4AI request failed: cURL error 28: Operation timed out after 60001 milliseconds');
+        $exception = new RuntimeException('External API request failed: cURL error 28: Operation timed out after 60001 milliseconds');
 
         $classifier = new ExceptionAlertClassifier;
 

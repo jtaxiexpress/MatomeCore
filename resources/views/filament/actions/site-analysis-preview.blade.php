@@ -55,7 +55,7 @@
 
         <x-filament::section
             icon="heroicon-o-sparkles"
-            heading="AI推論結果の確認"
+            heading="自動推論結果の確認"
             description="推論結果、反映設定、診断メモをまとめて確認します。"
         >
                 <div class="space-y-6">

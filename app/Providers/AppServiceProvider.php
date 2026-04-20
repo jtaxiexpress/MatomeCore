@@ -24,16 +24,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        $geminiApiKey = (string) config('ai.providers.gemini.key', '');
-
-        if ($geminiApiKey === '') {
-            $geminiApiKey = (string) ($_ENV['GEMINI_API_KEY'] ?? $_SERVER['GEMINI_API_KEY'] ?? '');
-        }
-
-        if ($geminiApiKey !== '') {
-            config(['ai.providers.gemini.key' => $geminiApiKey]);
-        }
-
         RateLimiter::for('public-feed', function (Request $request): Limit {
             return Limit::perMinute(60)->by($request->ip());
         });

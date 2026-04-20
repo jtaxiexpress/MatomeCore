@@ -194,7 +194,7 @@ HTML),
                 'pagination_url_template' => 'https://example.com/news/page/{page}',
                 'ng_image_urls' => ['https://example.com/logo.png'],
                 'analysis_method' => 'llm',
-                'diagnostics' => ['Crawl4AI + Gemini によるHTML解析を実行しました。'],
+                'diagnostics' => ['HTML解析を実行しました。'],
             ]);
 
         $this->app->instance(SiteAnalyzerService::class, $mock);

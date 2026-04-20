@@ -50,15 +50,6 @@ return [
     */
 
     'providers' => [
-        'gemini' => [
-            'driver' => 'gemini',
-            'key' => env('GEMINI_API_KEY'),
-            'models' => [
-                'text' => [
-                    'default' => env('GEMINI_MODEL', 'gemini-2.0-flash'),
-                ],
-            ],
-        ],
         'ollama' => [
             'driver' => 'ollama',
             'url' => env('OLLAMA_BASE_URL', 'https://ollama.unicorn.tokyo'),

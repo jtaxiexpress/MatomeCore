@@ -4,23 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Unit;
 
-use App\Services\Crawl4AiService;
 use App\Services\SiteAnalyzerService;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
-use Laravel\Ai\StructuredAnonymousAgent;
 use Tests\TestCase;
 
 class SiteAnalyzerServiceTest extends TestCase
 {
-    protected function tearDown(): void
-    {
-        Cache::forget('site_analyzer_prompt');
-        Cache::forget('gemini_model');
-
-        parent::tearDown();
-    }
-
     public function test_analyze_prefers_sitemap_for_bulk_extraction_when_available_even_if_rss_exists(): void
     {
         Http::preventStrayRequests();
@@ -103,9 +92,6 @@ HTML),
 
     public function test_analyze_falls_back_to_html_when_sitemap_metadata_validation_fails(): void
     {
-        Cache::put('site_analyzer_prompt', 'テスト用システムプロンプト');
-        Cache::put('gemini_model', 'gemini-2.0-flash');
-
         Http::preventStrayRequests();
         Http::fake(function ($request) {
             return match ($request->url()) {
@@ -133,33 +119,13 @@ XML),
             };
         });
 
-        $this->app->instance(Crawl4AiService::class, new class extends Crawl4AiService
-        {
-            public function __construct() {}
-
-            public function crawl(string $url): array
-            {
-                return [
-                    'markdown' => "# News\n- [Post 1](https://example.com/posts/1)",
-                    'thumbnail_url' => null,
-                ];
-            }
-        });
-
-        StructuredAnonymousAgent::fake([[
-            'list_item_selector' => '.article-item:not(.pr)',
-            'link_selector' => 'a.article-link',
-            'pagination_url_template' => 'https://example.com/news/page/{page}',
-            'ng_image_urls' => [],
-        ]]);
-
         $result = app(SiteAnalyzerService::class)->analyze('https://example.com');
 
-        $this->assertSame('rss+llm', $result['analysis_method']);
+        $this->assertSame('rss+html', $result['analysis_method']);
         $this->assertSame('html', $result['crawler_type']);
-        $this->assertSame('.article-item:not(.pr)', $result['list_item_selector']);
-        $this->assertSame('a.article-link', $result['link_selector']);
-        $this->assertSame('https://example.com/news/page/{page}', $result['pagination_url_template']);
+        $this->assertSame('article, .post, .entry, .list-item, li', $result['list_item_selector']);
+        $this->assertSame('a', $result['link_selector']);
+        $this->assertNull($result['pagination_url_template']);
         $this->assertSame('Example Site', $result['site_title']);
         $this->assertContains(
             'サイトマップは検出できましたが、記事メタデータ（タイトル・URL・画像・公開日）を確認できなかったため、一覧ページ抽出へフォールバックします。',
@@ -169,9 +135,6 @@ XML),
 
     public function test_analyze_uses_morss_feed_when_native_rss_is_missing(): void
     {
-        Cache::put('site_analyzer_prompt', 'テスト用システムプロンプト');
-        Cache::put('gemini_model', 'gemini-2.0-flash');
-
         Http::preventStrayRequests();
         Http::fake(function ($request) {
             if ($request->url() === 'https://example.com') {
@@ -188,40 +151,17 @@ XML);
             return Http::response(null, 404);
         });
 
-        $this->app->instance(Crawl4AiService::class, new class extends Crawl4AiService
-        {
-            public function __construct() {}
-
-            public function crawl(string $url): array
-            {
-                return [
-                    'markdown' => "# Article List\n- [Post 1](https://example.com/posts/1)",
-                    'thumbnail_url' => null,
-                ];
-            }
-        });
-
-        StructuredAnonymousAgent::fake([[
-            'list_item_selector' => '.post-item:not(.pr-item)',
-            'link_selector' => 'a.article-link',
-            'pagination_url_template' => 'https://example.com/page/{page}',
-            'ng_image_urls' => ['https://example.com/logo.png'],
-        ]]);
-
         $result = app(SiteAnalyzerService::class)->analyze('https://example.com');
 
         $this->assertNotNull($result['rss_url']);
         $this->assertTrue(str_starts_with((string) $result['rss_url'], 'https://morss.it/'));
-        $this->assertSame('rss+llm', $result['analysis_method']);
+        $this->assertSame('rss+html', $result['analysis_method']);
         $this->assertSame('html', $result['crawler_type']);
-        $this->assertSame('.post-item:not(.pr-item)', $result['list_item_selector']);
+        $this->assertSame('article, .post, .entry, .list-item, li', $result['list_item_selector']);
     }
 
     public function test_analyze_builds_selector_based_morss_url_for_dengeki_online(): void
     {
-        Cache::put('site_analyzer_prompt', 'テスト用システムプロンプト');
-        Cache::put('gemini_model', 'gemini-2.0-flash');
-
         $sourceUrl = 'https://dengekionline.com/tag/%E3%82%B5%E3%83%BC%E3%83%93%E3%82%B9%E7%B5%82%E4%BA%86/page/1';
         $expectedMorssUrl = 'https://morss.it/:proxy:items=%7C%7C*%5Bclass=ArticleCard_title__IasvF%5D/'.$sourceUrl;
 
@@ -237,26 +177,6 @@ XML),
             };
         });
 
-        $this->app->instance(Crawl4AiService::class, new class extends Crawl4AiService
-        {
-            public function __construct() {}
-
-            public function crawl(string $url): array
-            {
-                return [
-                    'markdown' => "# Dengeki\n- [記事1](https://dengekionline.com/articles/1)",
-                    'thumbnail_url' => null,
-                ];
-            }
-        });
-
-        StructuredAnonymousAgent::fake([[
-            'list_item_selector' => '.ArticleCard_title__IasvF',
-            'link_selector' => 'a',
-            'pagination_url_template' => null,
-            'ng_image_urls' => [],
-        ]]);
-
         $result = app(SiteAnalyzerService::class)->analyze($sourceUrl);
 
         $this->assertSame($expectedMorssUrl, $result['rss_url']);
@@ -265,9 +185,6 @@ XML),
 
     public function test_analyze_uses_html_extraction_rules_when_sitemap_is_not_detected(): void
     {
-        Cache::put('site_analyzer_prompt', 'テスト用システムプロンプト');
-        Cache::put('gemini_model', 'gemini-2.0-flash');
-
         Http::preventStrayRequests();
         Http::fake(function ($request) {
             if ($request->url() === 'https://example.com') {
@@ -277,34 +194,14 @@ XML),
             return Http::response(null, 404);
         });
 
-        $this->app->instance(Crawl4AiService::class, new class extends Crawl4AiService
-        {
-            public function __construct() {}
-
-            public function crawl(string $url): array
-            {
-                return [
-                    'markdown' => "# Article List\n- [Post 1](https://example.com/posts/1)",
-                    'thumbnail_url' => null,
-                ];
-            }
-        });
-
-        StructuredAnonymousAgent::fake([[
-            'list_item_selector' => '.post-item:not(.pr-item)',
-            'link_selector' => 'a.article-link',
-            'pagination_url_template' => 'https://example.com/page/{page}',
-            'ng_image_urls' => ['https://example.com/logo.png'],
-        ]]);
-
         $result = app(SiteAnalyzerService::class)->analyze('https://example.com');
 
-        $this->assertSame('llm', $result['analysis_method']);
+        $this->assertSame('html', $result['analysis_method']);
         $this->assertSame('html', $result['crawler_type']);
         $this->assertSame('https://example.com', $result['crawl_start_url']);
-        $this->assertSame('.post-item:not(.pr-item)', $result['list_item_selector']);
-        $this->assertSame('a.article-link', $result['link_selector']);
-        $this->assertSame('https://example.com/page/{page}', $result['pagination_url_template']);
-        $this->assertSame(['https://example.com/logo.png'], $result['ng_image_urls']);
+        $this->assertSame('article, .post, .entry, .list-item, li', $result['list_item_selector']);
+        $this->assertSame('a', $result['link_selector']);
+        $this->assertNull($result['pagination_url_template']);
+        $this->assertSame([], $result['ng_image_urls']);
     }
 }

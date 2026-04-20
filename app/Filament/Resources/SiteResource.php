@@ -60,13 +60,13 @@ class SiteResource extends Resource
                         ->url()
                         ->hintActions([
                             Action::make('ai_infer_site_settings')
-                                ->label('✨ AIで設定を自動推論')
+                                ->label('✨ 設定を自動推論')
                                 ->icon('heroicon-o-sparkles')
                                 ->color('primary')
                                 ->requiresConfirmation()
                                 ->modalIcon('heroicon-o-sparkles')
                                 ->modalIconColor('primary')
-                                ->modalHeading('AI推論結果の確認')
+                                ->modalHeading('自動推論結果の確認')
                                 ->modalDescription('緑の判定なら承認して反映できます。黄色や赤があれば内容を見直してください。')
                                 ->modalSubmitActionLabel('承認して反映')
                                 ->modalCancelActionLabel('キャンセル')
@@ -137,13 +137,13 @@ class SiteResource extends Resource
 
                                         Notification::make()
                                             ->success()
-                                            ->title('AIでサイト設定を推論しました')
+                                            ->title('サイト設定を自動推論しました')
                                             ->body(new HtmlString($diagnostics !== '' ? $diagnostics : '推論が完了しました。'))
                                             ->send();
                                     } catch (Throwable $e) {
                                         Notification::make()
                                             ->danger()
-                                            ->title('AI推論に失敗しました')
+                                            ->title('自動推論に失敗しました')
                                             ->body($e->getMessage())
                                             ->persistent()
                                             ->send();
@@ -377,11 +377,11 @@ class SiteResource extends Resource
                                 ->send();
                         }),
                     Action::make('reanalyze_with_ai')
-                        ->label('🔄 AIで再解析・修復')
+                        ->label('🔄 設定を再解析・修復')
                         ->icon('heroicon-o-sparkles')
                         ->color('primary')
                         ->requiresConfirmation()
-                        ->modalHeading('AIで再解析・修復')
+                        ->modalHeading('設定の再解析・修復')
                         ->modalDescription('現在のサイトURLを再解析し、RSS/サイトマップ/抽出セレクタを自動更新します。')
                         ->modalSubmitActionLabel('再解析して更新')
                         ->action(function (Site $record, SiteAnalyzerService $siteAnalyzerService): void {
@@ -407,7 +407,7 @@ class SiteResource extends Resource
 
                                 Notification::make()
                                     ->success()
-                                    ->title('AIで再解析し、設定を更新しました')
+                                    ->title('再解析し、設定を更新しました')
                                     ->body(new HtmlString($diagnostics !== '' ? $diagnostics : '更新が完了しました。'))
                                     ->send();
                             } catch (Throwable $e) {

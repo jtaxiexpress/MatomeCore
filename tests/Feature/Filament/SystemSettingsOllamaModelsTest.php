@@ -21,11 +21,6 @@ class SystemSettingsOllamaModelsTest extends TestCase
     {
         Cache::forget('ollama_available_models');
         Cache::forget('ollama_model');
-        Cache::forget('gemini_available_models');
-        Cache::forget('gemini_available_models_v2');
-        Cache::forget('gemini_model');
-        putenv('GEMINI_API_KEY');
-        unset($_ENV['GEMINI_API_KEY'], $_SERVER['GEMINI_API_KEY']);
 
         parent::tearDown();
     }
@@ -34,8 +29,6 @@ class SystemSettingsOllamaModelsTest extends TestCase
     {
         $admin = User::factory()->admin()->create();
         $ollamaTagsUrl = rtrim((string) config('services.ollama.url', 'https://ollama.unicorn.tokyo'), '/').'/api/tags';
-
-        config(['ai.providers.gemini.key' => '']);
 
         Cache::put('ollama_model', 'qwen3.5:9b');
         Http::preventStrayRequests();
@@ -53,7 +46,6 @@ class SystemSettingsOllamaModelsTest extends TestCase
         $admin = User::factory()->admin()->create();
         $ollamaTagsUrl = rtrim((string) config('services.ollama.url', 'https://ollama.unicorn.tokyo'), '/').'/api/tags';
 
-        config(['ai.providers.gemini.key' => '']);
         Cache::put('ollama_model', 'qwen3.5:9b');
         Http::preventStrayRequests();
         Http::fake([
@@ -65,11 +57,11 @@ class SystemSettingsOllamaModelsTest extends TestCase
             ->assertSeeHtmlInOrder([
                 'AIモデル設定（記事）',
                 'システム共通ベースプロンプト（役割と基本ルール）',
-                'AIモデル設定（サイト解析）',
-                'AIサイト解析プロンプト',
             ])
             ->assertDontSeeHtml('AIプロンプト設定（記事）')
-            ->assertDontSeeHtml('AIプロンプト設定（サイト解析）');
+            ->assertDontSeeHtml('AIプロンプト設定（サイト解析）')
+            ->assertDontSeeHtml('AIモデル設定（サイト解析）')
+            ->assertDontSeeHtml('AIサイト解析プロンプト');
     }
 
     public function test_ollama_model_options_are_loaded_and_cached(): void
@@ -123,138 +115,6 @@ class SystemSettingsOllamaModelsTest extends TestCase
 
         $this->assertSame([
             'qwen3.5:9b' => 'qwen3.5:9b (取得失敗)',
-        ], $options);
-    }
-
-    public function test_gemini_model_options_are_loaded_from_all_pages_and_cached(): void
-    {
-        config([
-            'ai.providers.gemini.key' => 'test-gemini-key',
-            'ai.providers.gemini.models.text.default' => 'gemini-2.0-flash',
-        ]);
-
-        $page = new SystemSettings;
-        $method = new ReflectionMethod($page, 'getGeminiModelOptions');
-        $method->setAccessible(true);
-
-        Cache::put('gemini_model', 'gemini-2.0-flash-exp');
-        Cache::forget('gemini_available_models');
-
-        Http::preventStrayRequests();
-        Http::fake(function ($request) {
-            if (str_contains($request->url(), 'pageToken=page-2')) {
-                return Http::response([
-                    'models' => [
-                        [
-                            'name' => 'models/gemini-3.1-flash-lite',
-                            'supportedGenerationMethods' => ['generateContent'],
-                        ],
-                        [
-                            'name' => 'models/gemini-3.0-pro',
-                            'supportedGenerationMethods' => ['generateContent'],
-                        ],
-                        [
-                            'name' => 'models/gemini-2.0-image',
-                            'supportedGenerationMethods' => ['generateImages'],
-                        ],
-                    ],
-                ]);
-            }
-
-            return Http::response([
-                'models' => [
-                    [
-                        'name' => 'models/gemini-1.5-pro-latest',
-                        'supportedGenerationMethods' => ['generateContent'],
-                    ],
-                    [
-                        'name' => 'models/gemini-2.0-flash',
-                        'supportedGenerationMethods' => ['generateContent'],
-                    ],
-                ],
-                'nextPageToken' => 'page-2',
-            ]);
-        });
-
-        $firstOptions = $method->invoke($page);
-        $secondOptions = $method->invoke($page);
-
-        $this->assertSame([
-            'gemini-2.0-flash-exp' => 'gemini-2.0-flash-exp',
-            'gemini-1.5-pro-latest' => 'gemini-1.5-pro-latest',
-            'gemini-2.0-flash' => 'gemini-2.0-flash',
-            'gemini-3.0-pro' => 'gemini-3.0-pro',
-            'gemini-3.1-flash-lite' => 'gemini-3.1-flash-lite',
-        ], $firstOptions);
-        $this->assertSame($firstOptions, $secondOptions);
-        Http::assertSentCount(2);
-    }
-
-    public function test_gemini_model_options_fall_back_to_runtime_environment_key(): void
-    {
-        config([
-            'ai.providers.gemini.key' => '',
-            'ai.providers.gemini.models.text.default' => 'gemini-2.0-flash',
-        ]);
-
-        putenv('GEMINI_API_KEY=test-runtime-gemini-key');
-        $_ENV['GEMINI_API_KEY'] = 'test-runtime-gemini-key';
-        $_SERVER['GEMINI_API_KEY'] = 'test-runtime-gemini-key';
-
-        $page = new SystemSettings;
-        $method = new ReflectionMethod($page, 'getGeminiModelOptions');
-        $method->setAccessible(true);
-
-        Cache::put('gemini_model', 'gemini-2.0-flash-exp');
-        Cache::forget('gemini_available_models');
-
-        Http::preventStrayRequests();
-        Http::fake([
-            'https://generativelanguage.googleapis.com/v1beta/models*' => Http::response([
-                'models' => [
-                    [
-                        'name' => 'models/gemini-2.0-flash',
-                        'supportedGenerationMethods' => ['generateContent'],
-                    ],
-                ],
-            ]),
-        ]);
-
-        $options = $method->invoke($page);
-
-        $this->assertSame([
-            'gemini-2.0-flash-exp' => 'gemini-2.0-flash-exp',
-            'gemini-2.0-flash' => 'gemini-2.0-flash',
-        ], $options);
-
-        Http::assertSent(function ($request): bool {
-            return str_contains($request->url(), 'key=test-runtime-gemini-key');
-        });
-    }
-
-    public function test_gemini_model_options_fall_back_to_current_model_when_api_fails(): void
-    {
-        config([
-            'ai.providers.gemini.key' => 'test-gemini-key',
-            'ai.providers.gemini.models.text.default' => 'gemini-2.0-flash',
-        ]);
-
-        $page = new SystemSettings;
-        $method = new ReflectionMethod($page, 'getGeminiModelOptions');
-        $method->setAccessible(true);
-
-        Cache::put('gemini_model', 'gemini-2.0-flash-exp');
-        Cache::forget('gemini_available_models');
-
-        Http::preventStrayRequests();
-        Http::fake([
-            'https://generativelanguage.googleapis.com/v1beta/models*' => Http::failedConnection(),
-        ]);
-
-        $options = $method->invoke($page);
-
-        $this->assertSame([
-            'gemini-2.0-flash-exp' => 'gemini-2.0-flash-exp (取得失敗)',
         ], $options);
     }
 }

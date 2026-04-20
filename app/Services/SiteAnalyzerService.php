@@ -4,17 +4,12 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-use App\Filament\Pages\SystemSettings;
 use Carbon\Carbon;
-use Illuminate\Contracts\JsonSchema\JsonSchema;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Symfony\Component\DomCrawler\Crawler;
 use Throwable;
-
-use function Laravel\Ai\agent;
 
 class SiteAnalyzerService
 {
@@ -29,7 +24,6 @@ class SiteAnalyzerService
     ];
 
     public function __construct(
-        private readonly Crawl4AiService $crawl4AiService,
         private readonly ArticleScraperService $articleScraperService,
     ) {}
 
@@ -82,8 +76,8 @@ class SiteAnalyzerService
             $morssListItemSelector = null;
 
             try {
-                $prefetchedHtmlAnalysis = $this->analyzeHtmlStructureWithLlm($normalizedUrl);
-                $morssListItemSelector = $this->sanitizeNullableString($prefetchedHtmlAnalysis['list_item_selector'] ?? null);
+                $prefetchedHtmlAnalysis = $this->inferHtmlStructure($normalizedUrl);
+                $morssListItemSelector = $this->sanitizeNullableString($prefetchedHtmlAnalysis['list_item_selector']);
             } catch (Throwable $e) {
                 Log::info('[SiteAnalyzerService] morss 用セレクタ推論に失敗したため、通常候補で継続します。', [
                     'url' => $normalizedUrl,
@@ -96,7 +90,7 @@ class SiteAnalyzerService
             if ($morssUrl !== null) {
                 $result['rss_url'] = $morssUrl;
                 $result['diagnostics'][] = str_contains($morssUrl, ':proxy:items=')
-                    ? 'RSSが見つからなかったため、Crawl4AIで推論したセレクタを適用した morss.it フィードを利用します。'
+                    ? 'RSSが見つからなかったため、推論したセレクタを適用した morss.it フィードを利用します。'
                     : 'RSSが見つからなかったため、morss.it のフィードを利用します。';
             } else {
                 $result['diagnostics'][] = 'RSSは検出できませんでした（morss.it でも取得不可）。';
@@ -126,7 +120,7 @@ class SiteAnalyzerService
             $sitemapError = is_string($sitemapPreview['error'] ?? null)
                 ? (string) $sitemapPreview['error']
                 : null;
-            $sitemapSampleCompleteCount = (int) ($sitemapPreview['sample_complete_count'] ?? 0);
+            $sitemapSampleCompleteCount = (int) $sitemapPreview['sample_complete_count'];
 
             if ($sitemapError === null && $sitemapSampleCompleteCount > 0) {
                 $result['crawler_type'] = 'sitemap';
@@ -147,23 +141,23 @@ class SiteAnalyzerService
 
         try {
             if ($prefetchedHtmlAnalysis !== null) {
-                $llmResult = $prefetchedHtmlAnalysis;
+                $htmlResult = $prefetchedHtmlAnalysis;
             } else {
                 $feedSampleUrls = $this->collectFeedSampleUrls($result['rss_url']);
-                $llmResult = $this->analyzeHtmlStructureWithLlm($normalizedUrl, $feedSampleUrls);
+                $htmlResult = $this->inferHtmlStructure($normalizedUrl, $feedSampleUrls);
             }
 
-            $llmResult['rss_url'] = $result['rss_url'];
+            $htmlResult['rss_url'] = $result['rss_url'];
 
-            $result = array_merge($result, $llmResult, [
-                'analysis_method' => $result['rss_url'] !== null ? 'rss+llm' : 'llm',
+            $result = array_merge($result, $htmlResult, [
+                'analysis_method' => $result['rss_url'] !== null ? 'rss+html' : 'html',
             ]);
 
             $result['diagnostics'][] = '一覧ページ抽出ルールを推論しました。';
 
             return $result;
         } catch (Throwable $e) {
-            Log::warning('[SiteAnalyzerService] LLM解析に失敗しました。フォールバックします。', [
+            Log::warning('[SiteAnalyzerService] HTML解析に失敗しました。フォールバックします。', [
                 'url' => $normalizedUrl,
                 'message' => $e->getMessage(),
             ]);
@@ -175,7 +169,7 @@ class SiteAnalyzerService
             $result['link_selector'] = 'a';
             $result['pagination_url_template'] = null;
             $result['analysis_method'] = $result['rss_url'] !== null ? 'rss+fallback' : 'fallback';
-            $result['diagnostics'][] = 'サイトマップ未検出かつLLM解析に失敗したため、汎用HTML抽出ルールを設定しました。';
+            $result['diagnostics'][] = 'サイトマップ未検出かつHTML解析に失敗したため、汎用HTML抽出ルールを設定しました。';
 
             return $result;
         }
@@ -525,7 +519,7 @@ class SiteAnalyzerService
                     }
 
                     $date = $scrapeResult['data']['date'] ?? '';
-                    if ($date === '' || $date === null) {
+                    if ($date === '') {
                         $date = 'なし ('.($scrapeResult['error_message'] ?? '日付見つからず').')';
                     }
                 } else {
@@ -580,39 +574,30 @@ class SiteAnalyzerService
      *     ng_image_urls: array<int, string>
      * }
      */
-    private function analyzeHtmlStructureWithLlm(string $url, array $feedSampleUrls = []): array
+    private function inferHtmlStructure(string $url, array $feedSampleUrls = []): array
     {
-        $crawlResult = $this->crawl4AiService->crawl($url);
-        $markdown = trim((string) ($crawlResult['markdown'] ?? ''));
+        $response = Http::withHeaders([
+            'User-Agent' => self::USER_AGENT,
+            'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language' => 'ja,en-US;q=0.9,en;q=0.8',
+        ])->timeout(10)->get($url);
 
-        if ($markdown === '') {
-            throw new RuntimeException('Crawl4AIの解析結果が空です。');
+        if (! $response->successful()) {
+            throw new RuntimeException('サイトHTMLの取得に失敗しました。');
         }
 
-        $response = agent(
-            instructions: trim($this->siteAnalyzerPrompt())."\n\n【必須】PR記事や広告バナーを除外する場合は、必ず :not() 疑似クラスを使ってください。",
-            schema: function (JsonSchema $schema): array {
-                return [
-                    'list_item_selector' => $schema->string()->required()->description('記事ブロックのCSSセレクタ。PRや広告除外には:not()を利用する。'),
-                    'link_selector' => $schema->string()->required()->description('記事URLを抽出するためのaタグセレクタ。'),
-                    'pagination_url_template' => $schema->string()->nullable()->description('次ページURLテンプレート。ページ番号部分は {page} を使う。'),
-                    'ng_image_urls' => $schema->array()->items($schema->string())->required()->description('ロゴ等の除外画像URLリスト。'),
-                ];
-            },
-        )->prompt(
-            $this->buildAnalyzerPrompt($url, $markdown, $feedSampleUrls),
-            provider: 'gemini',
-            model: $this->geminiModel(),
-            timeout: 120,
-        );
+        $crawler = new Crawler($response->body(), $url);
+        $listItemSelector = $this->domainSpecificListItemSelector($url)
+            ?? $this->detectListItemSelector($crawler)
+            ?? 'article, .post, .entry, .list-item, li';
 
-        $structured = $response->toArray();
+        $linkSelector = $this->feedBasedLinkSelector($feedSampleUrls, $crawler)
+            ?? $this->detectLinkSelector($crawler, $listItemSelector);
 
-        $listItemSelector = trim((string) ($structured['list_item_selector'] ?? ''));
-        $linkSelector = trim((string) ($structured['link_selector'] ?? ''));
+        $paginationUrlTemplate = $this->inferPaginationUrlTemplate($url, $crawler);
 
         if ($listItemSelector === '' || $linkSelector === '') {
-            throw new RuntimeException('LLMから必要なCSSセレクタを取得できませんでした。');
+            throw new RuntimeException('必要なCSSセレクタを推論できませんでした。');
         }
 
         return [
@@ -622,9 +607,172 @@ class SiteAnalyzerService
             'crawl_start_url' => $url,
             'list_item_selector' => $listItemSelector,
             'link_selector' => $linkSelector,
-            'pagination_url_template' => $this->sanitizeNullableString($structured['pagination_url_template'] ?? null),
-            'ng_image_urls' => $this->sanitizeStringArray($structured['ng_image_urls'] ?? []),
+            'pagination_url_template' => $paginationUrlTemplate,
+            'ng_image_urls' => [],
         ];
+    }
+
+    private function domainSpecificListItemSelector(string $url): ?string
+    {
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+
+        return $host === 'dengekionline.com'
+            ? '.ArticleCard_title__IasvF'
+            : null;
+    }
+
+    private function detectListItemSelector(Crawler $crawler): ?string
+    {
+        $candidates = [
+            '.article-item:not(.pr):not(.ad):not(.sponsored)',
+            '.post-item:not(.pr):not(.ad):not(.sponsored)',
+            '.entry-item:not(.pr):not(.ad):not(.sponsored)',
+            '.article-card:not(.pr):not(.ad):not(.sponsored)',
+            'article',
+            '.post',
+            '.entry',
+            '.list-item',
+            'li',
+        ];
+
+        foreach ($candidates as $candidate) {
+            try {
+                if ($crawler->filter($candidate)->count() > 0) {
+                    return $candidate;
+                }
+            } catch (Throwable) {
+                continue;
+            }
+        }
+
+        return null;
+    }
+
+    private function detectLinkSelector(Crawler $crawler, string $listItemSelector): string
+    {
+        if (str_starts_with($listItemSelector, 'a[') || $listItemSelector === 'a') {
+            return 'a';
+        }
+
+        $candidates = [
+            'a.article-link',
+            'a.entry-link',
+            'a.title',
+            'h2 a',
+            'h3 a',
+            'a',
+        ];
+
+        try {
+            $listItems = $crawler->filter($listItemSelector);
+
+            if ($listItems->count() > 0) {
+                $firstNode = $listItems->first();
+
+                if ($firstNode->nodeName() === 'a') {
+                    return 'a';
+                }
+
+                foreach ($candidates as $candidate) {
+                    if ($firstNode->filter($candidate)->count() > 0) {
+                        return $candidate;
+                    }
+                }
+            }
+        } catch (Throwable) {
+            // fall through to default selector
+        }
+
+        return 'a';
+    }
+
+    /**
+     * @param  array<int, string>  $feedSampleUrls
+     */
+    private function feedBasedLinkSelector(array $feedSampleUrls, Crawler $crawler): ?string
+    {
+        foreach ($feedSampleUrls as $sampleUrl) {
+            if (! filter_var($sampleUrl, FILTER_VALIDATE_URL)) {
+                continue;
+            }
+
+            $path = trim((string) parse_url($sampleUrl, PHP_URL_PATH), '/');
+
+            if ($path === '') {
+                continue;
+            }
+
+            $segments = array_values(array_filter(explode('/', $path), static fn (string $segment): bool => $segment !== ''));
+            $marker = '/'.($segments[0] ?? '');
+
+            if ($marker === '/') {
+                continue;
+            }
+
+            if (count($segments) > 1) {
+                $marker .= '/'.$segments[1];
+            }
+
+            $selector = sprintf('a[href*="%s"]', str_replace('"', '\\"', $marker));
+
+            try {
+                if ($crawler->filter($selector)->count() > 0) {
+                    return $selector;
+                }
+            } catch (Throwable) {
+                continue;
+            }
+        }
+
+        return null;
+    }
+
+    private function inferPaginationUrlTemplate(string $url, Crawler $crawler): ?string
+    {
+        $template = $this->paginationTemplateFromUrl($url);
+
+        if ($template !== null) {
+            return $template;
+        }
+
+        $candidateUrls = $crawler
+            ->filter('a[href*="/page/"], a[href*="?page="], a[href*="&page="]')
+            ->each(function (Crawler $node) use ($url): ?string {
+                $href = trim((string) $node->attr('href'));
+
+                return $this->resolveUrl($url, $href);
+            });
+
+        foreach ($candidateUrls as $candidateUrl) {
+            if (! is_string($candidateUrl) || $candidateUrl === '') {
+                continue;
+            }
+
+            $candidateTemplate = $this->paginationTemplateFromUrl($candidateUrl);
+
+            if ($candidateTemplate !== null) {
+                return $candidateTemplate;
+            }
+        }
+
+        return null;
+    }
+
+    private function paginationTemplateFromUrl(string $url): ?string
+    {
+        $path = (string) parse_url($url, PHP_URL_PATH);
+
+        if ($path !== '' && preg_match('#/page/\d+/?$#', $path) === 1) {
+            $replacedPath = (string) preg_replace('#/page/\d+/?$#', '/page/{page}', $path);
+
+            return str_replace($path, $replacedPath, $url);
+        }
+
+        if (preg_match('/([?&])page=\d+/', $url) === 1) {
+            return (string) preg_replace('/([?&])page=\d+/', '$1page={page}', $url, 1);
+        }
+
+        return null;
     }
 
     private function detectRssFeedUrl(string $url): ?string
@@ -915,74 +1063,6 @@ class SiteAnalyzerService
         }
     }
 
-    private function isSitemapDocument(string $url): bool
-    {
-        try {
-            $response = Http::withHeaders([
-                'User-Agent' => self::USER_AGENT,
-                'Accept' => 'application/xml,text/xml;q=0.9,*/*;q=0.8',
-            ])->timeout(8)->get($url);
-
-            if (! $response->successful()) {
-                return false;
-            }
-
-            $xml = @simplexml_load_string($response->body(), 'SimpleXMLElement', LIBXML_NOCDATA);
-
-            if ($xml === false) {
-                return false;
-            }
-
-            $rootName = strtolower($xml->getName());
-
-            if (in_array($rootName, ['urlset', 'sitemapindex'], true)) {
-                return true;
-            }
-
-            $locEntries = $xml->xpath('//*[local-name()="loc"]') ?: [];
-
-            return $locEntries !== [];
-        } catch (Throwable) {
-            return false;
-        }
-    }
-
-    private function siteAnalyzerPrompt(): string
-    {
-        return (string) Cache::get('site_analyzer_prompt', SystemSettings::getDefaultSiteAnalyzerPrompt());
-    }
-
-    private function geminiModel(): string
-    {
-        return (string) Cache::get(
-            'gemini_model',
-            (string) config('ai.providers.gemini.models.text.default', 'gemini-2.0-flash')
-        );
-    }
-
-    private function buildAnalyzerPrompt(string $url, string $markdown, array $feedSampleUrls = []): string
-    {
-        $truncatedMarkdown = mb_substr($markdown, 0, 60000);
-        $feedSampleText = $feedSampleUrls === []
-            ? 'なし'
-            : implode("\n", array_map(static fn (string $sampleUrl): string => '- '.$sampleUrl, $feedSampleUrls));
-
-        return <<<PROMPT
-対象サイトURL:
-{$url}
-
-RSS/morssから取得したサンプル記事URL（あれば参考にしてください）:
-{$feedSampleText}
-
-以下はCrawl4AIで抽出したMarkdownです。記事一覧を抽出するためのセレクタとページネーションURLテンプレートを推論してください。
-PR記事・広告バナーを除外する場合は、必ず :not() 疑似クラスを使ってセレクタを構築してください。
-
---- START MARKDOWN ---
-{$truncatedMarkdown}
---- END MARKDOWN ---
-PROMPT;
-    }
-
     /**
      * @return array<int, string>
      */
@@ -1002,8 +1082,8 @@ PROMPT;
             return [];
         }
 
-        return collect($preview['items'] ?? [])
-            ->map(static fn ($item): string => is_array($item) ? (string) ($item['url'] ?? '') : '')
+        return collect($preview['items'])
+            ->map(static fn (array $item): string => (string) $item['url'])
             ->filter(static fn (string $itemUrl): bool => $itemUrl !== '' && $itemUrl !== 'なし' && (bool) filter_var($itemUrl, FILTER_VALIDATE_URL))
             ->take(5)
             ->values()
@@ -1178,10 +1258,10 @@ PROMPT;
      */
     private function isSampleItemComplete(array $sampleItem): bool
     {
-        $url = (string) ($sampleItem['url'] ?? '');
-        $title = (string) ($sampleItem['title'] ?? '');
-        $image = (string) ($sampleItem['image'] ?? '');
-        $date = (string) ($sampleItem['date'] ?? '');
+        $url = (string) $sampleItem['url'];
+        $title = (string) $sampleItem['title'];
+        $image = (string) $sampleItem['image'];
+        $date = (string) $sampleItem['date'];
 
         if (! filter_var($url, FILTER_VALIDATE_URL)) {
             return false;
@@ -1256,7 +1336,7 @@ PROMPT;
         $host = $parts['host'] ?? '';
         $port = isset($parts['port']) ? ':'.$parts['port'] : '';
         $path = trim((string) ($parts['path'] ?? ''), '/');
-        $blogId = explode('/', $path, 2)[0] ?? '';
+        $blogId = explode('/', $path, 2)[0];
         $blogPath = $blogId !== '' ? '/'.$blogId : '';
 
         return "{$scheme}://{$host}{$port}{$blogPath}";
