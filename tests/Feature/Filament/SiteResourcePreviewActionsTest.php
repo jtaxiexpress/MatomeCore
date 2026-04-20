@@ -314,6 +314,7 @@ HTML),
         $this->assertStringContainsString('img src="https://example.com/crawl-thumb.jpg"', $html);
         $this->assertStringContainsString('抽出URL一覧', $html);
         $this->assertStringContainsString('診断メモ', $html);
+        $this->assertStringContainsString('max-h-[70vh]', $html);
     }
 
     public function test_ai_infer_preview_view_keeps_warning_summary_when_preview_fetches_fail(): void

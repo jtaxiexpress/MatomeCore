@@ -296,9 +296,15 @@ class SiteResource extends Resource
     {
         return $table
             ->columns([
-                TextColumn::make('articles_count')->counts('articles')->label('取得記事数')->badge()->sortable(),
+                TextColumn::make('name')->label('サイト名')->searchable(),
+                TextColumn::make('url')
+                    ->label('URL')
+                    ->url(fn (?string $state): ?string => $state, shouldOpenInNewTab: true)
+                    ->searchable()
+                    ->limit(30),
+                TextColumn::make('articles_count')->counts('articles')->label('記事数')->badge()->sortable(),
                 TextColumn::make('articles_max_created_at')
-                    ->label('最終取得日時')
+                    ->label('最終取得日')
                     ->dateTime('Y/m/d H:i')
                     ->sortable()
                     ->badge()
@@ -308,8 +314,6 @@ class SiteResource extends Resource
                         Carbon::parse($state) >= now()->subDays(7) => 'warning',
                         default => 'gray',
                     }),
-                TextColumn::make('name')->label('サイト名')->searchable(),
-                TextColumn::make('url')->label('URL')->searchable()->limit(30),
                 ToggleColumn::make('is_active')->label('ステータス'),
                 TextColumn::make('created_at')->label('作成日')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('updated_at')->label('更新日')->dateTime()->sortable()->toggleable(isToggledHiddenByDefault: true),

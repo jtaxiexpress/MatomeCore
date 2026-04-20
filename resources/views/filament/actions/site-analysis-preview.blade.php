@@ -1,4 +1,4 @@
-<div class="space-y-6">
+<div class="max-h-[70vh] space-y-5 overflow-y-auto pr-3">
     @if(isset($error) && filled($error))
         <div class="p-4 text-sm text-red-800 rounded-lg bg-red-50 dark:bg-gray-800 dark:text-red-400">
             {{ $error }}
@@ -16,6 +16,7 @@
             $crawlError = is_string($crawlPreview['error'] ?? null) ? (string) $crawlPreview['error'] : null;
             $crawlerType = (string) ($analysis['crawler_type'] ?? 'html');
             $crawlerTypeLabel = $crawlerType === 'sitemap' ? 'サイトマップ' : 'HTML抽出';
+            $displayValue = static fn ($value, string $fallback = '未設定'): string => filled($value) ? (string) $value : $fallback;
             $inferredSiteTitle = (string) ($analysis['site_title'] ?? '');
             $hasRssUrl = filled($analysis['rss_url'] ?? null);
             $hasSitemapUrl = filled($analysis['sitemap_url'] ?? null);
@@ -58,85 +59,85 @@
             heading="自動推論結果の確認"
             description="推論結果、反映設定、診断メモをまとめて確認します。"
         >
-                <div class="space-y-6">
-                    <div class="rounded-2xl border p-5 shadow-sm {{ $summaryPanelStyles[$overallState] }}">
-                        <div class="flex flex-wrap items-center gap-2">
-                            <span class="text-xs font-semibold uppercase tracking-[0.35em] text-current/70">推論結果</span>
-                            <x-filament::badge :color="$badgeColors[$overallState]">
-                                {{ $stateLabels[$overallState] }}
-                            </x-filament::badge>
-                            <x-filament::badge :color="$badgeColors[$rssState]">RSS {{ $rssCount }}件</x-filament::badge>
-                            <x-filament::badge :color="$badgeColors[$crawlState]">過去記事 {{ $crawlCount }}件</x-filament::badge>
-                            <x-filament::badge :color="$badgeColors[$ruleState]">{{ $crawlerTypeLabel }}</x-filament::badge>
-                        </div>
-
-                        <p class="mt-3 text-sm leading-6 text-current/80">
-                            {{ $summaryText }}
-                        </p>
+            <div class="space-y-5">
+                <div class="rounded-2xl border p-5 shadow-sm {{ $summaryPanelStyles[$overallState] }}">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="text-xs font-semibold uppercase tracking-[0.35em] text-current/70">推論結果</span>
+                        <x-filament::badge :color="$badgeColors[$overallState]">
+                            {{ $stateLabels[$overallState] }}
+                        </x-filament::badge>
+                        <x-filament::badge :color="$badgeColors[$rssState]">RSS {{ $rssCount }}件</x-filament::badge>
+                        <x-filament::badge :color="$badgeColors[$crawlState]">過去記事 {{ $crawlCount }}件</x-filament::badge>
+                        <x-filament::badge :color="$badgeColors[$ruleState]">{{ $crawlerTypeLabel }}</x-filament::badge>
                     </div>
 
-                    <div class="grid gap-4 lg:grid-cols-2">
-                        <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-950">
-                            <div class="flex items-center justify-between gap-3">
-                                <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">反映される設定</h3>
-                                <span class="text-xs font-semibold uppercase tracking-[0.25em] text-gray-500 dark:text-gray-400">保存対象</span>
-                            </div>
+                    <p class="mt-3 text-sm leading-6 text-current/80">
+                        {{ $summaryText }}
+                    </p>
+                </div>
 
-                            <dl class="mt-4 grid gap-3 sm:grid-cols-2">
-                                <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 sm:col-span-2 dark:border-gray-700 dark:bg-gray-950">
-                                    <dt class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">サイト名</dt>
-                                    <dd class="mt-1 break-all text-sm text-gray-900 dark:text-gray-100">{{ $inferredSiteTitle !== '' ? $inferredSiteTitle : '未設定' }}</dd>
-                                </div>
-                                <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950">
-                                    <dt class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">RSS URL</dt>
-                                    <dd class="mt-1 break-all text-sm text-gray-900 dark:text-gray-100">{{ filled($analysis['rss_url'] ?? null) ? $analysis['rss_url'] : '未設定' }}</dd>
-                                </div>
-                                <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950">
-                                    <dt class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">サイトマップURL</dt>
-                                    <dd class="mt-1 break-all text-sm text-gray-900 dark:text-gray-100">{{ filled($analysis['sitemap_url'] ?? null) ? $analysis['sitemap_url'] : '未設定' }}</dd>
-                                </div>
-                                <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950">
-                                    <dt class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">一覧開始URL</dt>
-                                    <dd class="mt-1 break-all text-sm text-gray-900 dark:text-gray-100">{{ filled($analysis['crawl_start_url'] ?? null) ? $analysis['crawl_start_url'] : '未設定' }}</dd>
-                                </div>
-                                <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950">
-                                    <dt class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">ページネーション</dt>
-                                    <dd class="mt-1 break-all text-sm text-gray-900 dark:text-gray-100">{{ $paginationUrlTemplate !== '' ? $paginationUrlTemplate : '未設定' }}</dd>
-                                </div>
-                                <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950">
-                                    <dt class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">記事ブロックの場所</dt>
-                                    <dd class="mt-1 break-all font-mono text-sm text-gray-900 dark:text-gray-100">{{ $listItemSelector !== '' ? $listItemSelector : '未設定' }}</dd>
-                                </div>
-                                <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-950">
-                                    <dt class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">リンクの場所</dt>
-                                    <dd class="mt-1 break-all font-mono text-sm text-gray-900 dark:text-gray-100">{{ $linkSelector !== '' ? $linkSelector : '未設定' }}</dd>
-                                </div>
-                            </dl>
+                <div class="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+                    <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-950">
+                        <div class="flex items-center justify-between gap-3">
+                            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">反映される設定</h3>
+                            <span class="text-xs font-semibold uppercase tracking-[0.25em] text-gray-500 dark:text-gray-400">保存対象</span>
                         </div>
 
-                        <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-950">
-                            <div class="flex items-center justify-between gap-3">
-                                <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">診断メモ</h3>
-                                <span class="text-xs font-semibold uppercase tracking-[0.25em] text-gray-500 dark:text-gray-400">{{ count($diagnostics) }} 件</span>
+                        <dl class="mt-4 divide-y divide-gray-200 dark:divide-gray-700">
+                            <div class="grid gap-2 py-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
+                                <dt class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">サイト名</dt>
+                                <dd class="break-all text-sm text-gray-900 dark:text-gray-100">{{ $displayValue($inferredSiteTitle) }}</dd>
                             </div>
+                            <div class="grid gap-2 py-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
+                                <dt class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">RSS URL</dt>
+                                <dd class="break-all text-sm text-gray-900 dark:text-gray-100">{{ $displayValue($analysis['rss_url'] ?? null) }}</dd>
+                            </div>
+                            <div class="grid gap-2 py-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
+                                <dt class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">サイトマップURL</dt>
+                                <dd class="break-all text-sm text-gray-900 dark:text-gray-100">{{ $displayValue($analysis['sitemap_url'] ?? null) }}</dd>
+                            </div>
+                            <div class="grid gap-2 py-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
+                                <dt class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">一覧開始URL</dt>
+                                <dd class="break-all text-sm text-gray-900 dark:text-gray-100">{{ $displayValue($analysis['crawl_start_url'] ?? null) }}</dd>
+                            </div>
+                            <div class="grid gap-2 py-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
+                                <dt class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">ページネーション</dt>
+                                <dd class="break-all text-sm text-gray-900 dark:text-gray-100">{{ $displayValue($paginationUrlTemplate) }}</dd>
+                            </div>
+                            <div class="grid gap-2 py-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
+                                <dt class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">記事ブロックの場所</dt>
+                                <dd class="break-all font-mono text-sm text-gray-900 dark:text-gray-100">{{ $displayValue($listItemSelector) }}</dd>
+                            </div>
+                            <div class="grid gap-2 py-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
+                                <dt class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">リンクの場所</dt>
+                                <dd class="break-all font-mono text-sm text-gray-900 dark:text-gray-100">{{ $displayValue($linkSelector) }}</dd>
+                            </div>
+                        </dl>
+                    </div>
 
-                            @if($diagnostics !== [])
-                                <ul class="mt-4 space-y-2 text-sm text-gray-700 dark:text-gray-300">
-                                    @foreach($diagnostics as $diagnostic)
-                                        <li class="flex gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-950">
-                                            <span class="mt-0.5 inline-flex h-5 w-5 flex-none items-center justify-center rounded-full bg-primary-600 text-xs font-bold text-white">✓</span>
-                                            <span class="leading-6">{{ $diagnostic }}</span>
-                                        </li>
-                                    @endforeach
-                                </ul>
-                            @else
-                                <div class="mt-4 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400">
-                                    診断メモはありません。
-                                </div>
-                            @endif
+                    <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-950">
+                        <div class="flex items-center justify-between gap-3">
+                            <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">診断メモ</h3>
+                            <span class="text-xs font-semibold uppercase tracking-[0.25em] text-gray-500 dark:text-gray-400">{{ count($diagnostics) }} 件</span>
                         </div>
+
+                        @if($diagnostics !== [])
+                            <ul class="mt-4 max-h-80 space-y-2 overflow-y-auto text-sm text-gray-700 dark:text-gray-300">
+                                @foreach($diagnostics as $diagnostic)
+                                    <li class="flex gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-950">
+                                        <span class="mt-0.5 inline-flex h-5 w-5 flex-none items-center justify-center rounded-full bg-primary-600 text-xs font-bold text-white">✓</span>
+                                        <span class="leading-6">{{ $diagnostic }}</span>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @else
+                            <div class="mt-4 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-400">
+                                診断メモはありません。
+                            </div>
+                        @endif
                     </div>
                 </div>
+            </div>
         </x-filament::section>
 
             <div class="space-y-6">
@@ -157,57 +158,8 @@
                             {{ $rssError }}
                         </div>
                     @else
-                        <div class="mt-4 overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-700">
-                            <div class="overflow-x-auto">
-                                <table class="min-w-full text-left text-sm text-gray-500 dark:text-gray-400">
-                                    <thead class="bg-gray-50 text-xs uppercase text-gray-700 dark:bg-gray-800 dark:text-gray-400">
-                                        <tr>
-                                            <th class="border-b px-4 py-3 dark:border-gray-700">画像</th>
-                                            <th class="border-b px-4 py-3 dark:border-gray-700">タイトル</th>
-                                            <th class="border-b px-4 py-3 dark:border-gray-700">URL</th>
-                                            <th class="border-b px-4 py-3 dark:border-gray-700">公開日時</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                                        @forelse($rssItems as $item)
-                                            @php
-                                                $thumbnail = trim((string) ($item['image'] ?? ''));
-                                                $thumbnailIsUrl = filter_var($thumbnail, FILTER_VALIDATE_URL) !== false;
-                                                $title = trim((string) ($item['title'] ?? ''));
-                                                $articleUrl = trim((string) ($item['url'] ?? ''));
-                                                $articleUrlIsUrl = filter_var($articleUrl, FILTER_VALIDATE_URL) !== false;
-                                                $date = trim((string) ($item['date'] ?? ''));
-                                            @endphp
-                                            <tr class="bg-white dark:bg-gray-900">
-                                                <td class="px-4 py-3 align-top">
-                                                    @if($thumbnailIsUrl)
-                                                        <a href="{{ $thumbnail }}" target="_blank" rel="noopener noreferrer" class="inline-block">
-                                                            <img src="{{ $thumbnail }}" alt="サムネイル" class="h-16 w-16 rounded-xl object-cover ring-1 ring-gray-200 dark:ring-gray-700">
-                                                        </a>
-                                                    @else
-                                                        <span class="text-gray-500">{{ $thumbnail !== '' ? $thumbnail : 'なし' }}</span>
-                                                    @endif
-                                                </td>
-                                                <td class="px-4 py-3 align-top font-medium text-gray-900 dark:text-gray-100">{{ $title !== '' ? $title : 'なし' }}</td>
-                                                <td class="break-words px-4 py-3 align-top">
-                                                    @if($articleUrlIsUrl)
-                                                        <a href="{{ $articleUrl }}" target="_blank" rel="noopener noreferrer" class="text-primary-600 hover:underline dark:text-primary-400">
-                                                            {{ $articleUrl }}
-                                                        </a>
-                                                    @else
-                                                        <span class="text-gray-500">{{ $articleUrl !== '' ? $articleUrl : 'なし' }}</span>
-                                                    @endif
-                                                </td>
-                                                <td class="whitespace-nowrap px-4 py-3 align-top">{{ $date !== '' ? $date : 'なし' }}</td>
-                                            </tr>
-                                        @empty
-                                            <tr>
-                                                <td colspan="4" class="px-4 py-4 text-center text-gray-500">記事が見つかりませんでした。</td>
-                                            </tr>
-                                        @endforelse
-                                    </tbody>
-                                </table>
-                            </div>
+                        <div class="mt-4">
+                            <x-preview-result-table :items="$rssItems" />
                         </div>
                     @endif
                 </x-filament::section>
@@ -247,57 +199,13 @@
                             {{ $crawlError }}
                         </div>
                     @else
-                        <div class="mt-4 overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-700">
-                            <div class="overflow-x-auto">
-                                <table class="min-w-full text-left text-sm text-gray-500 dark:text-gray-400">
-                                    <thead class="bg-gray-50 text-xs uppercase text-gray-700 dark:bg-gray-800 dark:text-gray-400">
-                                        <tr>
-                                            <th class="border-b px-4 py-3 dark:border-gray-700">画像</th>
-                                            <th class="border-b px-4 py-3 dark:border-gray-700">タイトル</th>
-                                            <th class="border-b px-4 py-3 dark:border-gray-700">記事URL</th>
-                                            <th class="border-b px-4 py-3 dark:border-gray-700">公開日時</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                                        @forelse($sampleItems as $sampleItem)
-                                            @php
-                                                $sampleImage = trim((string) ($sampleItem['image'] ?? ''));
-                                                $sampleImageIsUrl = filter_var($sampleImage, FILTER_VALIDATE_URL) !== false;
-                                                $sampleTitle = trim((string) ($sampleItem['title'] ?? ''));
-                                                $sampleUrl = trim((string) ($sampleItem['url'] ?? ''));
-                                                $sampleUrlIsUrl = filter_var($sampleUrl, FILTER_VALIDATE_URL) !== false;
-                                                $sampleDate = trim((string) ($sampleItem['date'] ?? ''));
-                                            @endphp
-                                            <tr class="bg-white dark:bg-gray-900">
-                                                <td class="px-4 py-3 align-top">
-                                                    @if($sampleImageIsUrl)
-                                                        <a href="{{ $sampleImage }}" target="_blank" rel="noopener noreferrer" class="inline-block">
-                                                            <img src="{{ $sampleImage }}" alt="サムネイル" class="h-16 w-16 rounded-xl object-cover ring-1 ring-gray-200 dark:ring-gray-700">
-                                                        </a>
-                                                    @else
-                                                        <span class="text-gray-500">{{ $sampleImage !== '' ? $sampleImage : 'なし' }}</span>
-                                                    @endif
-                                                </td>
-                                                <td class="px-4 py-3 align-top font-medium text-gray-900 dark:text-gray-100">{{ $sampleTitle !== '' ? $sampleTitle : '未取得' }}</td>
-                                                <td class="break-words px-4 py-3 align-top">
-                                                    @if($sampleUrlIsUrl)
-                                                        <a href="{{ $sampleUrl }}" target="_blank" rel="noopener noreferrer" class="text-primary-600 hover:underline dark:text-primary-400">
-                                                            {{ $sampleUrl }}
-                                                        </a>
-                                                    @else
-                                                        <span class="text-gray-500">{{ $sampleUrl !== '' ? $sampleUrl : 'なし' }}</span>
-                                                    @endif
-                                                </td>
-                                                <td class="whitespace-nowrap px-4 py-3 align-top">{{ $sampleDate !== '' ? $sampleDate : 'なし' }}</td>
-                                            </tr>
-                                        @empty
-                                            <tr>
-                                                <td colspan="4" class="px-4 py-4 text-center text-gray-500">サンプル抽出結果がありません。</td>
-                                            </tr>
-                                        @endforelse
-                                    </tbody>
-                                </table>
-                            </div>
+                        <div class="mt-4">
+                            <x-preview-result-table
+                                :items="$sampleItems"
+                                url-label="記事URL"
+                                empty-message="サンプル抽出結果がありません。"
+                                title-fallback="未取得"
+                            />
                         </div>
 
                         <details class="mt-4 rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-950">
@@ -305,7 +213,7 @@
                                 抽出URL一覧（先頭20件）
                             </summary>
 
-                            <div class="mt-4 space-y-2">
+                            <div class="mt-4 max-h-56 space-y-2 overflow-y-auto">
                                 @forelse($crawlUrls as $index => $crawlUrl)
                                     <div class="flex items-start gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900">
                                         <span class="flex-none rounded-full bg-gray-200 px-2 py-0.5 text-xs font-semibold text-gray-700 dark:bg-gray-800 dark:text-gray-300">{{ $index + 1 }}</span>
