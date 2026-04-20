@@ -286,22 +286,75 @@ HTML),
                 'urls' => [
                     'https://example.com/articles/1',
                 ],
+                'sample_items' => [
+                    [
+                        'title' => '記事1',
+                        'url' => 'https://example.com/articles/1',
+                        'date' => '2026-04-18 10:00:00',
+                        'image' => 'https://example.com/crawl-thumb.jpg',
+                    ],
+                ],
                 'count' => 1,
                 'total_count' => 1,
                 'next_url' => null,
+                'sample_complete_count' => 1,
+                'sample_checked_count' => 1,
             ],
         ])->render();
 
-        $this->assertStringContainsString('AI REVIEW', $html);
+        $this->assertStringContainsString('推論結果', $html);
         $this->assertStringContainsString('承認可', $html);
         $this->assertStringContainsString('反映される設定', $html);
         $this->assertStringContainsString('Example News', $html);
         $this->assertStringContainsString('RSS取得テスト', $html);
-        $this->assertStringContainsString('thumbnailURL', $html);
+        $this->assertStringContainsString('画像', $html);
         $this->assertStringContainsString('https://example.com/thumb.jpg', $html);
         $this->assertStringContainsString('img src="https://example.com/thumb.jpg"', $html);
         $this->assertStringContainsString('過去記事一括取得テスト', $html);
+        $this->assertStringContainsString('img src="https://example.com/crawl-thumb.jpg"', $html);
+        $this->assertStringContainsString('抽出URL一覧', $html);
         $this->assertStringContainsString('診断メモ', $html);
+    }
+
+    public function test_ai_infer_preview_view_keeps_warning_summary_when_preview_fetches_fail(): void
+    {
+        $html = view('filament.actions.site-analysis-preview', [
+            'analysis' => [
+                'analysis_method' => 'rss+sitemap',
+                'site_title' => 'なんじぇいスタジアム＠なんJまとめ',
+                'rss_url' => 'http://blog.livedoor.jp/nanjstu/index.rdf',
+                'crawler_type' => 'sitemap',
+                'sitemap_url' => 'http://blog.livedoor.jp/nanjstu/sitemap.xml',
+                'crawl_start_url' => null,
+                'list_item_selector' => null,
+                'link_selector' => null,
+                'pagination_url_template' => null,
+                'diagnostics' => [
+                    'サイトタイトル候補を取得しました。',
+                    'ライブドアブログを検出したため、RSSを index.rdf、過去記事取得を sitemap.xml で固定設定しました。',
+                ],
+            ],
+            'rssPreview' => [
+                'error' => 'HTTP通信に失敗しました (ステータスコード: 404)',
+                'items' => [],
+            ],
+            'crawlPreview' => [
+                'error' => 'HTTP通信に失敗: 404',
+                'urls' => [],
+                'count' => 0,
+                'total_count' => 0,
+                'next_url' => null,
+                'sample_items' => [],
+                'sample_complete_count' => 0,
+                'sample_checked_count' => 0,
+            ],
+        ])->render();
+
+        $this->assertStringContainsString('推論結果', $html);
+        $this->assertStringContainsString('要確認', $html);
+        $this->assertStringContainsString('推論は完了しています。取得テストは必要に応じて見直してください。', $html);
+        $this->assertStringContainsString('HTTP通信に失敗しました (ステータスコード: 404)', $html);
+        $this->assertStringContainsString('HTTP通信に失敗: 404', $html);
     }
 
     /**

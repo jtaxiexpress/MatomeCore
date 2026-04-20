@@ -77,7 +77,7 @@ HTML),
         Http::preventStrayRequests();
         Http::fake(function ($request) {
             return match ($request->url()) {
-                'https://blog.livedoor.jp/example/' => Http::response(<<<'HTML'
+                'http://blog.livedoor.jp/nanjstu/' => Http::response(<<<'HTML'
 <html>
     <head>
         <title>ライブドアテストブログ</title>
@@ -89,16 +89,16 @@ HTML),
             };
         });
 
-        $result = app(SiteAnalyzerService::class)->analyze('https://blog.livedoor.jp/example/');
+        $result = app(SiteAnalyzerService::class)->analyze('http://blog.livedoor.jp/nanjstu/');
 
-        $this->assertSame('https://blog.livedoor.jp/index.rdf', $result['rss_url']);
+        $this->assertSame('http://blog.livedoor.jp/nanjstu/index.rdf', $result['rss_url']);
         $this->assertSame('sitemap', $result['crawler_type']);
-        $this->assertSame('https://blog.livedoor.jp/sitemap.xml', $result['sitemap_url']);
+        $this->assertSame('http://blog.livedoor.jp/nanjstu/sitemap.xml', $result['sitemap_url']);
         $this->assertNull($result['crawl_start_url']);
         $this->assertSame('rss+sitemap', $result['analysis_method']);
 
-        Http::assertNotSent(fn ($request): bool => $request->url() === 'https://blog.livedoor.jp/index.rdf');
-        Http::assertNotSent(fn ($request): bool => $request->url() === 'https://blog.livedoor.jp/sitemap.xml');
+        Http::assertNotSent(fn ($request): bool => $request->url() === 'http://blog.livedoor.jp/nanjstu/index.rdf');
+        Http::assertNotSent(fn ($request): bool => $request->url() === 'http://blog.livedoor.jp/nanjstu/sitemap.xml');
     }
 
     public function test_analyze_falls_back_to_html_when_sitemap_metadata_validation_fails(): void

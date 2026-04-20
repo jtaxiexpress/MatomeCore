@@ -61,7 +61,7 @@ class SiteAnalyzerService
         }
 
         if ($this->isLivedoorBlogUrl($normalizedUrl)) {
-            $rootUrl = $this->rootUrl($normalizedUrl);
+            $rootUrl = $this->livedoorBlogBaseUrl($normalizedUrl);
 
             $result['rss_url'] = $rootUrl.'/index.rdf';
             $result['crawler_type'] = 'sitemap';
@@ -1246,6 +1246,20 @@ PROMPT;
         $port = isset($parts['port']) ? ':'.$parts['port'] : '';
 
         return "{$scheme}://{$host}{$port}";
+    }
+
+    private function livedoorBlogBaseUrl(string $url): string
+    {
+        $parts = parse_url($url);
+
+        $scheme = $parts['scheme'] ?? 'https';
+        $host = $parts['host'] ?? '';
+        $port = isset($parts['port']) ? ':'.$parts['port'] : '';
+        $path = trim((string) ($parts['path'] ?? ''), '/');
+        $blogId = explode('/', $path, 2)[0] ?? '';
+        $blogPath = $blogId !== '' ? '/'.$blogId : '';
+
+        return "{$scheme}://{$host}{$port}{$blogPath}";
     }
 
     private function resolveUrl(string $baseUrl, string $candidate): ?string

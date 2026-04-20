@@ -49,7 +49,7 @@ class InactiveSitesTable extends BaseWidget
                     ->dateTime('Y/m/d H:i')
                     ->badge()
                     ->color('danger')
-                    ->default('-')
+                    ->placeholder('-')
                     ->sortable(),
             ]);
     }
