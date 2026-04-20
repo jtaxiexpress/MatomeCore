@@ -31,6 +31,8 @@
                     @php
                         $thumbnail = trim((string) ($item['image'] ?? ''));
                         $thumbnailIsUrl = filter_var($thumbnail, FILTER_VALIDATE_URL) !== false;
+                        $fallbackImageUrl = trim((string) ($item['fallback_image_url'] ?? ''));
+                        $fallbackImageIsUrl = filter_var($fallbackImageUrl, FILTER_VALIDATE_URL) !== false;
                         $title = trim((string) ($item['title'] ?? ''));
                         $articleUrl = trim((string) ($item['url'] ?? ''));
                         $articleUrlIsUrl = filter_var($articleUrl, FILTER_VALIDATE_URL) !== false;
@@ -40,7 +42,13 @@
                         <td class="px-4 py-3 align-top">
                             @if($thumbnailIsUrl)
                                 <a href="{{ $thumbnail }}" target="_blank" rel="noopener noreferrer" class="inline-block">
-                                    <img src="{{ $thumbnail }}" alt="サムネイル" class="h-16 w-16 rounded-xl object-cover ring-1 ring-gray-200 dark:ring-gray-700">
+                                    <img
+                                        src="{{ $thumbnail }}"
+                                        alt="サムネイル"
+                                        data-fallback-src="{{ $fallbackImageIsUrl ? $fallbackImageUrl : '' }}"
+                                        onerror="const fallback = this.dataset.fallbackSrc; if (fallback && this.src !== fallback) { this.src = fallback; return; } this.onerror = null; this.style.display = 'none';"
+                                        class="h-16 w-16 rounded-xl object-cover ring-1 ring-gray-200 dark:ring-gray-700"
+                                    >
                                 </a>
                             @else
                                 <span class="text-gray-500">{{ $thumbnail !== '' ? $thumbnail : $imageFallback }}</span>

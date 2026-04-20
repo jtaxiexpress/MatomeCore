@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,6 +13,7 @@ use Illuminate\Support\Facades\Storage;
 class Article extends Model
 {
     use HasFactory;
+
     protected $guarded = [];
 
     /**
@@ -59,22 +61,24 @@ class Article extends Model
      * 2. カテゴリの default_image_path（http 始まりでなければ Storage::url() で変換）
      * 3. null（どちらも未設定）
      */
-    public function getDisplayThumbnailUrlAttribute(): ?string
+    protected function displayThumbnailUrl(): Attribute
     {
-        // ① 自身のサムネイルが存在すればそれを優先
-        if (! empty($this->thumbnail_url)) {
-            return $this->thumbnail_url;
-        }
+        return Attribute::make(
+            get: function (): ?string {
+                if (! empty($this->thumbnail_url)) {
+                    return $this->thumbnail_url;
+                }
 
-        // ② カテゴリのデフォルト画像にフォールバック
-        $defaultImagePath = $this->category?->default_image_path ?? null;
-        if (empty($defaultImagePath)) {
-            return null;
-        }
+                $defaultImagePath = $this->category?->default_image_path ?? null;
 
-        // http(s):// で始まる絶対URLならそのまま返す、ストレージパスなら URL に変換する
-        return str_starts_with($defaultImagePath, 'http')
-            ? $defaultImagePath
-            : Storage::url($defaultImagePath);
+                if (empty($defaultImagePath)) {
+                    return null;
+                }
+
+                return str_starts_with($defaultImagePath, 'http')
+                    ? $defaultImagePath
+                    : Storage::url($defaultImagePath);
+            },
+        );
     }
 }

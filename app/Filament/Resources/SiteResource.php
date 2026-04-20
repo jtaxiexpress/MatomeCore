@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\SiteResource\Pages;
 use App\Jobs\FetchSitePastArticlesJob;
+use App\Models\App as AppModel;
 use App\Models\Site;
 use App\Services\SiteAnalyzerService;
 use Carbon\Carbon;
@@ -12,6 +13,7 @@ use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\TextInput;
@@ -81,7 +83,7 @@ class SiteResource extends Resource
                                     }
 
                                     try {
-                                        $analysis = $siteAnalyzerService->analyze($url);
+                                        $analysis = $siteAnalyzerService->analyze($url, self::resolveAnalyzerApp());
                                         $previewState = self::buildStateFromAnalysis($url, $analysis);
 
                                         $rssPreview = $analysis['rss_url'] !== null
@@ -115,7 +117,7 @@ class SiteResource extends Resource
                                     }
 
                                     try {
-                                        $analysis = $siteAnalyzerService->analyze($url);
+                                        $analysis = $siteAnalyzerService->analyze($url, self::resolveAnalyzerApp());
 
                                         $set('rss_url', $analysis['rss_url']);
                                         $set('crawler_type', $analysis['crawler_type']);
@@ -390,7 +392,7 @@ class SiteResource extends Resource
                         ->modalSubmitActionLabel('再解析して更新')
                         ->action(function (Site $record, SiteAnalyzerService $siteAnalyzerService): void {
                             try {
-                                $analysis = $siteAnalyzerService->analyze($record->url);
+                                $analysis = $siteAnalyzerService->analyze($record->url, self::resolveAnalyzerApp($record));
 
                                 $record->update([
                                     'name' => filled($record->name)
@@ -616,5 +618,16 @@ class SiteResource extends Resource
             $body.
             '</div>'
         );
+    }
+
+    private static function resolveAnalyzerApp(?Site $record = null): ?AppModel
+    {
+        if ($record?->app instanceof AppModel) {
+            return $record->app;
+        }
+
+        $tenant = Filament::getTenant();
+
+        return $tenant instanceof AppModel ? $tenant : null;
     }
 }

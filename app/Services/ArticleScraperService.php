@@ -6,12 +6,15 @@ namespace App\Services;
 
 use App\Support\DateParser;
 use Exception;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\DomCrawler\Crawler;
 
 class ArticleScraperService
 {
+    public function __construct(
+        private readonly CrawlHttpClient $crawlHttpClient,
+    ) {}
+
     /**
      * システム全体で共通の除外画像URL（デフォルトのサービスアイコン等）
      * これらはサムネイルとして不適切なためAPIコール前にフィルタリングする
@@ -45,14 +48,18 @@ class ArticleScraperService
         ];
 
         try {
-            $response = Http::withHeaders([
-                'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                'Accept-Language' => 'ja,en-US;q=0.9,en;q=0.8',
-            ])->withOptions([
-                'verify' => false,
-                'allow_redirects' => true,
-            ])->timeout(10)->get($url);
+            $response = $this->crawlHttpClient->get(
+                url: $url,
+                headers: [
+                    'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                    'Accept-Language' => 'ja,en-US;q=0.9,en;q=0.8',
+                ],
+                timeoutSeconds: 10,
+                options: [
+                    'verify' => false,
+                    'allow_redirects' => true,
+                ],
+            );
 
             if (! $response->successful()) {
                 $result['error_message'] = 'HTTP通信失敗 ('.$response->status().')';

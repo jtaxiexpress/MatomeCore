@@ -6,15 +6,30 @@ namespace App\Services;
 
 use App\Filament\Pages\SystemSettings;
 use App\Models\App;
+use App\Models\SystemSetting;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
-use RuntimeException;
 
 class ArticleAiService
 {
+    private const DEFAULT_SINGLE_PROMPT_TEMPLATE = <<<'PROMPT'
+以下のカテゴリ一覧から最も適切な category_id を1つ選び、元タイトルを自然な日本語でリライトしてください。
+
+カテゴリ一覧:
+{categories}
+
+元タイトル:
+{title}
+
+必ず JSON で以下の形式のみを返してください:
+{"category_id": 1, "rewritten_title": "..."}
+PROMPT;
+
     /**
      * 記事の元タイトル、カテゴリ一覧をもとに、
      * AIによる分類とタイトルリライトを1回のリクエストで実行します。
@@ -24,7 +39,6 @@ class ArticleAiService
      * @return array{category_id: int, rewritten_title: string}
      *
      * @throws InvalidArgumentException
-     * @throws RuntimeException
      */
     public function classifyAndRewrite(
         string $originalTitle,
@@ -85,15 +99,10 @@ class ArticleAiService
             })
             ->implode("\n");
 
-        // アプリ設定またはシステム設定（Cache）からのみ取得
+        // アプリ設定 > Cache > DB(system_settings) > デフォルトの順で取得する
         $template = (! empty($app?->ai_prompt_template))
             ? $app->ai_prompt_template
-            : Cache::get('ai_prompt_template');
-
-        // テンプレートが存在しない場合は例外を投げる
-        if (empty($template)) {
-            throw new RuntimeException('AIプロンプトのテンプレートが設定されていません。システム設定またはアプリ設定を確認してください。');
-        }
+            : $this->singlePromptTemplate();
 
         return str_replace(['{categories}', '{title}'], [$categoryList, $originalTitle], $template);
     }
@@ -175,7 +184,7 @@ class ArticleAiService
             JSON_UNESCAPED_UNICODE
         );
 
-        $basePrompt = Cache::get('ai_base_prompt', SystemSettings::getDefaultPromptTemplate());
+        $basePrompt = $this->basePromptTemplate();
         $appPrompt = $app?->ai_prompt_template ?? '';
 
         $count = count($articles);
@@ -199,7 +208,15 @@ class ArticleAiService
             $response = Http::connectTimeout(10)
                 ->timeout($timeoutSeconds)
                 ->retry(2, 400)
-                ->post($this->ollamaGenerateUrl(), $payload);
+                ->post($this->ollamaGenerateUrl(), $payload)
+                ->throw(function (Response $response, RequestException $e) use ($operation): void {
+                    Log::error('[AI] Ollama APIエラー', [
+                        'operation' => $operation,
+                        'status' => $response->status(),
+                        'body_preview' => mb_substr($response->body(), 0, 200),
+                        'message' => $e->getMessage(),
+                    ]);
+                });
         } catch (ConnectionException $e) {
             Log::error('[AI] Ollama接続エラー', [
                 'operation' => $operation,
@@ -207,20 +224,12 @@ class ArticleAiService
             ]);
 
             return null;
+        } catch (RequestException) {
+            return null;
         } catch (\Throwable $e) {
             Log::error('[AI] Ollama通信例外', [
                 'operation' => $operation,
                 'message' => $e->getMessage(),
-            ]);
-
-            return null;
-        }
-
-        if ($response->failed()) {
-            Log::error('[AI] Ollama APIエラー', [
-                'operation' => $operation,
-                'status' => $response->status(),
-                'body_preview' => mb_substr($response->body(), 0, 200),
             ]);
 
             return null;
@@ -303,7 +312,10 @@ class ArticleAiService
 
     private function ollamaModel(): string
     {
-        return (string) Cache::get('ollama_model', (string) config('ai.providers.ollama.model', 'gemma4:e2b'));
+        return $this->readStringSetting(
+            cacheKey: 'ollama_model',
+            default: (string) config('ai.providers.ollama.model', 'gemma4:e2b'),
+        );
     }
 
     /**
@@ -315,11 +327,51 @@ class ArticleAiService
         $configOptions = config('ai.providers.ollama.options', []);
 
         return [
-            'num_predict' => (int) Cache::get('ollama_num_predict', (int) ($configOptions['num_predict'] ?? 3000)),
-            'num_ctx' => (int) Cache::get('ollama_num_ctx', (int) ($configOptions['num_ctx'] ?? 8192)),
+            'num_predict' => $this->readIntSetting(
+                cacheKey: 'ollama_num_predict',
+                default: (int) ($configOptions['num_predict'] ?? 3000),
+            ),
+            'num_ctx' => $this->readIntSetting(
+                cacheKey: 'ollama_num_ctx',
+                default: (int) ($configOptions['num_ctx'] ?? 8192),
+            ),
             'temperature' => (float) ($configOptions['temperature'] ?? 0.2),
             'repeat_penalty' => (float) ($configOptions['repeat_penalty'] ?? 1.0),
         ];
+    }
+
+    private function singlePromptTemplate(): string
+    {
+        return $this->readStringSetting(
+            cacheKey: 'ai_prompt_template',
+            default: self::DEFAULT_SINGLE_PROMPT_TEMPLATE,
+        );
+    }
+
+    private function basePromptTemplate(): string
+    {
+        return $this->readStringSetting(
+            cacheKey: 'ai_base_prompt',
+            default: SystemSettings::getDefaultPromptTemplate(),
+        );
+    }
+
+    private function readStringSetting(string $cacheKey, string $default): string
+    {
+        $value = Cache::rememberForever($cacheKey, function () use ($cacheKey, $default): string {
+            return SystemSetting::getValue($cacheKey) ?? $default;
+        });
+
+        return is_string($value) && $value !== '' ? $value : $default;
+    }
+
+    private function readIntSetting(string $cacheKey, int $default): int
+    {
+        $value = Cache::rememberForever($cacheKey, function () use ($cacheKey, $default): string {
+            return SystemSetting::getValue($cacheKey) ?? (string) $default;
+        });
+
+        return is_numeric($value) ? (int) $value : $default;
     }
 
     /**

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Models\App;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Symfony\Component\DomCrawler\Crawler;
@@ -13,8 +13,6 @@ use Throwable;
 
 class SiteAnalyzerService
 {
-    private const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-
     private const SITEMAP_CANDIDATE_PATHS = [
         '/sitemap.xml',
         '/sitemap_index.xml',
@@ -25,6 +23,7 @@ class SiteAnalyzerService
 
     public function __construct(
         private readonly ArticleScraperService $articleScraperService,
+        private readonly CrawlHttpClient $crawlHttpClient,
     ) {}
 
     /**
@@ -42,7 +41,7 @@ class SiteAnalyzerService
      *     diagnostics: array<int, string>
      * }
      */
-    public function analyze(string $url): array
+    public function analyze(string $url, ?App $app = null): array
     {
         $normalizedUrl = $this->normalizeUrl($url);
         $result = $this->baseAnalysisResult($normalizedUrl);
@@ -76,7 +75,7 @@ class SiteAnalyzerService
             $morssListItemSelector = null;
 
             try {
-                $prefetchedHtmlAnalysis = $this->inferHtmlStructure($normalizedUrl);
+                $prefetchedHtmlAnalysis = $this->inferHtmlStructure($normalizedUrl, app: $app);
                 $morssListItemSelector = $this->sanitizeNullableString($prefetchedHtmlAnalysis['list_item_selector']);
             } catch (Throwable $e) {
                 Log::info('[SiteAnalyzerService] morss 用セレクタ推論に失敗したため、通常候補で継続します。', [
@@ -144,7 +143,7 @@ class SiteAnalyzerService
                 $htmlResult = $prefetchedHtmlAnalysis;
             } else {
                 $feedSampleUrls = $this->collectFeedSampleUrls($result['rss_url']);
-                $htmlResult = $this->inferHtmlStructure($normalizedUrl, $feedSampleUrls);
+                $htmlResult = $this->inferHtmlStructure($normalizedUrl, $feedSampleUrls, $app);
             }
 
             $htmlResult['rss_url'] = $result['rss_url'];
@@ -191,11 +190,15 @@ class SiteAnalyzerService
         }
 
         try {
-            $response = Http::withHeaders([
-                'User-Agent' => self::USER_AGENT,
-                'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                'Accept-Language' => 'ja,en-US;q=0.9,en;q=0.8',
-            ])->withOptions(['verify' => false])->timeout(10)->get($rssUrl);
+            $response = $this->crawlHttpClient->get(
+                url: $rssUrl,
+                headers: [
+                    'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                    'Accept-Language' => 'ja,en-US;q=0.9,en;q=0.8',
+                ],
+                timeoutSeconds: 10,
+                options: ['verify' => false],
+            );
 
             if (! $response->successful()) {
                 return [
@@ -381,9 +384,10 @@ class SiteAnalyzerService
                     throw new RuntimeException('サイトマップURLが設定されていません。');
                 }
 
-                $response = Http::withHeaders([
-                    'User-Agent' => self::USER_AGENT,
-                ])->timeout(10)->get($sitemapUrl);
+                $response = $this->crawlHttpClient->get(
+                    url: $sitemapUrl,
+                    timeoutSeconds: 10,
+                );
 
                 if (! $response->successful()) {
                     throw new RuntimeException('HTTP通信に失敗: '.$response->status());
@@ -399,9 +403,10 @@ class SiteAnalyzerService
                     $sitemaps = $xml->sitemap;
                     $targetSitemapUrl = (string) $sitemaps[count($sitemaps) - 1]->loc;
 
-                    $childResponse = Http::withHeaders([
-                        'User-Agent' => self::USER_AGENT,
-                    ])->timeout(10)->get($targetSitemapUrl);
+                    $childResponse = $this->crawlHttpClient->get(
+                        url: $targetSitemapUrl,
+                        timeoutSeconds: 10,
+                    );
 
                     if (! $childResponse->successful()) {
                         throw new RuntimeException('子サイトマップのHTTP通信に失敗: '.$childResponse->status());
@@ -429,9 +434,10 @@ class SiteAnalyzerService
                     throw new RuntimeException('クロール開始URLが設定されていません。');
                 }
 
-                $response = Http::withHeaders([
-                    'User-Agent' => self::USER_AGENT,
-                ])->timeout(10)->get($crawlStartUrl);
+                $response = $this->crawlHttpClient->get(
+                    url: $crawlStartUrl,
+                    timeoutSeconds: 10,
+                );
 
                 if (! $response->successful()) {
                     throw new RuntimeException('HTTP通信に失敗: '.$response->status());
@@ -574,24 +580,31 @@ class SiteAnalyzerService
      *     ng_image_urls: array<int, string>
      * }
      */
-    private function inferHtmlStructure(string $url, array $feedSampleUrls = []): array
+    private function inferHtmlStructure(string $url, array $feedSampleUrls = [], ?App $app = null): array
     {
-        $response = Http::withHeaders([
-            'User-Agent' => self::USER_AGENT,
-            'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language' => 'ja,en-US;q=0.9,en;q=0.8',
-        ])->timeout(10)->get($url);
+        $response = $this->crawlHttpClient->get(
+            url: $url,
+            headers: [
+                'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language' => 'ja,en-US;q=0.9,en;q=0.8',
+            ],
+            timeoutSeconds: 10,
+        );
 
         if (! $response->successful()) {
             throw new RuntimeException('サイトHTMLの取得に失敗しました。');
         }
 
         $crawler = new Crawler($response->body(), $url);
-        $listItemSelector = $this->domainSpecificListItemSelector($url)
+        $customRule = $this->appCustomScrapeRule($url, $app);
+
+        $listItemSelector = ($customRule['list_item_selector'] ?? null)
+            ?? $this->domainSpecificListItemSelector($url)
             ?? $this->detectListItemSelector($crawler)
             ?? 'article, .post, .entry, .list-item, li';
 
-        $linkSelector = $this->feedBasedLinkSelector($feedSampleUrls, $crawler)
+        $linkSelector = ($customRule['link_selector'] ?? null)
+            ?? $this->feedBasedLinkSelector($feedSampleUrls, $crawler)
             ?? $this->detectLinkSelector($crawler, $listItemSelector);
 
         $paginationUrlTemplate = $this->inferPaginationUrlTemplate($url, $crawler);
@@ -610,6 +623,48 @@ class SiteAnalyzerService
             'pagination_url_template' => $paginationUrlTemplate,
             'ng_image_urls' => [],
         ];
+    }
+
+    /**
+     * @return array{list_item_selector: string, link_selector: string}|null
+     */
+    private function appCustomScrapeRule(string $url, ?App $app): ?array
+    {
+        if (! $app instanceof App || ! is_array($app->custom_scrape_rules)) {
+            return null;
+        }
+
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+
+        if ($host === '') {
+            return null;
+        }
+
+        foreach ($app->custom_scrape_rules as $rule) {
+            if (! is_array($rule)) {
+                continue;
+            }
+
+            $domain = strtolower(trim((string) ($rule['domain'] ?? '')));
+
+            if ($domain === '' || $domain !== $host) {
+                continue;
+            }
+
+            $listItemSelector = $this->sanitizeNullableString($rule['list_item_selector'] ?? null);
+            $linkSelector = $this->sanitizeNullableString($rule['link_selector'] ?? null);
+
+            if ($listItemSelector === null || $linkSelector === null) {
+                continue;
+            }
+
+            return [
+                'list_item_selector' => $listItemSelector,
+                'link_selector' => $linkSelector,
+            ];
+        }
+
+        return null;
     }
 
     private function domainSpecificListItemSelector(string $url): ?string
@@ -778,11 +833,14 @@ class SiteAnalyzerService
     private function detectRssFeedUrl(string $url): ?string
     {
         try {
-            $response = Http::withHeaders([
-                'User-Agent' => self::USER_AGENT,
-                'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language' => 'ja,en-US;q=0.9,en;q=0.8',
-            ])->timeout(10)->get($url);
+            $response = $this->crawlHttpClient->get(
+                url: $url,
+                headers: [
+                    'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language' => 'ja,en-US;q=0.9,en;q=0.8',
+                ],
+                timeoutSeconds: 10,
+            );
 
             if (! $response->successful()) {
                 return null;
@@ -920,11 +978,14 @@ class SiteAnalyzerService
     private function detectSiteTitle(string $url): ?string
     {
         try {
-            $response = Http::withHeaders([
-                'User-Agent' => self::USER_AGENT,
-                'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language' => 'ja,en-US;q=0.9,en;q=0.8',
-            ])->timeout(10)->get($url);
+            $response = $this->crawlHttpClient->get(
+                url: $url,
+                headers: [
+                    'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language' => 'ja,en-US;q=0.9,en;q=0.8',
+                ],
+                timeoutSeconds: 10,
+            );
 
             if (! $response->successful()) {
                 return null;
@@ -1002,10 +1063,13 @@ class SiteAnalyzerService
     private function extractSitemapsFromRobots(string $rootUrl): array
     {
         try {
-            $response = Http::withHeaders([
-                'User-Agent' => self::USER_AGENT,
-                'Accept' => 'text/plain,*/*;q=0.8',
-            ])->timeout(5)->get($rootUrl.'/robots.txt');
+            $response = $this->crawlHttpClient->get(
+                url: $rootUrl.'/robots.txt',
+                headers: [
+                    'Accept' => 'text/plain,*/*;q=0.8',
+                ],
+                timeoutSeconds: 5,
+            );
 
             if (! $response->successful()) {
                 return [];
@@ -1034,10 +1098,13 @@ class SiteAnalyzerService
     private function isFeedDocument(string $url): bool
     {
         try {
-            $response = Http::withHeaders([
-                'User-Agent' => self::USER_AGENT,
-                'Accept' => 'application/rss+xml,application/atom+xml,application/xml,text/xml;q=0.9,*/*;q=0.8',
-            ])->timeout(8)->get($url);
+            $response = $this->crawlHttpClient->get(
+                url: $url,
+                headers: [
+                    'Accept' => 'application/rss+xml,application/atom+xml,application/xml,text/xml;q=0.9,*/*;q=0.8',
+                ],
+                timeoutSeconds: 8,
+            );
 
             if (! $response->successful()) {
                 return false;
@@ -1097,10 +1164,13 @@ class SiteAnalyzerService
         }
 
         try {
-            $response = Http::withHeaders([
-                'User-Agent' => self::USER_AGENT,
-                'Accept' => 'application/xml,text/xml;q=0.9,*/*;q=0.8',
-            ])->timeout(8)->get($url);
+            $response = $this->crawlHttpClient->get(
+                url: $url,
+                headers: [
+                    'Accept' => 'application/xml,text/xml;q=0.9,*/*;q=0.8',
+                ],
+                timeoutSeconds: 8,
+            );
 
             if (! $response->successful()) {
                 return false;

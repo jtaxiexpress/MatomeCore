@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit;
 
+use App\Models\App as AppModel;
 use App\Services\SiteAnalyzerService;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -203,5 +204,63 @@ XML),
         $this->assertSame('a', $result['link_selector']);
         $this->assertNull($result['pagination_url_template']);
         $this->assertSame([], $result['ng_image_urls']);
+    }
+
+    public function test_analyze_prefers_app_custom_rule_over_hardcoded_domain_selector(): void
+    {
+        $url = 'https://dengekionline.com/news';
+
+        $appModel = new AppModel([
+            'custom_scrape_rules' => [
+                [
+                    'domain' => 'dengekionline.com',
+                    'list_item_selector' => '.custom-list-item',
+                    'link_selector' => '.custom-list-item a',
+                ],
+            ],
+        ]);
+
+        Http::preventStrayRequests();
+        Http::fake(function ($request) use ($url) {
+            if ($request->url() === $url) {
+                return Http::response('<html><body><div class="custom-list-item"><a href="/items/1">Item</a></div></body></html>');
+            }
+
+            return Http::response(null, 404);
+        });
+
+        $result = app(SiteAnalyzerService::class)->analyze($url, $appModel);
+
+        $this->assertSame('html', $result['crawler_type']);
+        $this->assertSame('.custom-list-item', $result['list_item_selector']);
+        $this->assertSame('.custom-list-item a', $result['link_selector']);
+    }
+
+    public function test_analyze_uses_livedoor_fixed_urls_even_when_app_custom_rule_exists(): void
+    {
+        $appModel = new AppModel([
+            'custom_scrape_rules' => [
+                [
+                    'domain' => 'blog.livedoor.jp',
+                    'list_item_selector' => '.custom-list-item',
+                    'link_selector' => '.custom-list-item a',
+                ],
+            ],
+        ]);
+
+        Http::preventStrayRequests();
+        Http::fake(function ($request) {
+            return match ($request->url()) {
+                'http://blog.livedoor.jp/nanjstu/' => Http::response('<html><body>home</body></html>'),
+                default => Http::response(null, 404),
+            };
+        });
+
+        $result = app(SiteAnalyzerService::class)->analyze('http://blog.livedoor.jp/nanjstu/', $appModel);
+
+        $this->assertSame('http://blog.livedoor.jp/nanjstu/index.rdf', $result['rss_url']);
+        $this->assertSame('http://blog.livedoor.jp/nanjstu/sitemap.xml', $result['sitemap_url']);
+        $this->assertNull($result['list_item_selector']);
+        $this->assertNull($result['link_selector']);
     }
 }

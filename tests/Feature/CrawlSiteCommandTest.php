@@ -16,6 +16,47 @@ class CrawlSiteCommandTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_command_uses_html_strategy_and_queues_article_links(): void
+    {
+        /** @var AppModel $appModel */
+        $appModel = AppModel::factory()->create();
+        /** @var Site $site */
+        $site = Site::factory()->for($appModel)->create([
+            'url' => 'https://example.com/news',
+            'crawl_start_url' => 'https://example.com/news',
+            'crawler_type' => 'html',
+            'list_item_selector' => '.item',
+            'link_selector' => 'a',
+        ]);
+
+        Queue::fake();
+        Http::preventStrayRequests();
+        Http::fake(function ($request) {
+            return match ($request->url()) {
+                'https://example.com/news' => Http::response(<<<'HTML'
+<html>
+  <body>
+    <div class="item"><a href="/articles/1">Article 1</a></div>
+  </body>
+</html>
+HTML, 200),
+                'https://example.com/news/page/2' => Http::response('<html><body></body></html>', 200),
+                default => Http::response(null, 404),
+            };
+        });
+
+        $this->artisan('app:crawl-site', ['site_id' => $site->id, '--max-pages' => 2])
+            ->assertExitCode(0);
+
+        Queue::assertPushed(ProcessArticleBatchJob::class, function (ProcessArticleBatchJob $job) use ($site): bool {
+            $queuedUrls = array_column($job->articles, 'url');
+
+            return $job->siteId === $site->id
+                && $job->fetchSource === 'rss'
+                && in_array('https://example.com/articles/1', $queuedUrls, true);
+        });
+    }
+
     public function test_command_uses_morss_fallback_when_primary_rss_is_unavailable(): void
     {
         /** @var AppModel $appModel */

@@ -37,6 +37,7 @@ class App extends Model
     {
         return [
             'is_active' => 'boolean',
+            'custom_scrape_rules' => 'array',
         ];
     }
 

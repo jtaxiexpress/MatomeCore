@@ -3,9 +3,9 @@
 namespace App\Jobs;
 
 use App\Models\Article;
+use App\Services\CrawlHttpClient;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Support\Facades\Http;
 
 class CheckDeadLinksJob implements ShouldQueue
 {
@@ -38,18 +38,17 @@ class CheckDeadLinksJob implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(): void
+    public function handle(?CrawlHttpClient $crawlHttpClient = null): void
     {
+        $crawlHttpClient ??= app(CrawlHttpClient::class);
+
         // chunk で25件ずつ処理し、GETレスポンス本文による一括メモリ消費を防ぐ
         Article::orderByRaw('last_checked_at IS NOT NULL ASC')
             ->orderBy('published_at', 'asc')
             ->limit(100)
-            ->chunk(25, function ($articles) {
+            ->chunk(25, function ($articles) use ($crawlHttpClient) {
                 foreach ($articles as $article) {
-                    $this->checkArticle($article);
-
-                    // 相手サーバーへの負荷軽減（DDoS攻撃とみなされないための絶対条件）
-                    usleep(100000); // 0.1秒待機
+                    $this->checkArticle($article, $crawlHttpClient);
                 }
             });
     }
@@ -57,13 +56,14 @@ class CheckDeadLinksJob implements ShouldQueue
     /**
      * 1記事のリンク切れ判定を行い、削除またはチェック日時更新を実行する。
      */
-    private function checkArticle(Article $article): void
+    private function checkArticle(Article $article, CrawlHttpClient $crawlHttpClient): void
     {
         try {
             // 一般的なブラウザを偽装して通信（Soft 404検知のため中身を取得）
-            $response = Http::withHeaders([
-                'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            ])->timeout(10)->get($article->url);
+            $response = $crawlHttpClient->get(
+                url: $article->url,
+                timeoutSeconds: 10,
+            );
 
             $isDead = false;
 

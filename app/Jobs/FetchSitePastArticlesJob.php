@@ -5,13 +5,13 @@ namespace App\Jobs;
 use App\Actions\SendArticleFetchResultNotificationAction;
 use App\Models\Article;
 use App\Models\Site;
+use App\Services\CrawlHttpClient;
 use Exception;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\DomCrawler\Crawler;
 
@@ -34,8 +34,10 @@ class FetchSitePastArticlesJob implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(): string
+    public function handle(?CrawlHttpClient $crawlHttpClient = null): string
     {
+        $crawlHttpClient ??= app(CrawlHttpClient::class);
+
         $this->site->loadMissing('app');
         $this->shareLogContext();
 
@@ -53,7 +55,7 @@ class FetchSitePastArticlesJob implements ShouldQueue
 
             if ($this->site->crawler_type === 'sitemap') {
                 try {
-                    $targetUrls = $this->collectUrlsFromSitemap();
+                    $targetUrls = $this->collectUrlsFromSitemap($crawlHttpClient);
                 } catch (Exception $e) {
                     Log::warning("{$this->site->name} - サイトマップ取得に失敗したためHTML抽出へフォールバックします", [
                         'message' => $e->getMessage(),
@@ -63,12 +65,12 @@ class FetchSitePastArticlesJob implements ShouldQueue
                 if ($targetUrls === []) {
                     $sourceType = 'fetch_past_html';
                     Log::info("{$this->site->name} - サイトマップで記事URLを取得できなかったため、一覧ページ抽出へ切り替えます。");
-                    $targetUrls = $this->collectUrlsFromHtmlPages($this->limit);
+                    $targetUrls = $this->collectUrlsFromHtmlPages($this->limit, $crawlHttpClient);
                 } elseif ($this->limit > 0) {
                     $targetUrls = array_slice($targetUrls, 0, $this->limit);
                 }
             } else {
-                $targetUrls = $this->collectUrlsFromHtmlPages($this->limit);
+                $targetUrls = $this->collectUrlsFromHtmlPages($this->limit, $crawlHttpClient);
             }
 
             $dispatchedCount = count($targetUrls);
@@ -119,7 +121,7 @@ class FetchSitePastArticlesJob implements ShouldQueue
     /**
      * @return array<int, string>
      */
-    private function collectUrlsFromSitemap(): array
+    private function collectUrlsFromSitemap(CrawlHttpClient $crawlHttpClient): array
     {
         $xmlUrl = $this->site->sitemap_url ?? $this->site->rss_url ?? $this->site->url;
 
@@ -129,11 +131,14 @@ class FetchSitePastArticlesJob implements ShouldQueue
 
         Log::info("{$this->site->name} - XML取得中: {$xmlUrl}");
 
-        $xmlResponse = Http::withHeaders([
-            'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-            'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language' => 'ja,en-US;q=0.7,en;q=0.3',
-        ])->timeout(15)->get($xmlUrl);
+        $xmlResponse = $crawlHttpClient->get(
+            url: $xmlUrl,
+            headers: [
+                'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language' => 'ja,en-US;q=0.7,en;q=0.3',
+            ],
+            timeoutSeconds: 15,
+        );
 
         if (! $xmlResponse->successful()) {
             throw new Exception('XML取得に失敗しました (HTTP '.$xmlResponse->status()."): {$xmlUrl}");
@@ -156,11 +161,14 @@ class FetchSitePastArticlesJob implements ShouldQueue
                 }
 
                 Log::info("{$this->site->name} - 子サイトマップ取得中: {$childLoc}");
-                $childResponse = Http::withHeaders([
-                    'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-                    'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                    'Accept-Language' => 'ja,en-US;q=0.7,en;q=0.3',
-                ])->timeout(15)->get($childLoc);
+                $childResponse = $crawlHttpClient->get(
+                    url: $childLoc,
+                    headers: [
+                        'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                        'Accept-Language' => 'ja,en-US;q=0.7,en;q=0.3',
+                    ],
+                    timeoutSeconds: 15,
+                );
 
                 if (! $childResponse->successful()) {
                     Log::warning("{$this->site->name} - 子サイトマップ取得失敗 (HTTP {$childResponse->status()}): {$childLoc}");
@@ -193,7 +201,7 @@ class FetchSitePastArticlesJob implements ShouldQueue
     /**
      * @return array<int, string>
      */
-    private function collectUrlsFromHtmlPages(int $limit): array
+    private function collectUrlsFromHtmlPages(int $limit, CrawlHttpClient $crawlHttpClient): array
     {
         $maxPages = 100;
         $collectedHtmlUrls = [];
@@ -202,11 +210,14 @@ class FetchSitePastArticlesJob implements ShouldQueue
             $targetUrl = $this->buildPaginationTargetUrl($page);
             Log::info("{$this->site->name} - ページ {$page} をクロール中: {$targetUrl}");
 
-            $response = Http::withHeaders([
-                'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-                'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language' => 'ja,en-US;q=0.7,en;q=0.3',
-            ])->timeout(10)->get($targetUrl);
+            $response = $crawlHttpClient->get(
+                url: $targetUrl,
+                headers: [
+                    'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language' => 'ja,en-US;q=0.7,en;q=0.3',
+                ],
+                timeoutSeconds: 10,
+            );
 
             if (! $response->successful()) {
                 Log::warning("{$this->site->name} - ページ {$page} の取得に失敗しました (HTTP ".$response->status().')');

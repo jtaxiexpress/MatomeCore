@@ -13,6 +13,7 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -155,6 +156,36 @@ class AppResource extends Resource
                     ->helperText('（任意）システム共通プロンプトに追加して指示したい、このアプリ特有のルール（例: 2ch風の煽りタイトルにして、ミリタリー系なので少し固い表現にして等）のみを入力してください。※{categories}などの変数の記述や、JSON出力の指示は不要です。')
                     ->rows(8)
                     ->columnSpanFull(),
+                Repeater::make('custom_scrape_rules')
+                    ->label('ドメイン別スクレイプルール')
+                    ->helperText('対象ドメインごとに、記事一覧ブロックとリンクのCSSセレクタを設定します。')
+                    ->schema([
+                        TextInput::make('domain')
+                            ->label('対象ドメイン')
+                            ->placeholder('example.com')
+                            ->required()
+                            ->maxLength(255)
+                            ->regex('/^[a-z0-9.-]+$/')
+                            ->distinct()
+                            ->dehydrateStateUsing(fn (?string $state): ?string => filled($state) ? strtolower(trim($state)) : null),
+                        TextInput::make('list_item_selector')
+                            ->label('記事ブロックセレクタ')
+                            ->placeholder('article, .post, .entry')
+                            ->required()
+                            ->maxLength(500),
+                        TextInput::make('link_selector')
+                            ->label('リンクセレクタ')
+                            ->placeholder('a')
+                            ->required()
+                            ->maxLength(500),
+                    ])
+                    ->columns(3)
+                    ->default([])
+                    ->collapsed()
+                    ->collapsible()
+                    ->reorderable(false)
+                    ->columnSpanFull()
+                    ->addActionLabel('ルールを追加'),
             ])
             ->extraAttributes(self::getPrimaryCardClasses());
     }

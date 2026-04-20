@@ -182,7 +182,9 @@ HTML),
         $mock = \Mockery::mock(SiteAnalyzerService::class);
         $mock->shouldReceive('analyze')
             ->once()
-            ->with('https://example.com')
+            ->withArgs(function (string $url, ?AppModel $app): bool {
+                return $url === 'https://example.com' && $app instanceof AppModel;
+            })
             ->andReturn([
                 'site_title' => 'AI推論サイト名',
                 'rss_url' => null,
@@ -228,7 +230,9 @@ HTML),
         $mock = \Mockery::mock(SiteAnalyzerService::class);
         $mock->shouldReceive('analyze')
             ->once()
-            ->with('https://example.com')
+            ->withArgs(function (string $url, ?AppModel $app): bool {
+                return $url === 'https://example.com' && $app instanceof AppModel;
+            })
             ->andReturn([
                 'site_title' => 'AI推論サイト名',
                 'rss_url' => null,
@@ -309,9 +313,10 @@ HTML),
         $this->assertStringContainsString('RSS取得テスト', $html);
         $this->assertStringContainsString('画像', $html);
         $this->assertStringContainsString('https://example.com/thumb.jpg', $html);
-        $this->assertStringContainsString('img src="https://example.com/thumb.jpg"', $html);
+        $this->assertStringContainsString('src="https://example.com/thumb.jpg"', $html);
+        $this->assertStringContainsString('onerror="const fallback = this.dataset.fallbackSrc;', $html);
         $this->assertStringContainsString('過去記事一括取得テスト', $html);
-        $this->assertStringContainsString('img src="https://example.com/crawl-thumb.jpg"', $html);
+        $this->assertStringContainsString('src="https://example.com/crawl-thumb.jpg"', $html);
         $this->assertStringContainsString('抽出URL一覧', $html);
         $this->assertStringContainsString('診断メモ', $html);
         $this->assertStringContainsString('max-h-[70vh]', $html);

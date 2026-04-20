@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Filament\Resources\Concerns\AuthorizesAdminScreenPage;
 use App\Jobs\CheckDeadLinksJob;
 use App\Models\Article;
+use App\Models\SystemSetting;
 use App\Support\AdminScreen;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
@@ -135,11 +136,11 @@ class SystemSettings extends Page implements HasForms
     {
         // @phpstan-ignore-next-line Filament provides $form via InteractsWithForms magic property.
         $this->form->fill([
-            'is_bulk_paused' => Cache::get('is_bulk_paused', false),
+            'is_bulk_paused' => $this->readBooleanSetting('is_bulk_paused', false),
             'ollama_model' => $this->currentOllamaModel(),
-            'ai_base_prompt' => Cache::get('ai_base_prompt', self::getDefaultPromptTemplate()),
-            'ollama_num_predict' => Cache::get('ollama_num_predict', (int) config('ai.providers.ollama.options.num_predict', 3000)),
-            'ollama_num_ctx' => Cache::get('ollama_num_ctx', (int) config('ai.providers.ollama.options.num_ctx', 8192)),
+            'ai_base_prompt' => $this->readStringSetting('ai_base_prompt', self::getDefaultPromptTemplate()),
+            'ollama_num_predict' => $this->readIntegerSetting('ollama_num_predict', (int) config('ai.providers.ollama.options.num_predict', 3000)),
+            'ollama_num_ctx' => $this->readIntegerSetting('ollama_num_ctx', (int) config('ai.providers.ollama.options.num_ctx', 8192)),
         ]);
     }
 
@@ -192,11 +193,23 @@ class SystemSettings extends Page implements HasForms
     {
         // @phpstan-ignore-next-line Filament provides $form via InteractsWithForms magic property.
         $state = $this->form->getState();
-        Cache::put('is_bulk_paused', $state['is_bulk_paused'] ?? false);
-        Cache::put('ollama_model', $state['ollama_model'] ?? $this->currentOllamaModel());
-        Cache::put('ai_base_prompt', $state['ai_base_prompt'] ?? self::getDefaultPromptTemplate());
-        Cache::put('ollama_num_predict', $state['ollama_num_predict'] ?? (int) config('ai.providers.ollama.options.num_predict', 3000));
-        Cache::put('ollama_num_ctx', $state['ollama_num_ctx'] ?? (int) config('ai.providers.ollama.options.num_ctx', 8192));
+        $isBulkPaused = (bool) ($state['is_bulk_paused'] ?? false);
+        $ollamaModel = (string) ($state['ollama_model'] ?? $this->currentOllamaModel());
+        $aiBasePrompt = (string) ($state['ai_base_prompt'] ?? self::getDefaultPromptTemplate());
+        $ollamaNumPredict = (int) ($state['ollama_num_predict'] ?? (int) config('ai.providers.ollama.options.num_predict', 3000));
+        $ollamaNumCtx = (int) ($state['ollama_num_ctx'] ?? (int) config('ai.providers.ollama.options.num_ctx', 8192));
+
+        Cache::forever('is_bulk_paused', $isBulkPaused);
+        Cache::forever('ollama_model', $ollamaModel);
+        Cache::forever('ai_base_prompt', $aiBasePrompt);
+        Cache::forever('ollama_num_predict', $ollamaNumPredict);
+        Cache::forever('ollama_num_ctx', $ollamaNumCtx);
+
+        SystemSetting::setValue('is_bulk_paused', $isBulkPaused ? '1' : '0');
+        SystemSetting::setValue('ollama_model', $ollamaModel);
+        SystemSetting::setValue('ai_base_prompt', $aiBasePrompt);
+        SystemSetting::setValue('ollama_num_predict', (string) $ollamaNumPredict);
+        SystemSetting::setValue('ollama_num_ctx', (string) $ollamaNumCtx);
 
         Notification::make()
             ->title('設定を保存しました')
@@ -290,7 +303,34 @@ PROMPT;
 
     private function currentOllamaModel(): string
     {
-        return (string) Cache::get('ollama_model', (string) config('ai.providers.ollama.model', 'gemma4:e2b'));
+        return $this->readStringSetting('ollama_model', (string) config('ai.providers.ollama.model', 'gemma4:e2b'));
+    }
+
+    private function readStringSetting(string $key, string $default): string
+    {
+        $value = Cache::rememberForever($key, function () use ($key, $default): string {
+            return SystemSetting::getValue($key) ?? $default;
+        });
+
+        return is_string($value) && $value !== '' ? $value : $default;
+    }
+
+    private function readIntegerSetting(string $key, int $default): int
+    {
+        $value = Cache::rememberForever($key, function () use ($key, $default): string {
+            return SystemSetting::getValue($key) ?? (string) $default;
+        });
+
+        return is_numeric($value) ? (int) $value : $default;
+    }
+
+    private function readBooleanSetting(string $key, bool $default): bool
+    {
+        $value = Cache::rememberForever($key, function () use ($key, $default): string {
+            return SystemSetting::getValue($key) ?? ($default ? '1' : '0');
+        });
+
+        return filter_var($value, FILTER_VALIDATE_BOOL);
     }
 
     private function ollamaTagsUrl(): string
