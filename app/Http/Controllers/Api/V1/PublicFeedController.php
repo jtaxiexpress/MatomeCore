@@ -5,76 +5,180 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\V1\IndexAppFeedRequest;
 use App\Http\Requests\Api\V1\IndexCategoryArticlesRequest;
+use App\Http\Requests\Api\V1\IndexTrendingArticlesRequest;
+use App\Http\Requests\Api\V1\SearchAppArticlesRequest;
+use App\Http\Resources\Api\V1\AppConfigResource;
 use App\Http\Resources\Api\V1\AppResource;
 use App\Http\Resources\Api\V1\ArticleResource;
-use App\Http\Resources\Api\V1\CategoryResource;
+use App\Http\Resources\Api\V1\CategoryTabResource;
+use App\Http\Resources\Api\V1\PublicArticleListResource;
 use App\Models\App;
+use App\Models\Article;
 use App\Models\Category;
+use App\Services\PublicApiService;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Throwable;
 
 class PublicFeedController extends Controller
 {
-    public function apps(): AnonymousResourceCollection
-    {
-        $apps = App::query()
-            ->select(['id', 'name', 'api_slug', 'icon_path', 'theme_color', 'is_active'])
-            ->where('is_active', true)
-            ->orderBy('id')
-            ->get();
+    public function __construct(
+        private readonly PublicApiService $publicApiService,
+    ) {}
 
-        return AppResource::collection($apps);
+    public function apps(): AnonymousResourceCollection|JsonResponse
+    {
+        try {
+            $apps = App::query()
+                ->select(['id', 'name', 'api_slug', 'icon_path', 'theme_color', 'is_active'])
+                ->where('is_active', true)
+                ->orderBy('id')
+                ->get();
+
+            return AppResource::collection($apps);
+        } catch (Throwable $e) {
+            return $this->internalServerError($e, 'アプリ一覧の取得に失敗しました。');
+        }
     }
 
-    public function categories(App $app): AnonymousResourceCollection
+    public function config(App $app): JsonResponse
     {
-        $categories = $app->categories()
-            ->select(['id', 'app_id', 'parent_id', 'name', 'api_slug', 'sort_order', 'default_image_path'])
-            ->whereNull('parent_id')
-            ->with([
-                'children' => fn ($query) => $query
-                    ->select(['id', 'app_id', 'parent_id', 'name', 'api_slug', 'sort_order', 'default_image_path'])
-                    ->orderBy('sort_order')
-                    ->orderBy('id'),
-            ])
-            ->orderBy('sort_order')
-            ->orderBy('id')
-            ->get();
+        try {
+            return response()->json([
+                'data' => (new AppConfigResource($app))->resolve(),
+            ]);
+        } catch (Throwable $e) {
+            return $this->internalServerError($e, 'アプリ設定の取得に失敗しました。');
+        }
+    }
 
-        return CategoryResource::collection($categories);
+    public function categories(App $app): AnonymousResourceCollection|JsonResponse
+    {
+        try {
+            $categories = $this->publicApiService->categories($app);
+
+            return CategoryTabResource::collection($categories);
+        } catch (Throwable $e) {
+            return $this->internalServerError($e, 'カテゴリ一覧の取得に失敗しました。');
+        }
+    }
+
+    public function feed(IndexAppFeedRequest $request, App $app): AnonymousResourceCollection|JsonResponse
+    {
+        try {
+            $categorySlug = $request->validated('category_slug');
+            $articles = $this->publicApiService->feed(
+                app: $app,
+                categorySlug: is_string($categorySlug) ? $categorySlug : null,
+            );
+
+            return PublicArticleListResource::collection($articles);
+        } catch (ModelNotFoundException) {
+            return $this->notFoundResponse('指定されたカテゴリが見つかりません。');
+        } catch (Throwable $e) {
+            return $this->internalServerError($e, '記事フィードの取得に失敗しました。');
+        }
+    }
+
+    public function search(SearchAppArticlesRequest $request, App $app): AnonymousResourceCollection|JsonResponse
+    {
+        try {
+            $keyword = (string) $request->validated('keyword');
+            $articles = $this->publicApiService->search($app, $keyword);
+
+            return PublicArticleListResource::collection($articles);
+        } catch (Throwable $e) {
+            return $this->internalServerError($e, '記事検索に失敗しました。');
+        }
+    }
+
+    public function trending(IndexTrendingArticlesRequest $request, App $app): JsonResponse
+    {
+        try {
+            $period = (string) $request->validated('period', 'daily');
+            $limit = (int) $request->validated('limit', 20);
+
+            $articles = $this->publicApiService->trending($app, $period, $limit);
+
+            return response()->json([
+                'data' => PublicArticleListResource::collection($articles)->resolve(),
+            ]);
+        } catch (Throwable $e) {
+            return $this->internalServerError($e, '人気記事の取得に失敗しました。');
+        }
+    }
+
+    public function click(Article $article): JsonResponse
+    {
+        try {
+            $click = $this->publicApiService->trackClick($article);
+
+            return response()->json([
+                'message' => '記事クリックを記録しました。',
+                'data' => [
+                    'article_id' => $article->id,
+                    'clicked_at' => $click->clicked_at?->toISOString(),
+                ],
+            ], 201);
+        } catch (Throwable $e) {
+            return $this->internalServerError($e, '記事クリックの記録に失敗しました。');
+        }
     }
 
     public function articles(
         IndexCategoryArticlesRequest $request,
         App $app,
         Category $category,
-    ): AnonymousResourceCollection {
-        abort_if($category->app_id !== $app->id, 404);
+    ): AnonymousResourceCollection|JsonResponse {
+        try {
+            abort_if($category->app_id !== $app->id, 404);
 
-        $perPage = (int) $request->validated('per_page', 30);
+            $perPage = (int) $request->validated('per_page', 30);
 
-        $articles = $category->articles()
-            ->select([
-                'id',
-                'app_id',
-                'category_id',
-                'site_id',
-                'title',
-                'summary',
-                'lead_text',
-                'url',
-                'thumbnail_url',
-                'fetch_source',
-                'published_at',
-                'created_at',
-                'updated_at',
-            ])
-            ->with(['category:id,default_image_path'])
-            ->orderByDesc('published_at')
-            ->orderByDesc('id')
-            ->paginate($perPage)
-            ->withQueryString();
+            $articles = $category->articles()
+                ->select([
+                    'id',
+                    'app_id',
+                    'category_id',
+                    'site_id',
+                    'title',
+                    'summary',
+                    'lead_text',
+                    'url',
+                    'thumbnail_url',
+                    'fetch_source',
+                    'published_at',
+                    'created_at',
+                    'updated_at',
+                ])
+                ->with(['category:id,default_image_path'])
+                ->orderByDesc('published_at')
+                ->orderByDesc('id')
+                ->paginate($perPage)
+                ->withQueryString();
 
-        return ArticleResource::collection($articles);
+            return ArticleResource::collection($articles);
+        } catch (Throwable $e) {
+            return $this->internalServerError($e, 'カテゴリ記事の取得に失敗しました。');
+        }
+    }
+
+    private function notFoundResponse(string $message): JsonResponse
+    {
+        return response()->json([
+            'message' => $message,
+        ], 404);
+    }
+
+    private function internalServerError(Throwable $e, string $message): JsonResponse
+    {
+        report($e);
+
+        return response()->json([
+            'message' => $message,
+        ], 500);
     }
 }

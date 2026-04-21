@@ -2,12 +2,14 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Actions\TestPublicApiAction;
 use App\Filament\Resources\AppResource\Pages;
 use App\Filament\Resources\AppResource\RelationManagers;
 use App\Filament\Resources\Concerns\AuthorizesAdminScreenResource;
 use App\Models\App;
 use App\Support\AdminScreen;
 use Carbon\Carbon;
+use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -248,7 +250,7 @@ class AppResource extends Resource
     }
 
     /**
-     * @return array<int, EditAction>
+     * @return array<int, EditAction|Action>
      */
     private static function getTableActions(): array
     {
@@ -258,6 +260,7 @@ class AppResource extends Resource
                 ->modalHeading('アプリ情報の編集')
                 ->modalDescription('アプリ名・外観・運用設定を更新します。')
                 ->modalSubmitActionLabel('更新する'),
+            TestPublicApiAction::make('test_public_api'),
         ];
     }
 

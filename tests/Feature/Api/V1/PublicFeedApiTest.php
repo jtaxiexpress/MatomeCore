@@ -54,9 +54,9 @@ class PublicFeedApiTest extends TestCase
     /**
      * Arrange: 2つのアプリにカテゴリを作成
      * Act: 対象アプリのカテゴリAPIを呼ぶ
-     * Assert: 対象アプリ配下のみ返却され、子カテゴリがネストされる
+     * Assert: 対象アプリ配下のみ返却され、フラット配列でソートされる
      */
-    public function test_categories_endpoint_returns_only_target_app_categories_with_children(): void
+    public function test_categories_endpoint_returns_only_target_app_categories_as_flat_sorted_array(): void
     {
         $targetApp = AppModel::factory()->create([
             'api_slug' => 'target-app',
@@ -86,9 +86,11 @@ class PublicFeedApiTest extends TestCase
         $response = $this->getJson('/api/v1/apps/target-app/categories');
 
         $response->assertOk()
-            ->assertJsonCount(1, 'data')
+            ->assertJsonCount(2, 'data')
             ->assertJsonPath('data.0.slug', 'root')
-            ->assertJsonPath('data.0.children.0.slug', 'child');
+            ->assertJsonPath('data.0.sort_order', 1)
+            ->assertJsonPath('data.1.slug', 'child')
+            ->assertJsonPath('data.1.sort_order', 2);
     }
 
     /**
