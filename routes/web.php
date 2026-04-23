@@ -17,6 +17,9 @@ Route::livewire('/', 'pages::cross-app-home')
 Route::livewire('/apply', 'pages::site-application')
     ->name('front.apply');
 
+Route::livewire('/ranking', 'pages::site-ranking')
+    ->name('front.ranking');
+
 Route::livewire('/s/{app:api_slug}', 'pages::home')
     ->name('front.home');
 

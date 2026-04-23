@@ -73,7 +73,15 @@ class extends Component {
     }
 }; ?>
 
-<div>
+<div x-data="{ 
+    mutedSites: JSON.parse(localStorage.getItem('muted_sites') || '[]'),
+    muteSite(id) {
+        if (!this.mutedSites.includes(id)) {
+            this.mutedSites.push(id);
+            localStorage.setItem('muted_sites', JSON.stringify(this.mutedSites));
+        }
+    }
+}">
     @section('title', $this->pageTitle)
     @section('tenant_name', 'ゆにこーんアンテナ 全体記事')
 

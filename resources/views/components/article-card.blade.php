@@ -25,7 +25,24 @@
     $isHot = $clickCount >= 10 || ($article->site->traffic_score ?? 0) >= 50;
 @endphp
 
-<article class="group relative flex gap-3 rounded-xl bg-surface-elevated p-3 shadow-card transition-all duration-200 hover:shadow-card-hover active:scale-[0.98] dark:bg-surface-elevated-dark">
+<article 
+    x-show="!mutedSites.includes({{ $article->site_id ?? 'null' }})"
+    x-transition.out.opacity.duration.300ms
+    class="group relative flex gap-3 rounded-xl bg-surface-elevated p-3 shadow-card transition-all duration-200 hover:shadow-card-hover active:scale-[0.98] dark:bg-surface-elevated-dark"
+>
+    {{-- Mute button --}}
+    @if ($article->site_id)
+        <button 
+            @click.prevent="muteSite({{ $article->site_id }})"
+            class="absolute right-2 top-2 z-10 rounded-full p-1.5 text-text-tertiary opacity-0 transition-all hover:bg-black/5 hover:text-red-500 group-hover:opacity-100 dark:hover:bg-white/10 dark:hover:text-red-400"
+            title="このサイトをミュート（非表示）"
+        >
+            <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+        </button>
+    @endif
+
     {{-- Thumbnail --}}
     <a
         href="{{ $articleUrl }}"

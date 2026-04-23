@@ -26,7 +26,7 @@
         </div>
         <div class="divide-y divide-border/40 dark:divide-border-dark/40">
             @foreach($hotEntries as $index => $article)
-                <a href="{{ route('front.go', ['app' => $article->app_id ?? $targetApp?->id ?? 1, 'article' => $article->id]) }}" target="_blank" rel="noopener noreferrer" class="group flex items-start gap-4 p-4 transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02]">
+                <a x-show="!mutedSites.includes({{ $article->site_id ?? 'null' }})" href="{{ route('front.go', ['app' => $article->app_id ?? $targetApp?->id ?? 1, 'article' => $article->id]) }}" target="_blank" rel="noopener noreferrer" class="group flex items-start gap-4 p-4 transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02]">
                     <div class="flex size-6 shrink-0 items-center justify-center rounded-full bg-black/5 text-xs font-bold text-text-secondary dark:bg-white/10 dark:text-text-tertiary">
                         {{ $index + 1 }}
                     </div>
