@@ -28,11 +28,11 @@
 <article 
     x-show="!mutedSites.includes({{ $article->site_id ?? 'null' }})"
     x-transition.out.opacity.duration.300ms
-    class="group relative flex items-center gap-2 py-2 border-b border-border/40 last:border-0 hover:bg-black/5 active:bg-black/10 transition-colors px-2 -mx-2 dark:border-border-dark/40 dark:hover:bg-white/5 dark:active:bg-white/10"
+    class="group relative flex items-center gap-2 py-2 mb-1.5 border border-slate-200/50 bg-white/40 backdrop-blur-md rounded-xl hover:bg-white/60 active:bg-white/80 transition-colors px-3 dark:border-white/10 dark:bg-black/40 dark:hover:bg-white/5 dark:active:bg-white/10"
 >
     {{-- Published time --}}
     @if ($publishedAt)
-        <time datetime="{{ $publishedAt->toISOString() }}" class="shrink-0 w-10 text-right text-[11px] tabular-nums text-text-tertiary">
+        <time datetime="{{ $publishedAt->toISOString() }}" class="shrink-0 text-left text-[11px] tabular-nums text-text-tertiary">
             {{ $publishedAt->format('H:i') }}
         </time>
     @endif
@@ -42,7 +42,7 @@
         href="{{ $articleUrl }}"
         target="_blank"
         rel="noopener noreferrer"
-        class="flex-1 min-w-0 flex items-center gap-1.5"
+        class="flex-1 min-w-0 flex items-center gap-1.5 after:absolute after:inset-0"
         id="article-title-{{ $article->id }}"
     >
         @if ($isNew)
@@ -62,10 +62,10 @@
             href="{{ $siteUrl }}" 
             target="_blank" 
             rel="noopener noreferrer"
-            class="shrink-0 max-w-[80px] sm:max-w-[120px] truncate text-[11px] text-text-secondary hover:underline dark:text-text-tertiary"
+            class="shrink-0 max-w-[90px] sm:max-w-[140px] truncate text-[11px] text-text-secondary hover:underline dark:text-text-tertiary relative z-10"
         >
             @if (request()->route('app') === null && $article->relationLoaded('app'))
-                <span class="text-accent">[{{ $article->app?->name }}]</span>
+                <span class="text-accent">[{{ mb_substr($article->app?->name ?? '', 0, 4) }}]</span>
             @endif
             {{ $siteName }}
         </a>

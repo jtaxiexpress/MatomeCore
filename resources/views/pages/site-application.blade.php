@@ -94,7 +94,7 @@ class extends Component {
                 </div>
             </div>
         @else
-            <form wire:submit="submit" class="rounded-2xl border border-border/40 bg-surface-elevated p-6 shadow-sm sm:p-8 dark:border-border-dark/40 dark:bg-surface-elevated-dark">
+            <form wire:submit="submit" class="rounded-xl border border-border/40 bg-surface-elevated/50 backdrop-blur-xl p-6 shadow-sm sm:p-8 dark:border-border-dark/40 dark:bg-surface-elevated-dark/50">
                 @error('general')
                     <div class="mb-6 rounded-lg bg-red-500/10 p-4 text-sm text-red-600 dark:text-red-400">
                         {{ $message }}
@@ -105,7 +105,7 @@ class extends Component {
                     {{-- App Selection --}}
                     <div>
                         <label for="app_id" class="mb-2 block text-sm font-medium text-text-primary dark:text-white">登録先アプリ <span class="text-red-500">*</span></label>
-                        <select id="app_id" wire:model="app_id" class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent dark:border-border-dark dark:bg-surface-dark dark:text-white">
+                        <select id="app_id" wire:model="app_id" class="w-full rounded-lg border border-slate-200/50 bg-white/50 px-4 py-2.5 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent dark:border-white/10 dark:bg-black/40 dark:text-white">
                             <option value="">選択してください</option>
                             @foreach ($this->apps as $app)
                                 <option value="{{ $app->id }}">{{ $app->name }}</option>
@@ -117,35 +117,35 @@ class extends Component {
                     {{-- Site Name --}}
                     <div>
                         <label for="name" class="mb-2 block text-sm font-medium text-text-primary dark:text-white">サイト名 <span class="text-red-500">*</span></label>
-                        <input type="text" id="name" wire:model="name" placeholder="例: まとめコア速報" class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text-primary placeholder-text-tertiary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent dark:border-border-dark dark:bg-surface-dark dark:text-white dark:placeholder-text-tertiary/50">
+                        <input type="text" id="name" wire:model="name" placeholder="例: まとめコア速報" class="w-full rounded-lg border border-slate-200/50 bg-white/50 px-4 py-2.5 text-sm text-text-primary placeholder-text-tertiary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent dark:border-white/10 dark:bg-black/40 dark:text-white dark:placeholder-text-tertiary/50">
                         @error('name') <span class="mt-1 block text-xs text-red-500">{{ $message }}</span> @enderror
                     </div>
 
                     {{-- Site URL --}}
                     <div>
                         <label for="url" class="mb-2 block text-sm font-medium text-text-primary dark:text-white">サイトURL <span class="text-red-500">*</span></label>
-                        <input type="url" id="url" wire:model="url" placeholder="https://example.com" class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text-primary placeholder-text-tertiary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent dark:border-border-dark dark:bg-surface-dark dark:text-white dark:placeholder-text-tertiary/50">
+                        <input type="url" id="url" wire:model="url" placeholder="https://example.com" class="w-full rounded-lg border border-slate-200/50 bg-white/50 px-4 py-2.5 text-sm text-text-primary placeholder-text-tertiary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent dark:border-white/10 dark:bg-black/40 dark:text-white dark:placeholder-text-tertiary/50">
                         @error('url') <span class="mt-1 block text-xs text-red-500">{{ $message }}</span> @enderror
                     </div>
 
                     {{-- RSS URL --}}
                     <div>
                         <label for="rss_url" class="mb-2 block text-sm font-medium text-text-primary dark:text-white">RSS URL <span class="text-red-500">*</span></label>
-                        <input type="url" id="rss_url" wire:model="rss_url" placeholder="https://example.com/feed" class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text-primary placeholder-text-tertiary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent dark:border-border-dark dark:bg-surface-dark dark:text-white dark:placeholder-text-tertiary/50">
+                        <input type="url" id="rss_url" wire:model="rss_url" placeholder="https://example.com/feed" class="w-full rounded-lg border border-slate-200/50 bg-white/50 px-4 py-2.5 text-sm text-text-primary placeholder-text-tertiary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent dark:border-white/10 dark:bg-black/40 dark:text-white dark:placeholder-text-tertiary/50">
                         @error('rss_url') <span class="mt-1 block text-xs text-red-500">{{ $message }}</span> @enderror
                     </div>
 
                     {{-- Contact Email --}}
                     <div>
                         <label for="contact_email" class="mb-2 block text-sm font-medium text-text-primary dark:text-white">連絡先メールアドレス <span class="text-red-500">*</span></label>
-                        <input type="email" id="contact_email" wire:model="contact_email" placeholder="admin@example.com" class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text-primary placeholder-text-tertiary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent dark:border-border-dark dark:bg-surface-dark dark:text-white dark:placeholder-text-tertiary/50">
+                        <input type="email" id="contact_email" wire:model="contact_email" placeholder="admin@example.com" class="w-full rounded-lg border border-slate-200/50 bg-white/50 px-4 py-2.5 text-sm text-text-primary placeholder-text-tertiary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent dark:border-white/10 dark:bg-black/40 dark:text-white dark:placeholder-text-tertiary/50">
                         @error('contact_email') <span class="mt-1 block text-xs text-red-500">{{ $message }}</span> @enderror
                     </div>
 
                     {{-- Contact Notes --}}
                     <div>
                         <label for="contact_notes" class="mb-2 block text-sm font-medium text-text-primary dark:text-white">連絡事項 <span class="text-xs text-text-tertiary font-normal">(任意)</span></label>
-                        <textarea id="contact_notes" wire:model="contact_notes" rows="3" placeholder="サイトの特徴やご要望などがあればご記入ください" class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text-primary placeholder-text-tertiary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent dark:border-border-dark dark:bg-surface-dark dark:text-white dark:placeholder-text-tertiary/50"></textarea>
+                        <textarea id="contact_notes" wire:model="contact_notes" rows="3" placeholder="サイトの特徴やご要望などがあればご記入ください" class="w-full rounded-lg border border-slate-200/50 bg-white/50 px-4 py-2.5 text-sm text-text-primary placeholder-text-tertiary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent dark:border-white/10 dark:bg-black/40 dark:text-white dark:placeholder-text-tertiary/50"></textarea>
                         @error('contact_notes') <span class="mt-1 block text-xs text-red-500">{{ $message }}</span> @enderror
                     </div>
                 </div>

@@ -58,9 +58,10 @@
                     </div>
                 </div>
 
-                <a href="{{ route('front.apply') }}" class="transition-colors hover:text-text-primary dark:hover:text-white" wire:navigate>相互リンク申請</a>
                 <a href="{{ route('front.sites-index') }}" class="transition-colors hover:text-text-primary dark:hover:text-white" wire:navigate>登録サイト</a>
                 <a href="{{ route('front.rss-index') }}" class="transition-colors hover:text-text-primary dark:hover:text-white" wire:navigate>RSS一覧</a>
+                <a href="{{ route('front.ranking') }}" class="transition-colors hover:text-text-primary dark:hover:text-white" wire:navigate>ブログランキング</a>
+                <a href="{{ route('front.apply') }}" class="transition-colors hover:text-text-primary dark:hover:text-white" wire:navigate>相互リンク申請</a>
             </nav>
 
             {{-- Mobile hamburger --}}
@@ -75,6 +76,18 @@
                     <path x-show="mobileMenuOpen" x-cloak stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12" />
                 </svg>
             </button>
+        </div>
+
+        {{-- Horizontal App Navigation (Category tab style) --}}
+        <div class="border-t border-border/40 bg-surface-elevated/50 backdrop-blur-xl dark:border-border-dark/40 dark:bg-surface-elevated-dark/50">
+            <div class="mx-auto max-w-5xl px-4">
+                <nav class="flex items-center gap-6 overflow-x-auto py-2.5 text-sm font-medium text-text-secondary dark:text-text-tertiary [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-black/10 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:h-1 dark:[&::-webkit-scrollbar-thumb]:bg-white/10">
+                    <a href="{{ url('/') }}" class="shrink-0 transition-colors hover:text-text-primary dark:hover:text-white {{ request()->is('/') ? 'text-accent dark:text-accent font-bold' : '' }}" wire:navigate>総合トップ</a>
+                    @foreach($activeApps as $appItem)
+                        <a href="{{ route('front.home', $appItem) }}" class="shrink-0 transition-colors hover:text-text-primary dark:hover:text-white {{ request()->route('app') === $appItem->api_slug ? 'text-accent dark:text-accent font-bold' : '' }}" wire:navigate>{{ $appItem->name }}</a>
+                    @endforeach
+                </nav>
+            </div>
         </div>
 
         {{-- Mobile slide-down menu --}}
@@ -102,9 +115,10 @@
                     </div>
                 </div>
 
-                <a href="{{ route('front.apply') }}" class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10" wire:navigate>相互リンク申請</a>
                 <a href="{{ route('front.sites-index') }}" class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10" wire:navigate>登録サイト</a>
                 <a href="{{ route('front.rss-index') }}" class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10" wire:navigate>RSS一覧</a>
+                <a href="{{ route('front.ranking') }}" class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10" wire:navigate>ブログランキング</a>
+                <a href="{{ route('front.apply') }}" class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10" wire:navigate>相互リンク申請</a>
             </nav>
         </div>
     </header>

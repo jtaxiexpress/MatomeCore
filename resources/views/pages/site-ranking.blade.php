@@ -33,20 +33,20 @@ class extends Component {
             </p>
         </div>
 
-        <div class="rounded-2xl bg-surface-elevated shadow-sm dark:bg-surface-elevated-dark overflow-hidden border border-border/40 dark:border-border-dark/40">
+        <div class="rounded-xl bg-surface-elevated/50 backdrop-blur-xl shadow-sm dark:bg-surface-elevated-dark/50 overflow-hidden border border-border/40 dark:border-border-dark/40">
             <ul class="divide-y divide-border/40 dark:divide-border-dark/40">
                 @forelse ($this->rankedSites as $index => $site)
-                    <li class="flex items-center gap-4 p-4 transition-colors hover:bg-black/5 dark:hover:bg-white/5">
-                        <div class="flex size-10 shrink-0 items-center justify-center rounded-full font-bold {{ $index === 0 ? 'bg-yellow-500 text-white' : ($index === 1 ? 'bg-gray-400 text-white' : ($index === 2 ? 'bg-amber-600 text-white' : 'bg-surface dark:bg-surface-dark text-text-secondary dark:text-text-tertiary')) }}">
+                    <li class="flex items-center gap-3 p-3 transition-colors hover:bg-black/5 dark:hover:bg-white/5">
+                        <div class="flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-bold {{ $index === 0 ? 'bg-yellow-500 text-white' : ($index === 1 ? 'bg-gray-400 text-white' : ($index === 2 ? 'bg-amber-600 text-white' : 'bg-surface dark:bg-surface-dark text-text-secondary dark:text-text-tertiary')) }}">
                             {{ $index + 1 }}
                         </div>
                         <div class="min-w-0 flex-1">
-                            <a href="{{ $site->url }}" target="_blank" rel="noopener noreferrer" class="truncate text-base font-medium text-text-primary hover:text-accent dark:text-white dark:hover:text-accent">
+                            <a href="{{ $site->url }}" target="_blank" rel="noopener noreferrer" class="truncate text-sm font-medium text-text-primary hover:text-accent dark:text-white dark:hover:text-accent">
                                 {{ $site->name }}
                             </a>
                         </div>
                         <div class="shrink-0 text-right">
-                            <span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-semibold text-accent dark:bg-accent/20">
+                            <span class="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-semibold text-accent dark:bg-accent/20">
                                 📈 {{ number_format($site->traffic_score ?? 0) }} pts
                             </span>
                         </div>

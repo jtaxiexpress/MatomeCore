@@ -47,10 +47,10 @@ class extends Component {
     }
 
     /**
-     * @return \Illuminate\Contracts\Pagination\Paginator
+     * @return \Illuminate\Contracts\Pagination\LengthAwarePaginator
      */
     #[Computed]
-    public function articles(): \Illuminate\Contracts\Pagination\Paginator
+    public function articles(): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
         $query = Article::query()
             ->select([

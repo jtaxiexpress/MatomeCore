@@ -46,24 +46,28 @@ class extends Component {
                             {{ $app->name }}
                         </h2>
 
-                        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                            @foreach ($app->sites as $site)
-                                <div class="flex flex-col justify-between rounded-xl border border-border/40 bg-surface-elevated p-4 shadow-sm dark:border-border-dark/40 dark:bg-surface-elevated-dark">
-                                    <div>
-                                        <a href="{{ $site->url }}" target="_blank" rel="noopener noreferrer" class="text-sm font-bold text-text-primary hover:text-accent dark:text-white dark:hover:text-accent line-clamp-2">
-                                            {{ $site->name }}
-                                        </a>
-                                        @if ($site->contact_notes)
-                                            <p class="mt-2 text-xs text-text-secondary dark:text-text-tertiary line-clamp-2">
-                                                {{ $site->contact_notes }}
-                                            </p>
-                                        @endif
-                                    </div>
-                                    <div class="mt-4 flex items-center justify-between text-xs text-text-tertiary">
-                                        <span>最新記事: {{ number_format($site->articles_count) }}件</span>
-                                    </div>
-                                </div>
-                            @endforeach
+                        <div class="rounded-xl border border-border/40 bg-surface-elevated/50 backdrop-blur-xl dark:border-border-dark/40 dark:bg-surface-elevated-dark/50 overflow-hidden">
+                            <ul class="divide-y divide-border/40 dark:divide-border-dark/40">
+                                @foreach ($app->sites as $site)
+                                    <li class="flex items-center justify-between gap-2 p-3 hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                                        <div class="min-w-0 flex-1">
+                                            <a href="{{ $site->url }}" target="_blank" rel="noopener noreferrer" class="truncate text-sm font-medium text-text-primary hover:text-accent dark:text-white dark:hover:text-accent">
+                                                {{ $site->name }}
+                                            </a>
+                                            @if ($site->contact_notes)
+                                                <span class="ml-2 text-[11px] text-text-secondary dark:text-text-tertiary truncate max-w-[150px] sm:max-w-[300px] inline-block align-middle hidden sm:inline-block">
+                                                    - {{ $site->contact_notes }}
+                                                </span>
+                                            @endif
+                                        </div>
+                                        <div class="shrink-0 text-right">
+                                            <span class="inline-flex items-center justify-center rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-semibold text-accent dark:bg-accent/20">
+                                                記事: {{ number_format($site->articles_count) }}
+                                            </span>
+                                        </div>
+                                    </li>
+                                @endforeach
+                            </ul>
                         </div>
                     </section>
                 @endif
