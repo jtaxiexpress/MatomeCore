@@ -1,21 +1,26 @@
 @php
     use App\Models\Site;
+    use Illuminate\Support\Facades\Cache;
 
     // Determine current App context
-    $appSlug = request()->route('app');
+    $app = request()->route('app');
+    $appId = $app instanceof \App\Models\App ? $app->id : null;
 
-    $query = Site::where('is_active', true);
+    $cacheKey = $appId ? "ranking_app_{$appId}" : "ranking_app_all";
 
-    if ($appSlug) {
-        $query->whereHas('app', function ($q) use ($appSlug) {
-            $q->where('api_slug', $appSlug);
-        });
-    }
+    $topSites = Cache::remember($cacheKey, 60 * 5, function () use ($appId) {
+        $query = Site::where('is_active', true);
 
-    $topSites = $query->orderByDesc('daily_in_count')
-        ->orderByDesc('id')
-        ->limit(10)
-        ->get();
+        if ($appId) {
+            $query->where('app_id', $appId);
+        }
+
+        return $query->orderByDesc('traffic_score')
+            ->orderByDesc('id')
+            ->limit(10)
+            ->get(['id', 'name', 'url', 'traffic_score'])
+            ->toArray();
+    });
 @endphp
 
 <div class="sticky top-20 flex flex-col gap-4">
@@ -26,32 +31,32 @@
         </h3>
 
         <ul class="flex flex-col gap-3">
-            @forelse ($topSites as $index => $site)
+            @forelse ($topSites as $site)
                 <li class="flex items-center gap-3">
-                    @if ($index === 0)
+                    @if ($loop->index === 0)
                         <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-yellow-400/20 text-[11px] font-bold text-yellow-600 dark:bg-yellow-400/10 dark:text-yellow-400">
                             1
                         </span>
-                    @elseif ($index === 1)
+                    @elseif ($loop->index === 1)
                         <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-slate-300/30 text-[11px] font-bold text-slate-600 dark:bg-slate-300/10 dark:text-slate-300">
                             2
                         </span>
-                    @elseif ($index === 2)
+                    @elseif ($loop->index === 2)
                         <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-amber-600/20 text-[11px] font-bold text-amber-700 dark:bg-amber-600/10 dark:text-amber-500">
                             3
                         </span>
                     @else
                         <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface text-[11px] font-bold text-text-secondary dark:bg-surface-dark dark:text-text-tertiary">
-                            {{ $index + 1 }}
+                            {{ $loop->iteration }}
                         </span>
                     @endif
 
-                    <a href="{{ $site->url }}" target="_blank" rel="noopener noreferrer" class="min-w-0 flex-1 transition-opacity hover:opacity-70">
+                    <a href="{{ $site['url'] }}" target="_blank" rel="noopener noreferrer" class="min-w-0 flex-1 transition-opacity hover:opacity-70">
                         <p class="truncate text-[13px] font-medium text-text-primary dark:text-white">
-                            {{ $site->name }}
+                            {{ $site['name'] }}
                         </p>
                         <p class="mt-0.5 text-[10px] text-text-tertiary">
-                            IN: {{ number_format($site->daily_in_count) }}
+                            📈 {{ number_format($site['traffic_score'] ?? 0) }} pts
                         </p>
                     </a>
                 </li>

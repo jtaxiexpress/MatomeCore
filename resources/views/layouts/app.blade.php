@@ -59,6 +59,8 @@
                 </div>
 
                 <a href="{{ route('front.apply') }}" class="transition-colors hover:text-text-primary dark:hover:text-white" wire:navigate>相互リンク申請</a>
+                <a href="{{ route('front.sites-index') }}" class="transition-colors hover:text-text-primary dark:hover:text-white" wire:navigate>登録サイト</a>
+                <a href="{{ route('front.rss-index') }}" class="transition-colors hover:text-text-primary dark:hover:text-white" wire:navigate>RSS一覧</a>
             </nav>
 
             {{-- Mobile hamburger --}}
@@ -101,6 +103,8 @@
                 </div>
 
                 <a href="{{ route('front.apply') }}" class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10" wire:navigate>相互リンク申請</a>
+                <a href="{{ route('front.sites-index') }}" class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10" wire:navigate>登録サイト</a>
+                <a href="{{ route('front.rss-index') }}" class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10" wire:navigate>RSS一覧</a>
             </nav>
         </div>
     </header>

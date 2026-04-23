@@ -56,4 +56,29 @@ class FeedController extends Controller
 
         return response($content, 200, ['Content-Type' => 'application/xml; charset=utf-8']);
     }
+
+    public function category(App $app, \App\Models\Category $category): Response
+    {
+        abort_unless($app->is_active, 404);
+        abort_unless($category->app_id === $app->id, 404);
+
+        $articles = Article::query()
+            ->whereBelongsTo($app)
+            ->whereBelongsTo($category)
+            ->with(['app:id,api_slug', 'site:id,name'])
+            ->trafficFiltered()
+            ->orderByDesc('published_at')
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get();
+
+        $content = view('rss', [
+            'title' => $category->name . ' - ' . $app->name,
+            'description' => $category->name . 'カテゴリの最新まとめ記事を配信します。',
+            'link' => route('front.home', ['app' => $app, 'cat' => $category->api_slug]),
+            'articles' => $articles,
+        ]);
+
+        return response($content, 200, ['Content-Type' => 'application/xml; charset=utf-8']);
+    }
 }
