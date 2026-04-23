@@ -36,7 +36,7 @@ class FrontHomePageTest extends TestCase
         $response = $this->get('/');
 
         $response->assertOk();
-        $response->assertSee('MatomeCore 全体記事');
+        $response->assertSee('ゆにこーんアンテナ 全体記事');
         $response->assertSee('クロスアプリテスト記事');
     }
 

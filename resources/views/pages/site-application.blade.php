@@ -22,6 +22,9 @@ class extends Component {
     #[Validate('required|email|max:255')]
     public string $contact_email = '';
 
+    #[Validate('nullable|string|max:1000')]
+    public ?string $contact_notes = null;
+
     #[Validate('required|exists:apps,id')]
     public ?int $app_id = null;
 
@@ -46,6 +49,7 @@ class extends Component {
                     'url' => $this->url,
                     'rss_url' => $this->rss_url,
                     'contact_email' => $this->contact_email,
+                    'contact_notes' => $this->contact_notes,
                     'is_active' => false,
                 ]);
 
@@ -62,7 +66,7 @@ class extends Component {
 
 <div>
     @section('title', '相互リンク登録申請')
-    @section('tenant_name', 'MatomeCore - 登録申請')
+    @section('tenant_name', 'ゆにこーんアンテナ - 登録申請')
 
     <div class="mx-auto max-w-2xl">
         <div class="mb-8 text-center">
@@ -136,6 +140,13 @@ class extends Component {
                         <label for="contact_email" class="mb-2 block text-sm font-medium text-text-primary dark:text-white">連絡先メールアドレス <span class="text-red-500">*</span></label>
                         <input type="email" id="contact_email" wire:model="contact_email" placeholder="admin@example.com" class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text-primary placeholder-text-tertiary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent dark:border-border-dark dark:bg-surface-dark dark:text-white dark:placeholder-text-tertiary/50">
                         @error('contact_email') <span class="mt-1 block text-xs text-red-500">{{ $message }}</span> @enderror
+                    </div>
+
+                    {{-- Contact Notes --}}
+                    <div>
+                        <label for="contact_notes" class="mb-2 block text-sm font-medium text-text-primary dark:text-white">連絡事項 <span class="text-xs text-text-tertiary font-normal">(任意)</span></label>
+                        <textarea id="contact_notes" wire:model="contact_notes" rows="3" placeholder="サイトの特徴やご要望などがあればご記入ください" class="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-text-primary placeholder-text-tertiary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent dark:border-border-dark dark:bg-surface-dark dark:text-white dark:placeholder-text-tertiary/50"></textarea>
+                        @error('contact_notes') <span class="mt-1 block text-xs text-red-500">{{ $message }}</span> @enderror
                     </div>
                 </div>
 

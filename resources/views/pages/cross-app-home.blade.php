@@ -46,7 +46,9 @@ class extends Component {
             ->whereIn('articles.app_id', $activeAppIds)
             ->with(['app:id,name,api_slug', 'site:id,name'])
             ->trafficFiltered()
-            ->orderByDesc('published_at')
+            ->join('sites', 'articles.site_id', '=', 'sites.id')
+            ->orderByDesc('sites.traffic_score')
+            ->orderByDesc('articles.published_at')
             ->orderByDesc('articles.id')
             ->limit($this->perPage)
             ->get();
@@ -67,13 +69,13 @@ class extends Component {
     #[Computed]
     public function pageTitle(): string
     {
-        return 'MatomeCore - 横断アンテナ';
+        return 'ゆにこーんアンテナ - 横断アンテナ';
     }
 }; ?>
 
 <div>
     @section('title', $this->pageTitle)
-    @section('tenant_name', 'MatomeCore 全体記事')
+    @section('tenant_name', 'ゆにこーんアンテナ 全体記事')
 
     {{-- Hot Entries --}}
     <x-hot-entries />

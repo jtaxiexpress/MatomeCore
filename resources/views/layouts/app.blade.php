@@ -17,7 +17,7 @@
     @if(isset($app) && $app instanceof \App\Models\App)
         <link rel="alternate" type="application/rss+xml" title="{{ $app->name }} RSS Feed" href="{{ route('front.rss.app', $app) }}" />
     @else
-        <link rel="alternate" type="application/rss+xml" title="MatomeCore 横断 RSS Feed" href="{{ route('front.rss.index') }}" />
+        <link rel="alternate" type="application/rss+xml" title="ゆにこーんアンテナ 横断 RSS Feed" href="{{ route('front.rss.index') }}" />
     @endif
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 

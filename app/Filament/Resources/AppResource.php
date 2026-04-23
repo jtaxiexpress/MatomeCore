@@ -289,6 +289,7 @@ class AppResource extends Resource
         return [
             RelationManagers\CategoriesRelationManager::class,
             RelationManagers\SitesRelationManager::class,
+            RelationManagers\SiteApplicationsRelationManager::class,
         ];
     }
 

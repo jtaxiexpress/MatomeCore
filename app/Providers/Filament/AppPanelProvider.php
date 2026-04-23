@@ -49,7 +49,7 @@ class AppPanelProvider extends PanelProvider
                 'primary' => Color::Sky,
             ])
             ->font('Inter')
-            ->brandName('MatomeCore App')
+            ->brandName('ゆにこーんアンテナ App')
             ->resources([
                 SiteResource::class,
                 CategoryResource::class,

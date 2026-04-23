@@ -20,4 +20,11 @@ class ManageArticles extends ManageRecords
                 ->modalSubmitActionLabel('登録する'),
         ];
     }
+
+    protected function getHeaderWidgets(): array
+    {
+        return [
+            ArticleResource\Widgets\PendingSiteApplicationsWidget::class,
+        ];
+    }
 }

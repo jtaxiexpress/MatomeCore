@@ -68,7 +68,8 @@ class extends Component {
                 'articles.published_at',
                 'articles.daily_out_count',
             ])
-            ->whereBelongsTo($this->app)
+            ->join('sites', 'articles.site_id', '=', 'sites.id')
+            ->where('articles.app_id', $this->app->id)
             ->with(['category:id,default_image_path', 'site:id,name'])
             ->trafficFiltered();
 
@@ -79,12 +80,13 @@ class extends Component {
                 ->first();
 
             if ($category) {
-                $query->where('category_id', $category->id);
+                $query->where('articles.category_id', $category->id);
             }
         }
 
         return $query
-            ->orderByDesc('published_at')
+            ->orderByDesc('sites.traffic_score')
+            ->orderByDesc('articles.published_at')
             ->orderByDesc('articles.id')
             ->limit($this->perPage)
             ->get();

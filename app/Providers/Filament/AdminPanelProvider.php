@@ -40,7 +40,7 @@ class AdminPanelProvider extends PanelProvider
                 'gray' => Color::Slate,
             ])
             ->font('Inter')
-            ->brandName('MatomeCore Admin')
+            ->brandName('ゆにこーんアンテナ Admin')
             ->homeUrl('/admin')
             ->resources([
                 AppResource::class,

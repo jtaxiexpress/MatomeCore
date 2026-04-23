@@ -25,7 +25,7 @@ class FeedController extends Controller
             ->get();
 
         $content = view('rss', [
-            'title' => 'MatomeCore - 横断アンテナ',
+            'title' => 'ゆにこーんアンテナ - 横断アンテナ',
             'description' => '最新のまとめ記事を横断して配信します。',
             'link' => url('/'),
             'articles' => $articles,
