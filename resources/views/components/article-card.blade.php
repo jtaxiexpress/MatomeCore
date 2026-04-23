@@ -20,6 +20,9 @@
     }
     
     $articleUrl = route('front.go', ['app' => $appSlug, 'article' => $article->id]);
+
+    $isNew = $publishedAt && $publishedAt->diffInHours(now()) <= 2;
+    $isHot = $clickCount >= 10 || ($article->site->traffic_score ?? 0) >= 50;
 @endphp
 
 <article class="group relative flex gap-3 rounded-xl bg-surface-elevated p-3 shadow-card transition-all duration-200 hover:shadow-card-hover active:scale-[0.98] dark:bg-surface-elevated-dark">
@@ -49,15 +52,23 @@
     {{-- Content --}}
     <div class="flex min-w-0 flex-1 flex-col justify-between">
         {{-- Title --}}
-        <a
-            href="{{ $articleUrl }}"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="line-clamp-2 text-[13px] font-medium leading-snug text-text-primary transition-colors group-hover:text-accent sm:text-sm dark:text-white dark:group-hover:text-accent"
-            id="article-title-{{ $article->id }}"
-        >
-            {{ $article->title }}
-        </a>
+        <div class="flex items-start gap-1">
+            @if ($isNew)
+                <span class="mt-0.5 shrink-0 rounded bg-red-500 px-1.5 py-0.5 text-[10px] font-bold text-white">NEW</span>
+            @endif
+            @if ($isHot)
+                <span class="mt-0.5 shrink-0 rounded bg-orange-500 px-1.5 py-0.5 text-[10px] font-bold text-white">🔥HOT</span>
+            @endif
+            <a
+                href="{{ $articleUrl }}"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="line-clamp-2 text-[13px] font-medium leading-snug text-text-primary transition-colors group-hover:text-accent sm:text-sm dark:text-white dark:group-hover:text-accent"
+                id="article-title-{{ $article->id }}"
+            >
+                {{ $article->title }}
+            </a>
+        </div>
 
         {{-- Meta row --}}
         <div class="mt-1.5 flex items-center gap-2 text-[11px] text-text-secondary dark:text-text-tertiary">
