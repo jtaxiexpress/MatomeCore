@@ -7,6 +7,7 @@ namespace Tests\Unit;
 use App\Models\Site;
 use App\Services\ArticleMetadataResolverService;
 use App\Services\ArticleScraperService;
+use App\Services\CrawlHttpClient;
 use Carbon\Carbon;
 use Tests\TestCase;
 
@@ -14,7 +15,7 @@ class ArticleMetadataResolverServiceTest extends TestCase
 {
     public function test_it_keeps_existing_metadata_without_scraping_when_complete(): void
     {
-        $scraper = new class extends ArticleScraperService
+        $scraper = new class(new CrawlHttpClient) extends ArticleScraperService
         {
             public bool $called = false;
 
@@ -62,7 +63,7 @@ class ArticleMetadataResolverServiceTest extends TestCase
 
     public function test_it_uses_scraped_values_only_for_missing_fields(): void
     {
-        $scraper = new class extends ArticleScraperService
+        $scraper = new class(new CrawlHttpClient) extends ArticleScraperService
         {
             public bool $called = false;
 
@@ -113,7 +114,7 @@ class ArticleMetadataResolverServiceTest extends TestCase
         Carbon::setTestNow('2026-04-18 12:34:56');
 
         try {
-            $scraper = new class extends ArticleScraperService
+            $scraper = new class(new CrawlHttpClient) extends ArticleScraperService
             {
                 public function scrape(string $url, ?string $siteDateSelector = null, array $siteNgImages = []): array
                 {

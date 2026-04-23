@@ -11,7 +11,9 @@ use App\Models\Site;
 use App\Notifications\DailyCategorySummaryNotification;
 use Illuminate\Console\Command;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
+use RuntimeException;
 use Tests\TestCase;
 
 class SendDailyCategoryReportCommandTest extends TestCase
@@ -115,5 +117,26 @@ class SendDailyCategoryReportCommandTest extends TestCase
             ->assertExitCode(Command::FAILURE);
 
         Notification::assertNothingSent();
+    }
+
+    public function test_it_logs_error_and_keeps_success_when_slack_notification_fails(): void
+    {
+        config(['services.slack.report_webhook_url' => 'https://hooks.slack.test/services/report-webhook']);
+
+        Log::shouldReceive('error')
+            ->once()
+            ->withArgs(function (string $message, array $context): bool {
+                return $message === '[SendDailyCategoryReportCommand] Failed to send report notification to Slack.'
+                    && ($context['exception'] ?? null) === RuntimeException::class
+                    && ($context['message'] ?? null) === 'DNS resolution failed';
+            });
+
+        Notification::shouldReceive('send')
+            ->once()
+            ->andThrow(new RuntimeException('DNS resolution failed'));
+
+        $this->artisan('app:send-daily-category-report')
+            ->expectsOutput('Failed to send daily category report to Slack. See logs for details.')
+            ->assertExitCode(Command::SUCCESS);
     }
 }
