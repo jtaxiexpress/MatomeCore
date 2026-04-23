@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Services\ArticleAiService;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -19,7 +20,7 @@ class ArticleAiServiceBatchTest extends TestCase
         Cache::put('ai_prompt_template', "{categories}\nタイトル:{title}");
         Cache::put('ai_base_prompt', 'PROMPT {app_prompt} {categories} {articles_json} {count}');
         Cache::put('ollama_model', 'gemma4:e2b');
-        $this->service = new ArticleAiService;
+        $this->service = app(ArticleAiService::class);
     }
 
     public function test_classify_and_rewrite_returns_structured_result_with_ollama_json_format(): void
@@ -152,8 +153,10 @@ class ArticleAiServiceBatchTest extends TestCase
         });
     }
 
-    public function test_classify_and_rewrite_batch_returns_full_fallback_on_connection_error(): void
+    public function test_classify_and_rewrite_batch_throws_on_connection_error(): void
     {
+        $this->expectException(ConnectionException::class);
+
         Http::preventStrayRequests();
         Http::fake(function ($request) {
             if (str_ends_with($request->url(), '/api/generate')) {
@@ -163,7 +166,7 @@ class ArticleAiServiceBatchTest extends TestCase
             return Http::response(null, 404);
         });
 
-        $result = $this->service->classifyAndRewriteBatch(
+        $this->service->classifyAndRewriteBatch(
             articles: [
                 ['id' => 1, 'title' => '元タイトル1'],
                 ['id' => 2, 'title' => '元タイトル2'],
@@ -173,10 +176,5 @@ class ArticleAiServiceBatchTest extends TestCase
                 ['id' => 99, 'name' => '未分類'],
             ],
         );
-
-        $this->assertSame(99, $result[1]['category_id']);
-        $this->assertSame('元タイトル1', $result[1]['rewritten_title']);
-        $this->assertSame(99, $result[2]['category_id']);
-        $this->assertSame('元タイトル2', $result[2]['rewritten_title']);
     }
 }

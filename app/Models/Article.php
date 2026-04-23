@@ -17,12 +17,6 @@ class Article extends Model
 
     protected $guarded = [];
 
-    /**
-     * JSON シリアライズ時に display_thumbnail_url を自動付与する。
-     * API レスポンスでカテゴリのデフォルト画像フォールバックを透過的に提供するため。
-     */
-    protected $appends = ['display_thumbnail_url'];
-
     protected function casts(): array
     {
         return [
@@ -75,7 +69,13 @@ class Article extends Model
                     return $this->thumbnail_url;
                 }
 
-                $defaultImagePath = $this->category?->default_image_path ?? null;
+                $category = $this->getRelationValue('category');
+
+                if (! $category instanceof Category) {
+                    return null;
+                }
+
+                $defaultImagePath = $category->default_image_path;
 
                 if (empty($defaultImagePath)) {
                     return null;

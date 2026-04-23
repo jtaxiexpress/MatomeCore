@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit;
 
-use App\Services\ArticleAiService;
+use App\Clients\OllamaClient;
 use Tests\TestCase;
 
 class ArticleAiServiceOllamaUrlTest extends TestCase
@@ -13,12 +13,8 @@ class ArticleAiServiceOllamaUrlTest extends TestCase
     {
         config(['ai.providers.ollama.url' => 'https://ollama.unicorn.tokyo']);
 
-        $service = new ArticleAiService;
-
-        $method = new \ReflectionMethod($service, 'ollamaGenerateUrl');
-        $method->setAccessible(true);
-
-        $url = $method->invoke($service);
+        $client = new OllamaClient;
+        $url = $client->generateUrl();
 
         $this->assertSame('https://ollama.unicorn.tokyo/api/generate', $url);
     }
@@ -27,12 +23,8 @@ class ArticleAiServiceOllamaUrlTest extends TestCase
     {
         config(['ai.providers.ollama.url' => 'https://ollama.unicorn.tokyo/api']);
 
-        $service = new ArticleAiService;
-
-        $method = new \ReflectionMethod($service, 'ollamaGenerateUrl');
-        $method->setAccessible(true);
-
-        $url = $method->invoke($service);
+        $client = new OllamaClient;
+        $url = $client->generateUrl();
 
         $this->assertSame('https://ollama.unicorn.tokyo/api/generate', $url);
     }

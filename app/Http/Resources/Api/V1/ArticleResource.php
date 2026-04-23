@@ -22,9 +22,22 @@ class ArticleResource extends JsonResource
             'summary' => $this->summary,
             'lead_text' => $this->lead_text,
             'url' => $this->url,
-            'thumbnail_url' => $this->display_thumbnail_url,
+            'thumbnail_url' => $this->resolveThumbnailUrl(),
             'fetch_source' => $this->fetch_source,
             'published_at' => $this->published_at?->toISOString(),
         ];
+    }
+
+    private function resolveThumbnailUrl(): ?string
+    {
+        if (is_string($this->thumbnail_url) && $this->thumbnail_url !== '') {
+            return $this->thumbnail_url;
+        }
+
+        if (! $this->resource->relationLoaded('category')) {
+            return null;
+        }
+
+        return $this->display_thumbnail_url;
     }
 }

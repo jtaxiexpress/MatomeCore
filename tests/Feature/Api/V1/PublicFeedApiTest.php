@@ -106,17 +106,20 @@ class PublicFeedApiTest extends TestCase
         ]);
         $category = Category::factory()->for($app)->create([
             'api_slug' => 'tech',
+            'default_image_path' => 'https://cdn.example.com/category-default.png',
         ]);
         $site = Site::factory()->for($app)->create();
 
         Article::factory()->for($app)->for($category)->for($site)->create([
             'title' => 'Older',
             'url' => 'https://example.com/older',
+            'thumbnail_url' => null,
             'published_at' => now()->subDay(),
         ]);
         Article::factory()->for($app)->for($category)->for($site)->create([
             'title' => 'Latest',
             'url' => 'https://example.com/latest',
+            'thumbnail_url' => null,
             'published_at' => now(),
         ]);
 
@@ -125,6 +128,7 @@ class PublicFeedApiTest extends TestCase
         $response->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.title', 'Latest')
+            ->assertJsonPath('data.0.thumbnail_url', 'https://cdn.example.com/category-default.png')
             ->assertJsonPath('meta.per_page', 1)
             ->assertJsonPath('meta.total', 2);
     }

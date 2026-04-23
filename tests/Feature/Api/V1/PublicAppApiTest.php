@@ -39,18 +39,24 @@ class PublicAppApiTest extends TestCase
     public function test_feed_endpoint_returns_paginated_articles_for_app(): void
     {
         $app = AppModel::factory()->create(['api_slug' => 'news-app', 'is_active' => true]);
-        $category = Category::factory()->for($app)->create(['name' => 'Tech', 'api_slug' => 'tech']);
+        $category = Category::factory()->for($app)->create([
+            'name' => 'Tech',
+            'api_slug' => 'tech',
+            'default_image_path' => 'https://cdn.example.com/tech-default.png',
+        ]);
         $site = Site::factory()->for($app)->create(['name' => 'Tech Media']);
 
         Article::factory()->for($app)->for($category)->for($site)->create([
             'title' => 'Older Post',
             'url' => 'https://example.com/older-post',
+            'thumbnail_url' => null,
             'published_at' => now()->subDay(),
         ]);
 
         Article::factory()->for($app)->for($category)->for($site)->create([
             'title' => 'Latest Post',
             'url' => 'https://example.com/latest-post',
+            'thumbnail_url' => null,
             'published_at' => now(),
         ]);
 
@@ -59,6 +65,7 @@ class PublicAppApiTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('data.0.title', 'Latest Post')
             ->assertJsonPath('data.0.site_name', 'Tech Media')
+            ->assertJsonPath('data.0.thumbnail_url', 'https://cdn.example.com/tech-default.png')
             ->assertJsonPath('meta.current_page', 1)
             ->assertJsonPath('meta.total', 2);
     }
