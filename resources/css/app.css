@@ -6,6 +6,66 @@
 @source '../**/*.js';
 
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-sans: 'Inter', 'Noto Sans JP', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+        'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+
+    /* Surface colors */
+    --color-surface: #F5F5F7;
+    --color-surface-elevated: #FFFFFF;
+    --color-surface-dark: #1C1C1E;
+    --color-surface-elevated-dark: #2C2C2E;
+
+    /* Text colors */
+    --color-text-primary: #1D1D1F;
+    --color-text-secondary: #6E6E73;
+    --color-text-tertiary: #AEAEB2;
+
+    /* Accent */
+    --color-accent: #007AFF;
+    --color-accent-hover: #0056CC;
+
+    /* Semantic */
+    --color-momentum: #FF6B35;
+    --color-border: #D2D2D7;
+    --color-border-dark: #38383A;
+
+    /* Shadows */
+    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
+}
+
+/* Smooth scrolling for category tabs */
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+
+/* Skeleton loading animation */
+@keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+.skeleton {
+    background: linear-gradient(
+        90deg,
+        theme(--color-border) 25%,
+        theme(--color-surface) 50%,
+        theme(--color-border) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+}
+
+:is(.dark .skeleton) {
+    background: linear-gradient(
+        90deg,
+        theme(--color-border-dark) 25%,
+        theme(--color-surface-dark) 50%,
+        theme(--color-border-dark) 75%
+    );
+    background-size: 200% 100%;
 }
