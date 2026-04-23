@@ -19,7 +19,7 @@
     }
     
     $articleUrl = route('front.go', ['app' => $appSlug, 'article' => $article->id]);
-    $siteUrl = route('front.go', ['app' => $appSlug, 'article' => $article->id, 'to_site' => 1]);
+    $siteUrl = route('front.go', ['app' => $appSlug, 'article' => $article->id, 'site_redirect' => 1]); // We'll implement this parameter
 
     $isNew = $publishedAt && $publishedAt->diffInHours(now()) <= 2;
     $isHot = $clickCount >= 10 || ($article->site->traffic_score ?? 0) >= 50;
@@ -28,11 +28,11 @@
 <article 
     x-show="!mutedSites.includes({{ $article->site_id ?? 'null' }})"
     x-transition.out.opacity.duration.300ms
-    class="group relative flex items-center gap-2 py-2 border-b border-border/40 last:border-0 hover:bg-black/5 active:bg-black/10 transition-colors px-2 -mx-2 dark:border-border-dark/40 dark:hover:bg-white/5 dark:active:bg-white/10"
+    class="group relative flex items-center gap-2 py-1.5 border-b border-border/40 last:border-0 hover:bg-black/5 active:bg-black/10 transition-colors px-2 -mx-2 dark:border-border-dark/40 dark:hover:bg-white/5 dark:active:bg-white/10"
 >
     {{-- Published time --}}
     @if ($publishedAt)
-        <time datetime="{{ $publishedAt->toISOString() }}" class="shrink-0 w-10 text-right text-[11px] tabular-nums text-text-tertiary">
+        <time datetime="{{ $publishedAt->toISOString() }}" class="shrink-0 w-11 text-right text-[11px] tabular-nums text-text-tertiary">
             {{ $publishedAt->format('H:i') }}
         </time>
     @endif

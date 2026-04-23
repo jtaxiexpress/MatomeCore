@@ -34,6 +34,8 @@ class ArticleRedirectController extends Controller
             ProcessOutTraffic::dispatch($article->id, now()->toDateTimeString());
         }
 
-        return redirect()->away($article->url);
+        $targetUrl = $request->query('to_site') ? $article->site->url : $article->url;
+
+        return redirect()->away($targetUrl);
     }
 }

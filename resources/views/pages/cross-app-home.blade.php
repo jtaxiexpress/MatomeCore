@@ -89,18 +89,18 @@ class extends Component {
     <x-hot-entries />
 
     {{-- Article feed --}}
-    <div class="flex flex-col gap-2" id="article-feed">
+    <div class="flex flex-col gap-0" id="article-feed">
         @php
             $lastDate = null;
         @endphp
         @forelse ($this->articles as $index => $article)
             @php
-                $currentDate = $article->published_at ? $article->published_at->format('Y年m月d日') : '未設定';
+                $currentDate = $article->published_at ? $article->published_at->translatedFormat('n月j日（D）') : '未設定';
             @endphp
 
             @if ($lastDate !== $currentDate)
-                <div class="mt-2 mb-1 flex items-center gap-2 first:mt-0">
-                    <span class="text-sm font-bold text-text-primary dark:text-white">📅 {{ $currentDate }}</span>
+                <div class="mt-3 mb-1 flex items-center gap-2 first:mt-0">
+                    <span class="text-sm font-bold text-text-primary dark:text-white">{{ $currentDate }}</span>
                     <div class="h-px flex-1 bg-border/50 dark:bg-border-dark/50"></div>
                 </div>
                 @php
@@ -110,7 +110,9 @@ class extends Component {
 
             {{-- Infeed ad every N articles --}}
             @if ($index > 0 && $index % $this->adInterval === 0)
-                <x-ad-infeed />
+                <div class="py-2">
+                    <x-ad-infeed />
+                </div>
             @endif
 
             <x-article-card :article="$article" wire:key="article-cross-{{ $article->id }}" />
