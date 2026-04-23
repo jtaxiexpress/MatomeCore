@@ -54,6 +54,27 @@ class Article extends Model
     }
 
     /**
+     * スコアが著しく低いサイト（IN比率が極端に低くOUTが多い）の記事を除外するスコープ
+     */
+    public function scopeTrafficFiltered($query, int $minScore = -100)
+    {
+        return $query->whereHas('site', function ($q) use ($minScore) {
+            $q->where('traffic_score', '>=', $minScore)
+                ->orWhere('is_active', false); // Optional: depends on how inactive sites are handled, but usually we only query active sites anyway.
+        });
+    }
+
+    /**
+     * 新着かつサイトスコア（勢い）を加味した独自のソート
+     * daily_out_countを基準にする、またはシンプルに新しい順
+     */
+    public function scopeTrending($query)
+    {
+        return $query->orderByDesc('daily_out_count')
+            ->orderByDesc('published_at');
+    }
+
+    /**
      * 表示用サムネイルURLを返すアクセサ。
      *
      * 優先順位:

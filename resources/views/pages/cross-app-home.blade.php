@@ -45,6 +45,7 @@ class extends Component {
             ])
             ->whereIn('articles.app_id', $activeAppIds)
             ->with(['app:id,name,api_slug', 'site:id,name'])
+            ->trafficFiltered()
             ->orderByDesc('published_at')
             ->orderByDesc('articles.id')
             ->limit($this->perPage)
@@ -73,6 +74,9 @@ class extends Component {
 <div>
     @section('title', $this->pageTitle)
     @section('tenant_name', 'MatomeCore 全体記事')
+
+    {{-- Hot Entries --}}
+    <x-hot-entries />
 
     {{-- Article feed --}}
     <div class="flex flex-col gap-2" id="article-feed">

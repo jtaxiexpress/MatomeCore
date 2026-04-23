@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Front\ArticleRedirectController;
+use App\Http\Controllers\Front\FeedController;
 use App\Models\User;
 use Illuminate\Support\Facades\Route;
 
@@ -13,8 +14,17 @@ use Illuminate\Support\Facades\Route;
 Route::livewire('/', 'pages::cross-app-home')
     ->name('front.index');
 
+Route::livewire('/apply', 'pages::site-application')
+    ->name('front.apply');
+
 Route::livewire('/s/{app:api_slug}', 'pages::home')
     ->name('front.home');
+
+Route::get('/rss', [FeedController::class, 'index'])
+    ->name('front.rss.index');
+
+Route::get('/s/{app:api_slug}/rss', [FeedController::class, 'app'])
+    ->name('front.rss.app');
 
 Route::get('/s/{app:api_slug}/go/{article}', ArticleRedirectController::class)
     ->name('front.go');

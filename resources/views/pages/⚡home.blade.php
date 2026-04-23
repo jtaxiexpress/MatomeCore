@@ -69,7 +69,8 @@ class extends Component {
                 'articles.daily_out_count',
             ])
             ->whereBelongsTo($this->app)
-            ->with(['category:id,default_image_path', 'site:id,name']);
+            ->with(['category:id,default_image_path', 'site:id,name'])
+            ->trafficFiltered();
 
         if (filled($this->selectedCategory)) {
             $category = Category::query()
@@ -128,6 +129,9 @@ class extends Component {
             :selected="$selectedCategory"
         />
     </div>
+
+    {{-- Hot Entries --}}
+    <x-hot-entries :targetApp="$this->app" />
 
     {{-- Article feed --}}
     <div class="flex flex-col gap-2" id="article-feed">

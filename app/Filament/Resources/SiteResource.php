@@ -205,8 +205,13 @@ class SiteResource extends Resource
                                         ->send();
                                 }),
                         ]),
+                    TextInput::make('contact_email')
+                        ->label('連絡先メールアドレス (相互リンク申請用)')
+                        ->email()
+                        ->maxLength(255)
+                        ->nullable(),
                     Toggle::make('is_active')
-                        ->label('クローリング有効')
+                        ->label('クローリング有効 (未承認の場合はOFF)')
                         ->default(true)
                         ->inline(false),
                 ]),

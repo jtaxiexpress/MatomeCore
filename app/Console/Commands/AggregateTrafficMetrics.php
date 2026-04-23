@@ -60,6 +60,12 @@ class AggregateTrafficMetrics extends Command
             DB::table('sites')->where('id', $siteId)->update(['daily_out_count' => $count]);
         }
 
+        // 5. Calculate Traffic Score
+        // Score = (IN * 1.5) - OUT
+        DB::table('sites')->update([
+            'traffic_score' => DB::raw('FLOOR(daily_in_count * 1.5) - daily_out_count'),
+        ]);
+
         $this->info('Traffic aggregation completed.');
     }
 }
