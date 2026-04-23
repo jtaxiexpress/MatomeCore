@@ -26,7 +26,7 @@
 >
     {{-- Header --}}
     <header class="sticky top-0 z-40 border-b border-border/60 bg-surface-elevated/80 backdrop-blur-xl dark:border-border-dark/60 dark:bg-surface-elevated-dark/80">
-        <div class="mx-auto flex h-12 max-w-2xl items-center justify-between px-4">
+        <div class="mx-auto flex h-12 max-w-5xl items-center justify-between px-4">
             {{-- Site name --}}
             <a href="{{ url('/') }}" class="flex items-center gap-2 text-base font-bold tracking-tight transition-opacity hover:opacity-70">
                 <span class="text-lg">📡</span>
@@ -71,14 +71,22 @@
         </div>
     </header>
 
-    {{-- Main content --}}
-    <main class="mx-auto min-h-[calc(100dvh-3rem-4rem)] max-w-2xl px-4 py-4">
-        {{ $slot }}
+    {{-- Main content (2 columns on large screens) --}}
+    <main class="mx-auto flex min-h-[calc(100dvh-3rem-4rem)] max-w-5xl gap-6 px-4 py-4">
+        {{-- Primary Column (Feed) --}}
+        <div class="min-w-0 flex-1">
+            {{ $slot }}
+        </div>
+
+        {{-- Secondary Column (Sidebar Ranking) --}}
+        <aside class="hidden w-[300px] shrink-0 lg:block">
+            <x-sidebar-ranking />
+        </aside>
     </main>
 
     {{-- Footer --}}
     <footer class="border-t border-border/40 bg-surface-elevated/50 dark:border-border-dark/40 dark:bg-surface-elevated-dark/50">
-        <div class="mx-auto max-w-2xl px-4 py-6">
+        <div class="mx-auto max-w-5xl px-4 py-6">
             <div class="flex flex-col items-center gap-3 text-xs text-text-secondary dark:text-text-tertiary">
                 <div class="flex gap-4">
                     <a href="{{ url('/') }}" class="transition-colors hover:text-text-primary dark:hover:text-white">ホーム</a>

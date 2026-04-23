@@ -16,13 +16,14 @@ class ArticleRedirectTest extends TestCase
 
     public function test_article_redirect_records_click_and_redirects(): void
     {
+        \Illuminate\Support\Facades\Queue::fake();
+        \Illuminate\Support\Facades\Cache::flush();
+
         $app = App::factory()->create(['is_active' => true]);
         $site = Site::factory()->recycle($app)->create();
         $article = Article::factory()->recycle([$app, $site])->create([
             'url' => 'https://example.com/test-article',
         ]);
-
-        $this->assertDatabaseEmpty('article_clicks');
 
         $response = $this->get(route('front.go', [
             'app' => $app,
@@ -31,13 +32,35 @@ class ArticleRedirectTest extends TestCase
 
         $response->assertRedirect('https://example.com/test-article');
 
-        $this->assertDatabaseHas('article_clicks', [
-            'article_id' => $article->id,
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\ProcessOutTraffic::class, function ($job) use ($article) {
+            return $job->articleId === $article->id;
+        });
+    }
+
+    public function test_article_redirect_prevents_duplicate_clicks_within_timeframe(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+        \Illuminate\Support\Facades\Cache::flush();
+
+        $app = App::factory()->create(['is_active' => true]);
+        $site = Site::factory()->recycle($app)->create();
+        $article = Article::factory()->recycle([$app, $site])->create([
+            'url' => 'https://example.com/test-article',
         ]);
+
+        // First click
+        $this->get(route('front.go', ['app' => $app, 'article' => $article]));
+        
+        // Second click from same simulated IP
+        $this->get(route('front.go', ['app' => $app, 'article' => $article]));
+
+        // Should only push one job
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\ProcessOutTraffic::class, 1);
     }
 
     public function test_article_redirect_returns_404_if_article_belongs_to_different_app(): void
     {
+        \Illuminate\Support\Facades\Queue::fake();
         $app1 = App::factory()->create(['is_active' => true]);
         $app2 = App::factory()->create(['is_active' => true]);
 

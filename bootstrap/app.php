@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\TrackInTraffic;
 use App\Support\Slack\ExceptionAlertReporter;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -20,6 +21,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->redirectGuestsTo('/admin/login');
+        $middleware->web(append: [
+            TrackInTraffic::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->dontReportDuplicates();

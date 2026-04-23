@@ -22,22 +22,32 @@ class FrontHomePageTest extends TestCase
         $this->withoutVite();
     }
 
-    public function test_root_redirects_to_first_active_app(): void
+    public function test_root_displays_cross_app_home(): void
     {
         $app = App::factory()->create(['is_active' => true]);
+        $site = Site::factory()->recycle($app)->create();
+        $category = Category::factory()->recycle($app)->create();
+
+        Article::factory()->recycle([$app, $site, $category])->create([
+            'title' => 'クロスアプリテスト記事',
+            'published_at' => now(),
+        ]);
 
         $response = $this->get('/');
 
-        $response->assertRedirect(route('front.home', $app));
+        $response->assertOk();
+        $response->assertSee('MatomeCore 全体記事');
+        $response->assertSee('クロスアプリテスト記事');
     }
 
-    public function test_root_returns_404_when_no_active_apps(): void
+    public function test_root_displays_empty_state_when_no_active_apps(): void
     {
         App::factory()->create(['is_active' => false]);
 
         $response = $this->get('/');
 
-        $response->assertNotFound();
+        $response->assertOk();
+        $response->assertSee('記事が見つかりませんでした');
     }
 
     public function test_home_page_renders_for_valid_app(): void

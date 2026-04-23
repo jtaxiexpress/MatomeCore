@@ -1,7 +1,6 @@
 <?php
 
 use App\Http\Controllers\Front\ArticleRedirectController;
-use App\Models\App;
 use App\Models\User;
 use Illuminate\Support\Facades\Route;
 
@@ -11,18 +10,8 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 */
 
-Route::get('/', function () {
-    $app = App::query()
-        ->where('is_active', true)
-        ->orderBy('id')
-        ->first();
-
-    if ($app === null) {
-        abort(404, 'アクティブなアプリが見つかりません。');
-    }
-
-    return redirect()->route('front.home', $app);
-})->name('front.index');
+Route::livewire('/', 'pages::cross-app-home')
+    ->name('front.index');
 
 Route::livewire('/s/{app:api_slug}', 'pages::home')
     ->name('front.home');

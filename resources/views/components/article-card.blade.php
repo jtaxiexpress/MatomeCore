@@ -7,11 +7,18 @@
     $thumbnailUrl = $article->display_thumbnail_url ?? null;
     $siteName = $article->site?->name ?? '';
     $publishedAt = $article->published_at;
-    $clickCount = $article->click_count ?? 0;
+    $clickCount = $article->daily_out_count ?? 0;
     
     // We assume the active tenant app is available either globally or we can pass it if needed.
     // For the home page, the app route parameter is in the URL.
-    $appSlug = request()->route('app');
+    $appSlug = request()->route('app') ?? $article->app?->api_slug;
+    
+    // Fallback if app is fundamentally missing
+    if (! $appSlug && ! $article->relationLoaded('app')) {
+        $article->load('app');
+        $appSlug = $article->app?->api_slug;
+    }
+    
     $articleUrl = route('front.go', ['app' => $appSlug, 'article' => $article->id]);
 @endphp
 
@@ -54,9 +61,14 @@
 
         {{-- Meta row --}}
         <div class="mt-1.5 flex items-center gap-2 text-[11px] text-text-secondary dark:text-text-tertiary">
-            {{-- Site name --}}
+            {{-- Site name & App name --}}
             @if ($siteName)
-                <span class="max-w-[120px] truncate">{{ $siteName }}</span>
+                <span class="max-w-[120px] truncate">
+                    @if (request()->route('app') === null && $article->relationLoaded('app'))
+                        <span class="text-accent">[{{ $article->app?->name }}]</span>
+                    @endif
+                    {{ $siteName }}
+                </span>
                 <span class="text-border dark:text-border-dark">·</span>
             @endif
 
