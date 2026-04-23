@@ -176,6 +176,12 @@ class ProcessArticleBatchJob implements ShouldQueue
                 continue;
             }
 
+            if ($this->containsNgKeyword($cleanedTitle) || $this->containsNgKeyword($metaData['title'] ?? '')) {
+                Log::warning("[ProcessArticleBatchJob] NGキーワードが含まれているため保存をスキップします: {$url}");
+
+                continue;
+            }
+
             $valid[] = [
                 'id' => $tempId++,
                 'url' => $url,
@@ -286,5 +292,23 @@ class ProcessArticleBatchJob implements ShouldQueue
             detail: $detail,
             failed: $failed,
         );
+    }
+
+    private function containsNgKeyword(?string $title): bool
+    {
+        if (empty($title)) {
+            return false;
+        }
+
+        $ngKeywordsStr = Cache::get('ng_keywords', 'PR,AD,スポンサーリンク');
+        $ngKeywords = array_filter(array_map('trim', preg_split('/[\r\n,]+/', (string) $ngKeywordsStr)));
+
+        foreach ($ngKeywords as $keyword) {
+            if ($keyword !== '' && mb_stripos($title, $keyword) !== false) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

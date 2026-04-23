@@ -105,6 +105,13 @@ class ProcessArticleJob implements ShouldQueue
                 return;
             }
 
+            // ③ NGキーワードのチェック
+            if ($this->containsNgKeyword($title) || $this->containsNgKeyword($metaData['title'])) {
+                Log::warning("[Process: {$this->url}] NGキーワードが含まれているため保存をスキップします");
+
+                return;
+            }
+
             Log::info("[Process: {$this->url}] タイトル洗浄: 》前「{$metaData['title']} -> 」後「{$title}");
 
             $aiResult = $this->classifyAndRewriteTitle($aiService, $title, $app);
@@ -199,5 +206,24 @@ class ProcessArticleJob implements ShouldQueue
     private function isTransientException(Throwable $exception): bool
     {
         return $exception instanceof ConnectionException || $exception instanceof RequestException;
+    }
+
+    private function containsNgKeyword(?string $title): bool
+    {
+        if (empty($title)) {
+            return false;
+        }
+
+        $ngKeywordsStr = Cache::get('ng_keywords', 'PR,AD,スポンサーリンク');
+        // カンマと改行を区切りとして配列にする
+        $ngKeywords = array_filter(array_map('trim', preg_split('/[\r\n,]+/', (string) $ngKeywordsStr)));
+
+        foreach ($ngKeywords as $keyword) {
+            if ($keyword !== '' && mb_stripos($title, $keyword) !== false) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

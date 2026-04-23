@@ -137,6 +137,7 @@ class SystemSettings extends Page implements HasForms
         // @phpstan-ignore-next-line Filament provides $form via InteractsWithForms magic property.
         $this->form->fill([
             'is_bulk_paused' => $this->readBooleanSetting('is_bulk_paused', false),
+            'ng_keywords' => $this->readStringSetting('ng_keywords', 'PR,AD,スポンサーリンク'),
             'ollama_model' => $this->currentOllamaModel(),
             'ai_base_prompt' => $this->readStringSetting('ai_base_prompt', self::getDefaultPromptTemplate()),
             'ollama_num_predict' => $this->readIntegerSetting('ollama_num_predict', (int) config('ai.providers.ollama.options.num_predict', 3000)),
@@ -153,6 +154,10 @@ class SystemSettings extends Page implements HasForms
                         Toggle::make('is_bulk_paused')
                             ->label('バルク処理一時停止 (キルスイッチ)')
                             ->helperText('オンにするとキューに入っている記事詳細取得・AI推論のジョブが処理されずに1分後に再スケジュールされ、一時停止状態になります。'),
+                        Textarea::make('ng_keywords')
+                            ->label('グローバルNGキーワード')
+                            ->helperText('記事タイトルに含まれる場合、保存せずに破棄します。カンマ(,)または改行区切り。')
+                            ->rows(3),
                     ]),
                 Section::make('AIモデル設定（記事）')
                     ->description('記事生成で使うモデルと共通ベースプロンプトをまとめて設定します。')
@@ -194,18 +199,21 @@ class SystemSettings extends Page implements HasForms
         // @phpstan-ignore-next-line Filament provides $form via InteractsWithForms magic property.
         $state = $this->form->getState();
         $isBulkPaused = (bool) ($state['is_bulk_paused'] ?? false);
+        $ngKeywords = (string) ($state['ng_keywords'] ?? 'PR,AD,スポンサーリンク');
         $ollamaModel = (string) ($state['ollama_model'] ?? $this->currentOllamaModel());
         $aiBasePrompt = (string) ($state['ai_base_prompt'] ?? self::getDefaultPromptTemplate());
         $ollamaNumPredict = (int) ($state['ollama_num_predict'] ?? (int) config('ai.providers.ollama.options.num_predict', 3000));
         $ollamaNumCtx = (int) ($state['ollama_num_ctx'] ?? (int) config('ai.providers.ollama.options.num_ctx', 8192));
 
         Cache::forever('is_bulk_paused', $isBulkPaused);
+        Cache::forever('ng_keywords', $ngKeywords);
         Cache::forever('ollama_model', $ollamaModel);
         Cache::forever('ai_base_prompt', $aiBasePrompt);
         Cache::forever('ollama_num_predict', $ollamaNumPredict);
         Cache::forever('ollama_num_ctx', $ollamaNumCtx);
 
         SystemSetting::setValue('is_bulk_paused', $isBulkPaused ? '1' : '0');
+        SystemSetting::setValue('ng_keywords', $ngKeywords);
         SystemSetting::setValue('ollama_model', $ollamaModel);
         SystemSetting::setValue('ai_base_prompt', $aiBasePrompt);
         SystemSetting::setValue('ollama_num_predict', (string) $ollamaNumPredict);

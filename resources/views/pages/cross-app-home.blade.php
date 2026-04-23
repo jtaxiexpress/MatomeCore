@@ -7,25 +7,21 @@ use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
+use Livewire\WithPagination;
+
 new
 #[Layout('layouts::app')]
 class extends Component {
-    /** Number of articles per page */
-    public int $perPage = 20;
+    use WithPagination;
 
     /** Infeed ad interval (insert ad every N articles) */
     private const AD_INTERVAL = 10;
 
-    public function loadMore(): void
-    {
-        $this->perPage += 20;
-    }
-
     /**
-     * @return Collection<int, Article>
+     * @return \Illuminate\Contracts\Pagination\Paginator
      */
     #[Computed]
-    public function articles(): Collection
+    public function articles(): \Illuminate\Contracts\Pagination\Paginator
     {
         // 1. Get active app IDs
         $activeAppIds = App::where('is_active', true)->pluck('id');
@@ -50,14 +46,8 @@ class extends Component {
             ->orderByDesc('sites.traffic_score')
             ->orderByDesc('articles.published_at')
             ->orderByDesc('articles.id')
-            ->limit($this->perPage)
-            ->get();
-    }
-
-    #[Computed]
-    public function hasMoreArticles(): bool
-    {
-        return $this->articles->count() >= $this->perPage;
+            ->orderByDesc('articles.id')
+            ->paginate(50);
     }
 
     #[Computed]
@@ -126,24 +116,8 @@ class extends Component {
         @endforelse
     </div>
 
-    {{-- Load more --}}
-    @if ($this->hasMoreArticles)
-        <div class="mt-4 flex justify-center pb-8">
-            <button
-                type="button"
-                wire:click="loadMore"
-                class="rounded-full bg-black/5 px-6 py-2.5 text-sm font-medium text-text-secondary transition-all duration-200 hover:bg-black/10 active:scale-95 dark:bg-white/10 dark:text-text-tertiary dark:hover:bg-white/15"
-                id="load-more-button"
-            >
-                <span wire:loading.remove wire:target="loadMore">もっと見る</span>
-                <span wire:loading wire:target="loadMore" class="inline-flex items-center gap-2">
-                    <svg class="size-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    読み込み中...
-                </span>
-            </button>
-        </div>
-    @endif
+    {{-- Pagination --}}
+    <div class="mt-6 mb-8 px-4">
+        {{ $this->articles->links(data: ['scrollTo' => false]) }}
+    </div>
 </div>
