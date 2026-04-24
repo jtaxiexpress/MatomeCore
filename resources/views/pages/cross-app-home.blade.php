@@ -110,9 +110,6 @@ class extends Component {
     @section('title', $this->pageTitle)
     @section('tenant_name', 'ゆにこーんアンテナ 全体記事')
 
-    {{-- Hot Entries --}}
-    <x-hot-entries />
-
     {{-- Comprehensive Article feed --}}
     <section class="mb-12">
         <h2 class="mb-4 flex items-center gap-2 text-xl font-bold text-text-primary dark:text-white">

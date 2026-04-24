@@ -132,9 +132,6 @@ class extends Component {
         />
     </div>
 
-    {{-- Hot Entries --}}
-    <x-hot-entries :targetApp="$this->app" />
-
     {{-- Article feed --}}
     <div class="flex flex-col gap-0" id="article-feed">
         @php
