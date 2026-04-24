@@ -24,7 +24,7 @@ class extends Component {
 
 <div>
     @section('title', 'このサイトについて')
-    @section('tenant_name', 'ゆにこーんアンテナ - このサイトについて')
+    @section('tenant_name', config('app.name'))
 
     <div class="mx-auto max-w-3xl">
         {{-- Page header --}}

@@ -66,7 +66,7 @@ class extends Component {
 
 <div>
     @section('title', '相互リンク登録申請')
-    @section('tenant_name', 'ゆにこーんアンテナ - 登録申請')
+    @section('tenant_name', config('app.name'))
 
     <div class="mx-auto max-w-2xl">
         <div class="mb-8 text-center">

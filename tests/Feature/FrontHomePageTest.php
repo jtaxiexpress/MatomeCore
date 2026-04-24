@@ -36,7 +36,8 @@ class FrontHomePageTest extends TestCase
         $response = $this->get('/');
 
         $response->assertOk();
-        $response->assertSee('ゆにこーんアンテナ 全体記事');
+        $response->assertSee('ゆにこーんアンテナ');
+        $response->assertDontSee('ゆにこーんアンテナ 全体記事');
         $response->assertSee('クロスアプリテスト記事');
     }
 
@@ -58,6 +59,19 @@ class FrontHomePageTest extends TestCase
 
         $response->assertOk();
         $response->assertSee($app->name);
+    }
+
+    public function test_home_page_title_uses_app_name_only(): void
+    {
+        $app = App::factory()->create(['is_active' => true]);
+
+        $response = $this->get(route('front.home', $app));
+
+        $response->assertOk();
+        $response->assertSee('<title>'.e($app->name).'</title>', false);
+        $response->assertSee('property="og:title" content="'.e($app->name).'"', false);
+        $response->assertSee('name="twitter:title" content="'.e($app->name).'"', false);
+        $response->assertDontSee($app->name.' |', false);
     }
 
     public function test_home_page_returns_404_for_invalid_slug(): void
@@ -96,6 +110,37 @@ class FrontHomePageTest extends TestCase
         $response->assertSee('総合');
         $response->assertSee('ニュース');
         $response->assertSee('エンタメ');
+    }
+
+    public function test_home_page_renders_compact_sidebar_ranking_and_pagination(): void
+    {
+        $app = App::factory()->create(['is_active' => true]);
+        $site = Site::factory()->recycle($app)->create();
+        $category = Category::factory()->recycle($app)->create();
+
+        Article::factory()
+            ->count(51)
+            ->recycle([$app, $site, $category])
+            ->create([
+                'published_at' => now(),
+            ]);
+
+        $response = $this->get(route('front.home', $app));
+
+        $response->assertOk();
+
+        $content = $response->getContent();
+
+        $this->assertStringContainsString('text-[13px] font-bold text-text-primary dark:text-white', $content);
+        $this->assertStringContainsString('class="flex w-full flex-col items-center gap-3"', $content);
+        $this->assertStringContainsString('1–50 件 / 全 51 件', $content);
+
+        $paginationPosition = strpos($content, 'class="hidden w-full sm:flex sm:justify-center"');
+        $countPosition = strpos($content, 'text-xs text-text-secondary dark:text-text-tertiary');
+
+        $this->assertNotFalse($paginationPosition);
+        $this->assertNotFalse($countPosition);
+        $this->assertGreaterThan($paginationPosition, $countPosition);
     }
 
     public function test_home_page_displays_empty_state_when_no_articles(): void

@@ -33,7 +33,7 @@ class extends Component {
 
 <div x-data="{ copied: null }" @click.outside="copied = null">
     @section('title', '登録サイト一覧')
-    @section('tenant_name', 'ゆにこーんアンテナ - 登録サイト一覧')
+    @section('tenant_name', config('app.name'))
 
     <div class="mx-auto max-w-4xl">
         <div class="mb-6">

@@ -108,7 +108,7 @@ class extends Component {
     }
 }">
     @section('title', $this->pageTitle)
-    @section('tenant_name', 'ゆにこーんアンテナ 全体記事')
+    @section('tenant_name', config('app.name'))
 
     {{-- Comprehensive Article feed --}}
     <section class="mb-12">

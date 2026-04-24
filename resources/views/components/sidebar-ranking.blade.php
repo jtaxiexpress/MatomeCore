@@ -41,7 +41,7 @@
 <div class="sticky top-20 flex flex-col gap-3">
     {{-- Ranking card --}}
     <div class="rounded-xl border border-border/40 bg-surface-elevated p-4 shadow-sm dark:border-border-dark/40 dark:bg-surface-elevated-dark">
-        <h3 class="mb-3 flex items-center gap-2 text-sm font-bold text-text-primary dark:text-white">
+        <h3 class="mb-3 flex items-center gap-2 text-[13px] font-bold text-text-primary dark:text-white">
             <span class="text-accent">👑</span>
             人気ブログランキング
         </h3>

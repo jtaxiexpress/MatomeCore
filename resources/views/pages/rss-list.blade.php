@@ -26,7 +26,7 @@ class extends Component {
 
 <div x-data="{ copied: null }">
     @section('title', 'RSS配信一覧')
-    @section('tenant_name', 'ゆにこーんアンテナ - RSS配信一覧')
+    @section('tenant_name', config('app.name'))
 
     <div class="mx-auto max-w-3xl">
         <div class="mb-6">

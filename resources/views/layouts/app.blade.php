@@ -6,10 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="description" content="{{ $metaDescription ?? View::getSection('tenant_name', config('app.name')) . ' - 最新まとめ記事アンテナサイト' }}">
 
-    <title>{{ isset($title) ? $title . ' | ' . View::getSection('tenant_name', config('app.name')) : View::getSection('tenant_name', config('app.name')) }}</title>
+    <title>{{ View::getSection('tenant_name', config('app.name')) }}</title>
 
     {{-- SEO / OGP Meta Tags --}}
-    <meta property="og:title" content="{{ isset($title) ? $title . ' | ' . View::getSection('tenant_name', config('app.name')) : View::getSection('tenant_name', config('app.name')) }}" />
+    <meta property="og:title" content="{{ View::getSection('tenant_name', config('app.name')) }}" />
     <meta property="og:description" content="{{ $metaDescription ?? View::getSection('tenant_name', config('app.name')) . ' - 最新まとめ記事アンテナサイト' }}" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="{{ request()->url() }}" />
@@ -17,7 +17,7 @@
     <meta property="og:site_name" content="ゆにこーんアンテナ" />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="{{ isset($title) ? $title . ' | ' . View::getSection('tenant_name', config('app.name')) : View::getSection('tenant_name', config('app.name')) }}" />
+    <meta name="twitter:title" content="{{ View::getSection('tenant_name', config('app.name')) }}" />
     <meta name="twitter:description" content="{{ $metaDescription ?? View::getSection('tenant_name', config('app.name')) . ' - 最新まとめ記事アンテナサイト' }}" />
     <meta name="twitter:image" content="{{ asset('images/ogp.png') }}" />
 

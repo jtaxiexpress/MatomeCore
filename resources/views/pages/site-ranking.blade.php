@@ -77,7 +77,7 @@ class extends Component {
 
 <div>
     @section('title', 'ブログランキング')
-    @section('tenant_name', 'ゆにこーんアンテナ - ブログランキング')
+    @section('tenant_name', config('app.name'))
 
     <div class="mx-auto max-w-3xl">
         {{-- Page header --}}
