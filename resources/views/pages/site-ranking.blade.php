@@ -123,8 +123,41 @@ class extends Component {
             @endforeach
         </div>
 
+        <div
+            wire:loading.delay.short
+            wire:target="setAppFilter,setPeriod"
+            class="mb-4 rounded-2xl border border-border/40 bg-surface-elevated/80 p-4 shadow-sm backdrop-blur-xl dark:border-border-dark/40 dark:bg-surface-elevated-dark/80"
+        >
+            <div class="animate-pulse space-y-3">
+                <div class="flex items-center gap-3">
+                    <div class="size-8 rounded-full bg-black/5 dark:bg-white/10"></div>
+                    <div class="flex-1 space-y-2">
+                        <div class="h-3 w-32 rounded-full bg-black/5 dark:bg-white/10"></div>
+                        <div class="h-2 w-full rounded-full bg-black/5 dark:bg-white/10"></div>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    @for ($i = 0; $i < 4; $i++)
+                        <div class="grid grid-cols-[40px_1fr_64px_64px_80px] items-center gap-2">
+                            <div class="mx-auto size-7 rounded-full bg-black/5 dark:bg-white/10"></div>
+                            <div class="h-3 rounded-full bg-black/5 dark:bg-white/10"></div>
+                            <div class="h-3 rounded-full bg-black/5 dark:bg-white/10"></div>
+                            <div class="h-3 rounded-full bg-black/5 dark:bg-white/10"></div>
+                            <div class="h-3 rounded-full bg-black/5 dark:bg-white/10"></div>
+                        </div>
+                    @endfor
+                </div>
+            </div>
+        </div>
+
         {{-- Ranking table --}}
-        <div class="overflow-hidden rounded-xl border border-border/40 bg-surface-elevated/60 backdrop-blur-xl dark:border-border-dark/40 dark:bg-surface-elevated-dark/60">
+        <div
+            wire:loading.class="opacity-60"
+            wire:loading.class="pointer-events-none"
+            wire:target="setAppFilter,setPeriod"
+            class="overflow-hidden rounded-xl border border-border/40 bg-surface-elevated/60 backdrop-blur-xl transition-opacity duration-200 dark:border-border-dark/40 dark:bg-surface-elevated-dark/60"
+        >
             {{-- Table header --}}
             <div class="grid grid-cols-[40px_1fr_64px_64px_80px] gap-2 border-b border-border/30 bg-black/5 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-text-secondary dark:border-border-dark/30 dark:bg-white/5 dark:text-text-tertiary">
                 <div class="text-center">#</div>

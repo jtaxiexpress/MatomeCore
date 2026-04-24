@@ -9,6 +9,7 @@ use App\Models\Article;
 use App\Models\Category;
 use App\Models\Site;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 class FrontHomePageTest extends TestCase
@@ -151,5 +152,66 @@ class FrontHomePageTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('記事が見つかりませんでした');
+    }
+
+    public function test_root_sidebar_hot_entry_links_use_app_slug(): void
+    {
+        Cache::flush();
+
+        $app = App::factory()->create(['is_active' => true]);
+        $site = Site::factory()->recycle($app)->create(['traffic_score' => 75]);
+        $category = Category::factory()->recycle($app)->create();
+
+        $article = Article::factory()->recycle([$app, $site, $category])->create([
+            'title' => 'ホット記事リンクテスト',
+            'published_at' => now(),
+            'daily_out_count' => 18,
+        ]);
+
+        $response = $this->get('/');
+
+        $response->assertOk();
+
+        $content = $response->getContent();
+
+        $this->assertStringContainsString('注目の記事', $content);
+        $this->assertStringContainsString(
+            route('front.go', ['app' => $app->api_slug, 'article' => $article->id]),
+            $content
+        );
+        $this->assertStringNotContainsString(
+            route('front.go', ['app' => $app->id, 'article' => $article->id]),
+            $content
+        );
+    }
+
+    public function test_root_layout_includes_favicon_and_header_icon_assets(): void
+    {
+        App::factory()->create(['is_active' => true]);
+
+        $response = $this->get('/');
+
+        $response->assertOk();
+
+        $content = $response->getContent();
+
+        $this->assertStringContainsString(asset('images/favicon.ico'), $content);
+        $this->assertStringContainsString(asset('images/apple-touch-icon.png'), $content);
+        $this->assertStringContainsString(asset('images/icon.avif'), $content);
+    }
+
+    public function test_home_page_shows_loading_skeleton_markup(): void
+    {
+        $app = App::factory()->create(['is_active' => true]);
+
+        $response = $this->get(route('front.home', $app));
+
+        $response->assertOk();
+
+        $content = $response->getContent();
+
+        $this->assertStringContainsString('wire:loading.delay.short', $content);
+        $this->assertStringContainsString('animate-pulse', $content);
+        $this->assertStringContainsString('opacity-60', $content);
     }
 }

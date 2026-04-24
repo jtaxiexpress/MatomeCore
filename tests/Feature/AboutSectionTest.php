@@ -3,7 +3,10 @@
 namespace Tests\Feature;
 
 use App\Models\AboutSection;
+use App\Models\App;
+use App\Models\Site;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 class AboutSectionTest extends TestCase
@@ -69,13 +72,46 @@ class AboutSectionTest extends TestCase
         $this->get('/ranking')->assertOk();
     }
 
+    public function test_ranking_page_shows_loading_skeleton_markup(): void
+    {
+        $this->get('/ranking')
+            ->assertOk()
+            ->assertSee('wire:loading.delay.short', false)
+            ->assertSee('animate-pulse', false)
+            ->assertSee('opacity-60', false);
+    }
+
     public function test_rss_list_page_loads_successfully(): void
     {
         $this->get('/rss-list')->assertOk();
     }
 
+    public function test_rss_list_page_shows_copy_feedback_markup(): void
+    {
+        App::factory()->create(['is_active' => true]);
+
+        $this->get('/rss-list')
+            ->assertOk()
+            ->assertSee('Copied!', false);
+    }
+
     public function test_sites_index_page_loads_successfully(): void
     {
         $this->get('/sites')->assertOk();
+    }
+
+    public function test_sites_index_page_shows_copy_feedback_markup(): void
+    {
+        Cache::flush();
+
+        $app = App::factory()->create(['is_active' => true]);
+        Site::factory()->recycle($app)->create([
+            'url' => 'https://example.com',
+            'rss_url' => 'https://example.com/feed',
+        ]);
+
+        $this->get('/sites')
+            ->assertOk()
+            ->assertSee('Copied!', false);
     }
 }

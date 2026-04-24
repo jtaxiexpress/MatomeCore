@@ -31,7 +31,29 @@ class extends Component {
     }
 }; ?>
 
-<div x-data="{ copied: null }" @click.outside="copied = null">
+<div
+    x-data="{
+        copied: null,
+        copiedTimer: null,
+        async copyText(text, key) {
+            try {
+                await navigator.clipboard.writeText(text);
+                this.copied = key;
+                if (this.copiedTimer) {
+                    window.clearTimeout(this.copiedTimer);
+                }
+                this.copiedTimer = window.setTimeout(() => {
+                    if (this.copied === key) {
+                        this.copied = null;
+                    }
+                }, 1500);
+            } catch (error) {
+                console.error(error);
+            }
+        },
+    }"
+    @click.outside="copied = null"
+>
     @section('title', '登録サイト一覧')
     @section('tenant_name', config('app.name'))
 
@@ -98,18 +120,20 @@ class extends Component {
                                             @if ($site->rss_url)
                                                 <button
                                                     type="button"
-                                                    x-data
-                                                    @click.stop="
-                                                        navigator.clipboard.writeText('{{ $site->rss_url }}');
-                                                        $dispatch('copied', { id: {{ $site->id }} });
-                                                        $root.copied = {{ $site->id }};
-                                                        setTimeout(() => { if ($root.copied === {{ $site->id }}) $root.copied = null }, 2000);
-                                                    "
-                                                    class="flex size-7 items-center justify-center rounded-lg text-text-secondary transition-all hover:bg-accent/10 hover:text-accent dark:text-text-tertiary dark:hover:bg-accent/20 dark:hover:text-accent"
+                                                    @click.stop="copyText(@js($site->rss_url), {{ $site->id }})"
+                                                    class="inline-flex h-7 min-w-7 items-center justify-center rounded-full border border-border/40 bg-surface-elevated/80 px-2.5 text-text-secondary transition-all hover:border-accent/30 hover:bg-accent/5 hover:text-accent dark:border-border-dark/40 dark:bg-surface-elevated-dark/80 dark:hover:border-accent/40 dark:hover:bg-accent/10 dark:hover:text-accent"
                                                     title="RSSのURLをコピー"
                                                 >
-                                                    <span x-show="$root.copied !== {{ $site->id }}" class="text-sm">📋</span>
-                                                    <span x-show="$root.copied === {{ $site->id }}" x-cloak class="text-sm">✅</span>
+                                                    <span x-show="copied !== {{ $site->id }}" x-transition.opacity.duration.150ms>📋</span>
+                                                    <span
+                                                        x-show="copied === {{ $site->id }}"
+                                                        x-cloak
+                                                        x-transition.opacity.duration.150ms
+                                                        class="inline-flex items-center gap-1 text-[10px] font-semibold leading-none"
+                                                    >
+                                                        <span>✅</span>
+                                                        <span>Copied!</span>
+                                                    </span>
                                                 </button>
                                             @endif
                                         </div>

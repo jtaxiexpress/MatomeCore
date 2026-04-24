@@ -24,7 +24,28 @@ class extends Component {
     }
 }; ?>
 
-<div x-data="{ copied: null }">
+<div
+    x-data="{
+        copied: null,
+        copiedTimer: null,
+        async copyText(text, key) {
+            try {
+                await navigator.clipboard.writeText(text);
+                this.copied = key;
+                if (this.copiedTimer) {
+                    window.clearTimeout(this.copiedTimer);
+                }
+                this.copiedTimer = window.setTimeout(() => {
+                    if (this.copied === key) {
+                        this.copied = null;
+                    }
+                }, 1500);
+            } catch (error) {
+                console.error(error);
+            }
+        },
+    }"
+>
     @section('title', 'RSS配信一覧')
     @section('tenant_name', config('app.name'))
 
@@ -53,12 +74,20 @@ class extends Component {
                         </a>
                         <button
                             type="button"
-                            @click="navigator.clipboard.writeText('{{ $crossRssUrl }}'); copied = 'cross'; setTimeout(() => { if (copied === 'cross') copied = null }, 2000);"
-                            class="flex size-7 shrink-0 items-center justify-center rounded-lg transition-all hover:bg-accent/10"
+                            @click="copyText(@js($crossRssUrl), 'cross')"
+                            class="inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full border border-border/40 bg-surface-elevated/80 px-2.5 text-text-secondary transition-all hover:border-accent/30 hover:bg-accent/5 hover:text-accent dark:border-border-dark/40 dark:bg-surface-elevated-dark/80 dark:hover:border-accent/40 dark:hover:bg-accent/10 dark:hover:text-accent"
                             title="URLをコピー"
                         >
-                            <span x-show="copied !== 'cross'">📋</span>
-                            <span x-show="copied === 'cross'" x-cloak>✅</span>
+                            <span x-show="copied !== 'cross'" x-transition.opacity.duration.150ms>📋</span>
+                            <span
+                                x-show="copied === 'cross'"
+                                x-cloak
+                                x-transition.opacity.duration.150ms
+                                class="inline-flex items-center gap-1 text-[10px] font-semibold leading-none"
+                            >
+                                <span>✅</span>
+                                <span>Copied!</span>
+                            </span>
                         </button>
                     </div>
                 </div>
@@ -91,12 +120,20 @@ class extends Component {
                             </div>
                             <button
                                 type="button"
-                                @click="navigator.clipboard.writeText('{{ $appRssUrl }}'); copied = 'app-{{ $app->id }}'; setTimeout(() => { if (copied === 'app-{{ $app->id }}') copied = null }, 2000);"
-                                class="flex size-7 shrink-0 items-center justify-center rounded-lg transition-all hover:bg-accent/10"
+                                @click="copyText(@js($appRssUrl), 'app-{{ $app->id }}')"
+                                class="inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full border border-border/40 bg-surface-elevated/80 px-2.5 text-text-secondary transition-all hover:border-accent/30 hover:bg-accent/5 hover:text-accent dark:border-border-dark/40 dark:bg-surface-elevated-dark/80 dark:hover:border-accent/40 dark:hover:bg-accent/10 dark:hover:text-accent"
                                 title="URLをコピー"
                             >
-                                <span x-show="copied !== 'app-{{ $app->id }}'">📋</span>
-                                <span x-show="copied === 'app-{{ $app->id }}'" x-cloak>✅</span>
+                                <span x-show="copied !== 'app-{{ $app->id }}'" x-transition.opacity.duration.150ms>📋</span>
+                                <span
+                                    x-show="copied === 'app-{{ $app->id }}'"
+                                    x-cloak
+                                    x-transition.opacity.duration.150ms
+                                    class="inline-flex items-center gap-1 text-[10px] font-semibold leading-none"
+                                >
+                                    <span>✅</span>
+                                    <span>Copied!</span>
+                                </span>
                             </button>
                         </div>
 
@@ -119,12 +156,20 @@ class extends Component {
                                         </div>
                                         <button
                                             type="button"
-                                            @click="navigator.clipboard.writeText('{{ $catRssUrl }}'); copied = '{{ $copyKey }}'; setTimeout(() => { if (copied === '{{ $copyKey }}') copied = null }, 2000);"
-                                            class="flex size-6 shrink-0 items-center justify-center rounded-lg text-sm transition-all hover:bg-accent/10"
+                                            @click="copyText(@js($catRssUrl), '{{ $copyKey }}')"
+                                            class="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border border-border/40 bg-surface-elevated/80 px-2 text-text-secondary transition-all hover:border-accent/30 hover:bg-accent/5 hover:text-accent dark:border-border-dark/40 dark:bg-surface-elevated-dark/80 dark:hover:border-accent/40 dark:hover:bg-accent/10 dark:hover:text-accent"
                                             title="URLをコピー"
                                         >
-                                            <span x-show="copied !== '{{ $copyKey }}'">📋</span>
-                                            <span x-show="copied === '{{ $copyKey }}'" x-cloak>✅</span>
+                                            <span x-show="copied !== '{{ $copyKey }}'" x-transition.opacity.duration.150ms>📋</span>
+                                            <span
+                                                x-show="copied === '{{ $copyKey }}'"
+                                                x-cloak
+                                                x-transition.opacity.duration.150ms
+                                                class="inline-flex items-center gap-1 text-[10px] font-semibold leading-none"
+                                            >
+                                                <span>✅</span>
+                                                <span>Copied!</span>
+                                            </span>
                                         </button>
                                     </div>
                                 @endforeach

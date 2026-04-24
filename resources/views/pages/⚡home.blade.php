@@ -132,8 +132,43 @@ class extends Component {
         />
     </div>
 
+    <div
+        wire:loading.delay.short
+        wire:target="selectCategory"
+        class="mb-4 rounded-2xl border border-border/40 bg-surface-elevated/80 p-4 shadow-sm backdrop-blur-xl dark:border-border-dark/40 dark:bg-surface-elevated-dark/80"
+    >
+        <div class="animate-pulse space-y-3">
+            <div class="flex items-center gap-3">
+                <div class="size-10 rounded-xl bg-black/5 dark:bg-white/10"></div>
+                <div class="flex-1 space-y-2">
+                    <div class="h-3 w-28 rounded-full bg-black/5 dark:bg-white/10"></div>
+                    <div class="h-2 w-full rounded-full bg-black/5 dark:bg-white/10"></div>
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                @for ($i = 0; $i < 5; $i++)
+                    <div class="flex items-center gap-3 rounded-xl border border-border/20 px-3 py-2 dark:border-border-dark/20">
+                        <div class="size-8 rounded-full bg-black/5 dark:bg-white/10"></div>
+                        <div class="flex-1 space-y-2">
+                            <div class="h-3 w-2/3 rounded-full bg-black/5 dark:bg-white/10"></div>
+                            <div class="h-2 w-1/3 rounded-full bg-black/5 dark:bg-white/10"></div>
+                        </div>
+                        <div class="size-10 rounded-full bg-black/5 dark:bg-white/10"></div>
+                    </div>
+                @endfor
+            </div>
+        </div>
+    </div>
+
     {{-- Article feed --}}
-    <div class="flex flex-col gap-0" id="article-feed">
+    <div
+        wire:loading.class="opacity-60"
+        wire:loading.class="pointer-events-none"
+        wire:target="selectCategory"
+        class="flex flex-col gap-0 transition-opacity duration-200"
+        id="article-feed"
+    >
         @php
             $lastDate = null;
         @endphp
@@ -173,15 +208,5 @@ class extends Component {
     {{-- Pagination --}}
     <div class="mt-6 mb-8 px-4">
         {{ $this->articles->links(data: ['scrollTo' => false]) }}
-    </div>
-
-    {{-- Loading state for category switch --}}
-    <div wire:loading wire:target="selectCategory" class="fixed inset-0 z-50 flex items-center justify-center bg-black/10 backdrop-blur-[2px]">
-        <div class="rounded-2xl bg-surface-elevated px-6 py-4 shadow-lg dark:bg-surface-elevated-dark">
-            <svg class="mx-auto size-6 animate-spin text-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-        </div>
     </div>
 </div>

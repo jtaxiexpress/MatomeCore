@@ -27,7 +27,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="ゆにこーんアンテナ">
-    <link rel="apple-touch-icon" href="{{ asset('icon.png') }}">
+    <link rel="icon" type="image/avif" href="{{ asset('images/icon.avif') }}">
+    <link rel="icon" href="{{ asset('images/favicon.ico') }}" sizes="any">
+    <link rel="apple-touch-icon" href="{{ asset('images/apple-touch-icon.png') }}">
 
     {{-- Fonts --}}
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -55,7 +57,7 @@
         <div class="mx-auto flex h-12 max-w-5xl items-center justify-between px-4">
             {{-- Site name --}}
             <a href="{{ url('/') }}" class="flex items-center gap-2 text-base font-bold tracking-tight transition-opacity hover:opacity-70">
-                <span class="text-lg">📡</span>
+                <img src="{{ asset('images/icon.avif') }}" alt="" class="size-5 shrink-0 rounded-md object-cover">
                 <span>@yield('tenant_name', config('app.name'))</span>
             </a>
 

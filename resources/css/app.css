@@ -49,6 +49,10 @@
     100% { background-position: 200% 0; }
 }
 
+[x-cloak] {
+    display: none !important;
+}
+
 .skeleton {
     background: linear-gradient(
         90deg,

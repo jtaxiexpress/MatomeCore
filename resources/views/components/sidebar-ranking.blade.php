@@ -25,7 +25,7 @@
 
     // Hot entries for sidebar
     $hotQuery = Article::query()
-        ->with(['site:id,name', 'app:id,name'])
+        ->with(['site:id,name', 'app:id,name,api_slug'])
         ->where('daily_out_count', '>', 0)
         ->trafficFiltered()
         ->orderByDesc('daily_out_count')
@@ -109,7 +109,7 @@
                 @foreach($sidebarHotEntries as $hotArticle)
                     <li class="py-1.5 first:pt-0 last:pb-0">
                         <a
-                            href="{{ route('front.go', ['app' => $hotArticle->app_id ?? $appId ?? 1, 'article' => $hotArticle->id]) }}"
+                            href="{{ route('front.go', ['app' => $hotArticle->app->api_slug, 'article' => $hotArticle->id]) }}"
                             target="_blank"
                             rel="noopener noreferrer"
                             class="group flex items-start gap-1.5"
