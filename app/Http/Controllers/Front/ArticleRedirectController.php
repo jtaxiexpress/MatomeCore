@@ -24,7 +24,8 @@ class ArticleRedirectController extends Controller
         }
 
         $ip = $request->ip();
-        $cacheKey = "out_hit_{$article->id}_{$ip}";
+        $sessionId = $request->session()->getId();
+        $cacheKey = "out_hit_{$article->id}_{$ip}_{$sessionId}";
 
         if (! Cache::has($cacheKey)) {
             // 連続クリックを1時間防止

@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Jobs\ProcessOutTraffic;
 use App\Models\App;
 use App\Models\Article;
 use App\Models\Site;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Session;
 use Tests\TestCase;
 
 class ArticleRedirectTest extends TestCase
@@ -16,8 +20,8 @@ class ArticleRedirectTest extends TestCase
 
     public function test_article_redirect_records_click_and_redirects(): void
     {
-        \Illuminate\Support\Facades\Queue::fake();
-        \Illuminate\Support\Facades\Cache::flush();
+        Queue::fake();
+        Cache::flush();
 
         $app = App::factory()->create(['is_active' => true]);
         $site = Site::factory()->recycle($app)->create();
@@ -32,15 +36,15 @@ class ArticleRedirectTest extends TestCase
 
         $response->assertRedirect('https://example.com/test-article');
 
-        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\ProcessOutTraffic::class, function ($job) use ($article) {
+        Queue::assertPushed(ProcessOutTraffic::class, function ($job) use ($article) {
             return $job->articleId === $article->id;
         });
     }
 
-    public function test_article_redirect_prevents_duplicate_clicks_within_timeframe(): void
+    public function test_article_redirect_uses_session_id_in_cache_key(): void
     {
-        \Illuminate\Support\Facades\Queue::fake();
-        \Illuminate\Support\Facades\Cache::flush();
+        Queue::fake();
+        Cache::spy();
 
         $app = App::factory()->create(['is_active' => true]);
         $site = Site::factory()->recycle($app)->create();
@@ -48,26 +52,44 @@ class ArticleRedirectTest extends TestCase
             'url' => 'https://example.com/test-article',
         ]);
 
-        // First click
-        $this->get(route('front.go', ['app' => $app, 'article' => $article]));
-        
-        // Second click from same simulated IP
         $this->get(route('front.go', ['app' => $app, 'article' => $article]));
 
-        // Should only push one job
-        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\ProcessOutTraffic::class, 1);
+        Cache::shouldHaveReceived('put')->once()->withArgs(function (string $key, bool $value, int $ttl) use ($article): bool {
+            return preg_match('/^out_hit_'.$article->id.'_[0-9.]+_.+$/', $key) === 1
+                && $value === true
+                && $ttl === 3600;
+        });
+    }
+
+    public function test_article_redirect_allows_same_ip_with_new_session(): void
+    {
+        Queue::fake();
+        Cache::flush();
+
+        $app = App::factory()->create(['is_active' => true]);
+        $site = Site::factory()->recycle($app)->create();
+        $article = Article::factory()->recycle([$app, $site])->create([
+            'url' => 'https://example.com/test-article',
+        ]);
+
+        Session::setId('session-one');
+        $this->get(route('front.go', ['app' => $app, 'article' => $article]));
+
+        Session::setId('session-two');
+        $this->get(route('front.go', ['app' => $app, 'article' => $article]));
+
+        Queue::assertPushedTimes(ProcessOutTraffic::class, 2);
     }
 
     public function test_article_redirect_returns_404_if_article_belongs_to_different_app(): void
     {
-        \Illuminate\Support\Facades\Queue::fake();
+        Queue::fake();
         $app1 = App::factory()->create(['is_active' => true]);
         $app2 = App::factory()->create(['is_active' => true]);
 
         $site = Site::factory()->recycle($app2)->create();
         $article = Article::factory()->recycle([$app2, $site])->create();
 
-        // Access via app1 but article belongs to app2
         $response = $this->get(route('front.go', [
             'app' => $app1,
             'article' => $article,

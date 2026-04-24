@@ -67,19 +67,6 @@
             {{-- Desktop nav --}}
             <nav class="hidden items-center gap-5 text-sm font-medium text-text-secondary sm:flex dark:text-text-tertiary">
                 <a href="{{ url('/') }}" class="transition-colors hover:text-text-primary dark:hover:text-white" wire:navigate>ホーム</a>
-                
-                {{-- Apps dropdown --}}
-                <div x-data="{ open: false }" class="relative" @click.outside="open = false">
-                    <button @click="open = !open" class="flex items-center gap-1 transition-colors hover:text-text-primary dark:hover:text-white">
-                        アンテナ一覧
-                        <svg class="size-3 transition-transform" :class="{'rotate-180': open}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
-                    </button>
-                    <div x-show="open" x-cloak class="absolute left-0 mt-2 w-48 rounded-xl border border-border/60 bg-surface-elevated py-1 shadow-lg backdrop-blur-xl dark:border-border-dark/60 dark:bg-surface-elevated-dark" x-transition>
-                        @foreach($activeApps as $appItem)
-                            <a href="{{ route('front.home', $appItem) }}" class="block px-4 py-2 text-sm text-text-secondary transition-colors hover:bg-black/5 hover:text-text-primary dark:text-text-tertiary dark:hover:bg-white/10 dark:hover:text-white" wire:navigate>{{ $appItem->name }}</a>
-                        @endforeach
-                    </div>
-                </div>
 
                 <a href="{{ route('front.sites-index') }}" class="transition-colors hover:text-text-primary dark:hover:text-white" wire:navigate>登録サイト</a>
                 <a href="{{ route('front.rss-index') }}" class="transition-colors hover:text-text-primary dark:hover:text-white" wire:navigate>RSS一覧</a>
@@ -129,15 +116,6 @@
         >
             <nav class="flex flex-col gap-1">
                 <a href="{{ url('/') }}" class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10" wire:navigate>ホーム</a>
-                
-                <div class="my-2 border-l-2 border-border/40 pl-3 dark:border-border-dark/40">
-                    <p class="mb-1 text-xs font-bold text-text-tertiary">アンテナ一覧</p>
-                    <div class="flex flex-col gap-1">
-                        @foreach($activeApps as $appItem)
-                            <a href="{{ route('front.home', $appItem) }}" class="rounded-lg px-3 py-2 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10" wire:navigate>{{ $appItem->name }}</a>
-                        @endforeach
-                    </div>
-                </div>
 
                 <a href="{{ route('front.sites-index') }}" class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10" wire:navigate>登録サイト</a>
                 <a href="{{ route('front.rss-index') }}" class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10" wire:navigate>RSS一覧</a>

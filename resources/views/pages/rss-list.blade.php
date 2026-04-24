@@ -99,8 +99,6 @@ class extends Component {
                     <h2 class="mb-3 flex items-center gap-2 text-base font-bold text-text-primary dark:text-white">
                         @if($app->icon_path)
                             <img src="{{ Storage::url($app->icon_path) }}" alt="" class="size-5 rounded">
-                        @else
-                            <span class="text-accent">📱</span>
                         @endif
                         {{ $app->name }}
                     </h2>
@@ -173,24 +171,6 @@ class extends Component {
                                         </button>
                                     </div>
                                 @endforeach
-                            </div>
-
-                            {{-- Category select for quick jump --}}
-                            <div class="border-t border-border/20 px-4 py-2.5 dark:border-border-dark/20">
-                                <div class="flex items-center gap-2">
-                                    <span class="text-xs text-text-secondary dark:text-text-tertiary">カテゴリに移動:</span>
-                                    <select
-                                        class="flex-1 rounded-lg border border-border/40 bg-surface px-3 py-1.5 text-xs text-text-primary focus:border-accent focus:outline-none dark:border-border-dark/40 dark:bg-surface-dark dark:text-white"
-                                        onchange="if(this.value) { window.location.href = this.value; } this.value='';"
-                                    >
-                                        <option value="">カテゴリを選択…</option>
-                                        @foreach ($app->categories as $category)
-                                            <option value="{{ url('/s/' . $app->api_slug . '/c/' . $category->api_slug . '/rss') }}">
-                                                {{ $category->name }}
-                                            </option>
-                                        @endforeach
-                                    </select>
-                                </div>
                             </div>
                         @endif
                     </div>

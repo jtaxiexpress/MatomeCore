@@ -95,6 +95,16 @@ class AboutSectionTest extends TestCase
             ->assertSee('Copied!', false);
     }
 
+    public function test_rss_list_page_hides_category_jump_ui(): void
+    {
+        App::factory()->create(['is_active' => true]);
+
+        $this->get('/rss-list')
+            ->assertOk()
+            ->assertDontSee('カテゴリに移動:', false)
+            ->assertDontSee('📱', false);
+    }
+
     public function test_sites_index_page_loads_successfully(): void
     {
         $this->get('/sites')->assertOk();
@@ -112,6 +122,9 @@ class AboutSectionTest extends TestCase
 
         $this->get('/sites')
             ->assertOk()
-            ->assertSee('Copied!', false);
+            ->assertDontSee('当アンテナで記事を収集させていただいている登録サイトの一覧です。', false)
+            ->assertDontSee('サイト名をクリックするとサイトへ、📋 をクリックするとRSSのURLをコピーできます。', false)
+            ->assertDontSee('📱', false)
+            ->assertDontSee('カテゴリRSS:', false);
     }
 }

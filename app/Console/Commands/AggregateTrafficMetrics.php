@@ -27,38 +27,83 @@ class AggregateTrafficMetrics extends Command
         DB::table('sites')->update(['daily_in_count' => 0, 'daily_out_count' => 0]);
 
         // 2. Aggregate OUT for Articles
-        $articleOutCounts = DB::table('article_clicks')
+        DB::table('article_clicks')
             ->select('article_id', DB::raw('COUNT(*) as count'))
             ->where('clicked_at', '>=', $cutoff)
             ->groupBy('article_id')
-            ->pluck('count', 'article_id');
+            ->orderBy('article_id')
+            ->cursor()
+            ->chunk(1000)
+            ->each(function ($rows): void {
+                $ids = [];
+                $cases = [];
 
-        foreach ($articleOutCounts as $articleId => $count) {
-            DB::table('articles')->where('id', $articleId)->update(['daily_out_count' => $count]);
-        }
+                foreach ($rows as $row) {
+                    $ids[] = (int) $row->article_id;
+                    $cases[] = 'WHEN '.(int) $row->article_id.' THEN '.(int) $row->count;
+                }
+
+                if ($ids !== []) {
+                    DB::table('articles')
+                        ->whereIn('id', $ids)
+                        ->update([
+                            'daily_out_count' => DB::raw('CASE id '.implode(' ', $cases).' ELSE daily_out_count END'),
+                        ]);
+                }
+            });
 
         // 3. Aggregate IN for Sites
-        $siteInCounts = DB::table('site_ins')
+        DB::table('site_ins')
             ->select('site_id', DB::raw('COUNT(*) as count'))
             ->where('visited_at', '>=', $cutoff)
             ->groupBy('site_id')
-            ->pluck('count', 'site_id');
+            ->orderBy('site_id')
+            ->cursor()
+            ->chunk(1000)
+            ->each(function ($rows): void {
+                $ids = [];
+                $cases = [];
 
-        foreach ($siteInCounts as $siteId => $count) {
-            DB::table('sites')->where('id', $siteId)->update(['daily_in_count' => $count]);
-        }
+                foreach ($rows as $row) {
+                    $ids[] = (int) $row->site_id;
+                    $cases[] = 'WHEN '.(int) $row->site_id.' THEN '.(int) $row->count;
+                }
+
+                if ($ids !== []) {
+                    DB::table('sites')
+                        ->whereIn('id', $ids)
+                        ->update([
+                            'daily_in_count' => DB::raw('CASE id '.implode(' ', $cases).' ELSE daily_in_count END'),
+                        ]);
+                }
+            });
 
         // 4. Aggregate OUT for Sites
-        $siteOutCounts = DB::table('article_clicks')
+        DB::table('article_clicks')
             ->join('articles', 'article_clicks.article_id', '=', 'articles.id')
             ->select('articles.site_id', DB::raw('COUNT(article_clicks.id) as count'))
             ->where('article_clicks.clicked_at', '>=', $cutoff)
             ->groupBy('articles.site_id')
-            ->pluck('count', 'site_id');
+            ->orderBy('articles.site_id')
+            ->cursor()
+            ->chunk(1000)
+            ->each(function ($rows): void {
+                $ids = [];
+                $cases = [];
 
-        foreach ($siteOutCounts as $siteId => $count) {
-            DB::table('sites')->where('id', $siteId)->update(['daily_out_count' => $count]);
-        }
+                foreach ($rows as $row) {
+                    $ids[] = (int) $row->site_id;
+                    $cases[] = 'WHEN '.(int) $row->site_id.' THEN '.(int) $row->count;
+                }
+
+                if ($ids !== []) {
+                    DB::table('sites')
+                        ->whereIn('id', $ids)
+                        ->update([
+                            'daily_out_count' => DB::raw('CASE id '.implode(' ', $cases).' ELSE daily_out_count END'),
+                        ]);
+                }
+            });
 
         // 5. Calculate Traffic Score
         // Score = (IN * 1.5) - OUT

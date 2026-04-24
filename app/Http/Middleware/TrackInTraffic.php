@@ -10,6 +10,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 class TrackInTraffic
@@ -26,45 +27,109 @@ class TrackInTraffic
             return $next($request);
         }
 
-        $referer = $request->headers->get('referer');
+        $siteId = $this->resolveSiteId($request);
 
-        if ($referer) {
-            $parsedUrl = parse_url($referer);
-            $host = $parsedUrl['host'] ?? null;
+        if ($siteId) {
+            $ip = $request->ip();
 
-            if ($host) {
-                // Hostに一致するSiteを探す（キャッシュを利用して高速化）
-                $siteId = Cache::remember("site_host_{$host}", 3600, function () use ($host) {
-                    $site = Site::where('url', 'like', "%{$host}%")->first();
+            // 1日あたりの最大IN回数（100回）の制限
+            $dailyLimiterKey = "in_daily_limit_{$siteId}_{$ip}";
+            if (RateLimiter::tooManyAttempts($dailyLimiterKey, 100)) {
+                return $next($request);
+            }
 
-                    return $site ? $site->id : null;
-                });
+            $cacheKey = "in_hit_{$siteId}_{$ip}";
 
-                if ($siteId) {
-                    $ip = $request->ip();
+            if (! Cache::has($cacheKey)) {
+                // 連続流入を1時間防止
+                Cache::put($cacheKey, true, 3600);
 
-                    // 1日あたりの最大IN回数（100回）の制限
-                    $dailyLimiterKey = "in_daily_limit_{$siteId}_{$ip}";
-                    if (RateLimiter::tooManyAttempts($dailyLimiterKey, 100)) {
-                        return $next($request);
-                    }
+                // 日次リミットをカウントアップ (24時間保持)
+                RateLimiter::hit($dailyLimiterKey, 86400);
 
-                    $cacheKey = "in_hit_{$siteId}_{$ip}";
-
-                    if (! Cache::has($cacheKey)) {
-                        // 連続流入を1時間防止
-                        Cache::put($cacheKey, true, 3600);
-
-                        // 日次リミットをカウントアップ (24時間保持)
-                        RateLimiter::hit($dailyLimiterKey, 86400);
-
-                        // 非同期で流入を記録
-                        ProcessInTraffic::dispatch($siteId, now()->toDateTimeString());
-                    }
-                }
+                // 非同期で流入を記録
+                ProcessInTraffic::dispatch($siteId, now()->toDateTimeString());
             }
         }
 
         return $next($request);
+    }
+
+    private function resolveSiteId(Request $request): ?int
+    {
+        $siteId = $this->resolveSiteIdFromQuery($request);
+
+        if ($siteId !== null) {
+            return $siteId;
+        }
+
+        return $this->resolveSiteIdFromReferer($request);
+    }
+
+    private function resolveSiteIdFromQuery(Request $request): ?int
+    {
+        $siteId = $this->resolveSiteIdFromQueryId($request);
+
+        if ($siteId !== null) {
+            return $siteId;
+        }
+
+        return $this->resolveSiteIdFromQuerySlug($request);
+    }
+
+    private function resolveSiteIdFromQueryId(Request $request): ?int
+    {
+        $rawSiteId = $request->query('in_site_id');
+
+        if ($rawSiteId === null || $rawSiteId === '') {
+            return null;
+        }
+
+        $siteId = filter_var($rawSiteId, FILTER_VALIDATE_INT);
+
+        if ($siteId === false || $siteId <= 0) {
+            return null;
+        }
+
+        return Site::query()->whereKey($siteId)->value('id');
+    }
+
+    private function resolveSiteIdFromQuerySlug(Request $request): ?int
+    {
+        $rawSlug = trim((string) $request->query('in_site_slug', ''));
+
+        if ($rawSlug === '') {
+            return null;
+        }
+
+        $slug = Str::lower($rawSlug);
+
+        return Site::query()
+            ->where('api_slug', $slug)
+            ->value('id');
+    }
+
+    private function resolveSiteIdFromReferer(Request $request): ?int
+    {
+        $referer = $request->headers->get('referer');
+
+        if ($referer === null || $referer === '') {
+            return null;
+        }
+
+        $parsedUrl = parse_url($referer);
+        $host = $parsedUrl['host'] ?? null;
+
+        if ($host === null || $host === '') {
+            return null;
+        }
+
+        $normalizedHost = Str::lower($host);
+
+        return Cache::remember("site_host_{$normalizedHost}", 3600, function () use ($normalizedHost): ?int {
+            return Site::query()
+                ->where('url', 'like', "%{$normalizedHost}%")
+                ->value('id');
+        });
     }
 }
