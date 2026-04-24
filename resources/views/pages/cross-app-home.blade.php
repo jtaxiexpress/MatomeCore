@@ -49,7 +49,7 @@ class extends Component {
             ->orderByDesc('sites.traffic_score')
             ->orderByDesc('articles.published_at')
             ->orderByDesc('articles.id')
-            ->paginate(30);
+            ->paginate(15);
     }
 
     #[Computed]
@@ -172,8 +172,6 @@ class extends Component {
                         <h2 class="flex items-center gap-2 text-base font-bold text-text-primary dark:text-white">
                             @if($app->icon_path)
                                 <img src="{{ Storage::url($app->icon_path) }}" alt="" class="size-5 rounded">
-                            @else
-                                <span class="text-accent">📱</span>
                             @endif
                             {{ $app->name }}
                             <span class="ml-1 text-xs font-normal text-text-secondary dark:text-text-tertiary">最新</span>
