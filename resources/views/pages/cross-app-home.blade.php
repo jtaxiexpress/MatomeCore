@@ -3,6 +3,7 @@
 use App\Models\App;
 use App\Models\Article;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -23,10 +24,12 @@ class extends Component {
     #[Computed]
     public function articles(): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
-        // 1. Get active app IDs
-        $activeAppIds = App::where('is_active', true)->pluck('id');
+        // active_app_ids は整数の配列なので安全にキャッシュ可
+        $activeAppIds = Cache::remember('active_app_ids', now()->addMinutes(60), function () {
+            return App::where('is_active', true)->pluck('id')->toArray();
+        });
 
-        // 2. Fetch cross-app articles
+        // Paginator は Eloquent モデルを含むため、シリアライズ不可 → キャッシュしない
         return Article::query()
             ->select([
                 'articles.id',
@@ -52,6 +55,7 @@ class extends Component {
     #[Computed]
     public function appSections(): Collection
     {
+        // Eloquent モデルを含むコレクションはシリアライズ不可 → キャッシュしない
         return App::where('is_active', true)
             ->get()
             ->map(function ($app) {
@@ -159,22 +163,29 @@ class extends Component {
     </section>
 
     {{-- App Sections --}}
-    <div class="space-y-12">
+    <div class="space-y-10">
         @foreach($this->appSections as $app)
             @if($app->latest_articles->isNotEmpty())
                 <section>
-                    <div class="mb-4 flex items-center justify-between">
-                        <h2 class="flex items-center gap-2 text-xl font-bold text-text-primary dark:text-white">
+                    {{-- Section header --}}
+                    <div class="mb-3 flex items-center justify-between border-b border-border/30 pb-2 dark:border-border-dark/30">
+                        <h2 class="flex items-center gap-2 text-base font-bold text-text-primary dark:text-white">
                             @if($app->icon_path)
-                                <img src="{{ Storage::url($app->icon_path) }}" alt="" class="size-6 rounded">
+                                <img src="{{ Storage::url($app->icon_path) }}" alt="" class="size-5 rounded">
                             @else
                                 <span class="text-accent">📱</span>
                             @endif
                             {{ $app->name }}
+                            <span class="ml-1 text-xs font-normal text-text-secondary dark:text-text-tertiary">最新</span>
                         </h2>
-                        <a href="{{ route('front.home', $app) }}" class="text-sm font-medium text-accent hover:underline" wire:navigate>もっと見る &rarr;</a>
+                        <a href="{{ route('front.home', $app) }}"
+                           class="flex items-center gap-1 text-xs font-medium text-accent transition-colors hover:text-accent/70"
+                           wire:navigate>
+                            もっと見る
+                            <svg class="size-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                        </a>
                     </div>
-                    
+
                     <div class="flex flex-col gap-0">
                         @foreach($app->latest_articles as $article)
                             <x-article-card :article="$article" wire:key="app-{{ $app->id }}-article-{{ $article->id }}" />

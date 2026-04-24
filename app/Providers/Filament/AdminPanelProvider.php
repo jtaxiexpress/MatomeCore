@@ -5,6 +5,7 @@ namespace App\Providers\Filament;
 use App\Filament\Pages\Dashboard as AdminDashboard;
 use App\Filament\Pages\ExceptionAlerts;
 use App\Filament\Pages\SystemSettings;
+use App\Filament\Resources\AboutSections\AboutSectionResource;
 use App\Filament\Resources\AppResource;
 use App\Filament\Resources\Users\UserResource;
 use App\Livewire\Filament\ScopedDatabaseNotifications;
@@ -45,6 +46,7 @@ class AdminPanelProvider extends PanelProvider
             ->resources([
                 AppResource::class,
                 UserResource::class,
+                AboutSectionResource::class,
             ])
             ->pages([
                 AdminDashboard::class,

@@ -4,6 +4,7 @@ use App\Models\App;
 use App\Models\Article;
 use App\Models\Category;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
@@ -39,6 +40,7 @@ class extends Component {
     #[Computed]
     public function categories(): Collection
     {
+        // Eloquent モデルを含むコレクションはシリアライズ不可 → キャッシュしない
         return $this->app->categories()
             ->select(['id', 'app_id', 'name', 'api_slug', 'sort_order'])
             ->orderBy('sort_order')
@@ -52,6 +54,7 @@ class extends Component {
     #[Computed]
     public function articles(): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
+        // Paginator は Eloquent モデルを含むため、シリアライズ不可 → キャッシュしない
         $query = Article::query()
             ->select([
                 'articles.id',

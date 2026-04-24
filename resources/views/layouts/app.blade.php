@@ -8,6 +8,27 @@
 
     <title>{{ isset($title) ? $title . ' | ' . View::getSection('tenant_name', config('app.name')) : View::getSection('tenant_name', config('app.name')) }}</title>
 
+    {{-- SEO / OGP Meta Tags --}}
+    <meta property="og:title" content="{{ isset($title) ? $title . ' | ' . View::getSection('tenant_name', config('app.name')) : View::getSection('tenant_name', config('app.name')) }}" />
+    <meta property="og:description" content="{{ $metaDescription ?? View::getSection('tenant_name', config('app.name')) . ' - 最新まとめ記事アンテナサイト' }}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="{{ request()->url() }}" />
+    <meta property="og:image" content="{{ asset('images/ogp.png') }}" />
+    <meta property="og:site_name" content="ゆにこーんアンテナ" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="{{ isset($title) ? $title . ' | ' . View::getSection('tenant_name', config('app.name')) : View::getSection('tenant_name', config('app.name')) }}" />
+    <meta name="twitter:description" content="{{ $metaDescription ?? View::getSection('tenant_name', config('app.name')) . ' - 最新まとめ記事アンテナサイト' }}" />
+    <meta name="twitter:image" content="{{ asset('images/ogp.png') }}" />
+
+    {{-- PWA Meta Tags --}}
+    <link rel="manifest" href="{{ asset('manifest.json') }}">
+    <meta name="theme-color" content="#818cf8">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="ゆにこーんアンテナ">
+    <link rel="apple-touch-icon" href="{{ asset('icon.png') }}">
+
     {{-- Fonts --}}
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -62,6 +83,7 @@
                 <a href="{{ route('front.rss-index') }}" class="transition-colors hover:text-text-primary dark:hover:text-white" wire:navigate>RSS一覧</a>
                 <a href="{{ route('front.ranking') }}" class="transition-colors hover:text-text-primary dark:hover:text-white" wire:navigate>ブログランキング</a>
                 <a href="{{ route('front.apply') }}" class="transition-colors hover:text-text-primary dark:hover:text-white" wire:navigate>相互リンク申請</a>
+                <a href="{{ route('front.about') }}" class="transition-colors hover:text-text-primary dark:hover:text-white" wire:navigate>このサイトについて</a>
             </nav>
 
             {{-- Mobile hamburger --}}
@@ -81,7 +103,7 @@
         {{-- Horizontal App Navigation (Category tab style) --}}
         <div class="border-t border-border/40 bg-surface-elevated/50 backdrop-blur-xl dark:border-border-dark/40 dark:bg-surface-elevated-dark/50">
             <div class="mx-auto max-w-5xl px-4">
-                <nav class="flex items-center gap-6 overflow-x-auto py-2.5 text-sm font-medium text-text-secondary dark:text-text-tertiary [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-black/10 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar]:h-1 dark:[&::-webkit-scrollbar-thumb]:bg-white/10">
+                <nav class="category-nav flex items-center gap-6 overflow-x-auto py-2.5 text-sm font-medium text-text-secondary dark:text-text-tertiary">
                     <a href="{{ url('/') }}" class="shrink-0 transition-colors hover:text-text-primary dark:hover:text-white {{ request()->is('/') ? 'text-accent dark:text-accent font-bold' : '' }}" wire:navigate>総合トップ</a>
                     @foreach($activeApps as $appItem)
                         <a href="{{ route('front.home', $appItem) }}" class="shrink-0 transition-colors hover:text-text-primary dark:hover:text-white {{ request()->route('app') === $appItem->api_slug ? 'text-accent dark:text-accent font-bold' : '' }}" wire:navigate>{{ $appItem->name }}</a>
@@ -119,6 +141,7 @@
                 <a href="{{ route('front.rss-index') }}" class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10" wire:navigate>RSS一覧</a>
                 <a href="{{ route('front.ranking') }}" class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10" wire:navigate>ブログランキング</a>
                 <a href="{{ route('front.apply') }}" class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10" wire:navigate>相互リンク申請</a>
+                <a href="{{ route('front.about') }}" class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10" wire:navigate>このサイトについて</a>
             </nav>
         </div>
     </header>
@@ -140,8 +163,13 @@
     <footer class="border-t border-border/40 bg-surface-elevated/50 dark:border-border-dark/40 dark:bg-surface-elevated-dark/50">
         <div class="mx-auto max-w-5xl px-4 py-6">
             <div class="flex flex-col items-center gap-3 text-xs text-text-secondary dark:text-text-tertiary">
-                <div class="flex gap-4">
+                <div class="flex flex-wrap justify-center gap-4">
                     <a href="{{ url('/') }}" class="transition-colors hover:text-text-primary dark:hover:text-white">ホーム</a>
+                    <a href="{{ route('front.sites-index') }}" class="transition-colors hover:text-text-primary dark:hover:text-white">登録サイト</a>
+                    <a href="{{ route('front.rss-index') }}" class="transition-colors hover:text-text-primary dark:hover:text-white">RSS一覧</a>
+                    <a href="{{ route('front.ranking') }}" class="transition-colors hover:text-text-primary dark:hover:text-white">ランキング</a>
+                    <a href="{{ route('front.apply') }}" class="transition-colors hover:text-text-primary dark:hover:text-white">相互リンク申請</a>
+                    <a href="{{ route('front.about') }}" class="transition-colors hover:text-text-primary dark:hover:text-white">このサイトについて</a>
                 </div>
                 <p>&copy; {{ date('Y') }} @yield('tenant_name', config('app.name'))</p>
             </div>
@@ -150,6 +178,19 @@
 
     {{-- Livewire Scripts --}}
     @livewireScripts
+
+    {{-- PWA Service Worker Registration --}}
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/sw.js').then(function(registration) {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                }, function(err) {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+            });
+        }
+    </script>
 </body>
 
 </html>

@@ -20,7 +20,10 @@ Route::livewire('/apply', 'pages::site-application')
 Route::livewire('/ranking', 'pages::site-ranking')
     ->name('front.ranking');
 
-Route::livewire('/about', 'pages::rss-list')
+Route::livewire('/about', 'pages::about')
+    ->name('front.about');
+
+Route::livewire('/rss-list', 'pages::rss-list')
     ->name('front.rss-index');
 
 Route::livewire('/sites', 'pages::sites-index')

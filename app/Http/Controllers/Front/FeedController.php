@@ -7,29 +7,35 @@ namespace App\Http\Controllers\Front;
 use App\Http\Controllers\Controller;
 use App\Models\App;
 use App\Models\Article;
+use App\Models\Category;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Cache;
 
 class FeedController extends Controller
 {
     public function index(): Response
     {
-        $activeAppIds = App::where('is_active', true)->pluck('id');
+        $content = Cache::remember('rss_feed_index', now()->addMinutes(5), function () {
+            $activeAppIds = Cache::remember('active_app_ids', now()->addMinutes(60), function () {
+                return App::where('is_active', true)->pluck('id');
+            });
 
-        $articles = Article::query()
-            ->whereIn('app_id', $activeAppIds)
-            ->with(['app:id,api_slug', 'site:id,name'])
-            ->trafficFiltered()
-            ->orderByDesc('published_at')
-            ->orderByDesc('id')
-            ->limit(50)
-            ->get();
+            $articles = Article::query()
+                ->whereIn('app_id', $activeAppIds)
+                ->with(['app:id,api_slug', 'site:id,name'])
+                ->trafficFiltered()
+                ->orderByDesc('published_at')
+                ->orderByDesc('id')
+                ->limit(50)
+                ->get();
 
-        $content = view('rss', [
-            'title' => 'ゆにこーんアンテナ - 横断アンテナ',
-            'description' => '最新のまとめ記事を横断して配信します。',
-            'link' => url('/'),
-            'articles' => $articles,
-        ]);
+            return view('rss', [
+                'title' => 'ゆにこーんアンテナ - 横断アンテナ',
+                'description' => '最新のまとめ記事を横断して配信します。',
+                'link' => url('/'),
+                'articles' => $articles,
+            ])->render();
+        });
 
         return response($content, 200, ['Content-Type' => 'application/xml; charset=utf-8']);
     }
@@ -38,46 +44,52 @@ class FeedController extends Controller
     {
         abort_unless($app->is_active, 404);
 
-        $articles = Article::query()
-            ->whereBelongsTo($app)
-            ->with(['app:id,api_slug', 'site:id,name'])
-            ->trafficFiltered()
-            ->orderByDesc('published_at')
-            ->orderByDesc('id')
-            ->limit(50)
-            ->get();
+        $cacheKey = "rss_feed_app_{$app->id}";
+        $content = Cache::remember($cacheKey, now()->addMinutes(5), function () use ($app) {
+            $articles = Article::query()
+                ->whereBelongsTo($app)
+                ->with(['app:id,api_slug', 'site:id,name'])
+                ->trafficFiltered()
+                ->orderByDesc('published_at')
+                ->orderByDesc('id')
+                ->limit(50)
+                ->get();
 
-        $content = view('rss', [
-            'title' => $app->name,
-            'description' => $app->name.'の最新まとめ記事を配信します。',
-            'link' => route('front.home', $app),
-            'articles' => $articles,
-        ]);
+            return view('rss', [
+                'title' => $app->name,
+                'description' => $app->name.'の最新まとめ記事を配信します。',
+                'link' => route('front.home', $app),
+                'articles' => $articles,
+            ])->render();
+        });
 
         return response($content, 200, ['Content-Type' => 'application/xml; charset=utf-8']);
     }
 
-    public function category(App $app, \App\Models\Category $category): Response
+    public function category(App $app, Category $category): Response
     {
         abort_unless($app->is_active, 404);
         abort_unless($category->app_id === $app->id, 404);
 
-        $articles = Article::query()
-            ->whereBelongsTo($app)
-            ->whereBelongsTo($category)
-            ->with(['app:id,api_slug', 'site:id,name'])
-            ->trafficFiltered()
-            ->orderByDesc('published_at')
-            ->orderByDesc('id')
-            ->limit(50)
-            ->get();
+        $cacheKey = "rss_feed_category_{$category->id}";
+        $content = Cache::remember($cacheKey, now()->addMinutes(5), function () use ($app, $category) {
+            $articles = Article::query()
+                ->whereBelongsTo($app)
+                ->whereBelongsTo($category)
+                ->with(['app:id,api_slug', 'site:id,name'])
+                ->trafficFiltered()
+                ->orderByDesc('published_at')
+                ->orderByDesc('id')
+                ->limit(50)
+                ->get();
 
-        $content = view('rss', [
-            'title' => $category->name . ' - ' . $app->name,
-            'description' => $category->name . 'カテゴリの最新まとめ記事を配信します。',
-            'link' => route('front.home', ['app' => $app, 'cat' => $category->api_slug]),
-            'articles' => $articles,
-        ]);
+            return view('rss', [
+                'title' => $category->name.' - '.$app->name,
+                'description' => $category->name.'カテゴリの最新まとめ記事を配信します。',
+                'link' => route('front.home', ['app' => $app, 'cat' => $category->api_slug]),
+                'articles' => $articles,
+            ])->render();
+        });
 
         return response($content, 200, ['Content-Type' => 'application/xml; charset=utf-8']);
     }
