@@ -54,14 +54,30 @@
     {{-- Dark Mode Init (prevents FOUC) & Livewire Navigation Support --}}
     <script>
         function applyTheme() {
-            if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia(
-                    '(prefers-color-scheme: dark)').matches)) {
+            // [実装の意図] 3つの状態を完全分離。localStorage.themeが無い場合は初期値として'system'を設定
+            if (!('theme' in localStorage)) {
+                localStorage.theme = 'system';
+            }
+
+            if (localStorage.theme === 'dark' || (localStorage.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
                 document.documentElement.classList.add('dark');
             } else {
                 document.documentElement.classList.remove('dark');
             }
         }
         applyTheme();
+
+        // [実装の意図] systemモードの際、OSの設定変更(prefers-color-scheme)を監視して即座に反映
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+            if (localStorage.theme === 'system') {
+                if (e.matches) {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+            }
+        });
+
         document.addEventListener('livewire:navigated', applyTheme);
     </script>
 
@@ -78,11 +94,7 @@
         },
         updateTheme(val) {
             this.theme = val;
-            if (val === 'system') {
-                localStorage.removeItem('theme');
-            } else {
-                localStorage.theme = val;
-            }
+            localStorage.theme = val;
             window.applyTheme();
         }
     }">
@@ -119,59 +131,34 @@
                     class="transition-colors hover:text-text-primary dark:hover:text-white" wire:navigate>このサイトについて</a>
 
                 {{-- Theme Toggle --}}
-                <div class="relative ml-2" x-data="{ open: false }">
-                    <button @click="open = !open" @click.outside="open = false" type="button"
-                        class="flex items-center justify-center rounded-full p-1.5 transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-                        aria-label="テーマ切替">
-                        <svg x-show="theme === 'light'" class="size-4.5" fill="none" viewBox="0 0 24 24"
-                            stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round"
-                                d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
-                        </svg>
-                        <svg x-show="theme === 'dark'" x-cloak class="size-4.5" fill="none" viewBox="0 0 24 24"
-                            stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round"
-                                d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
-                        </svg>
-                        <svg x-show="theme === 'system'" x-cloak class="size-4.5" fill="none" viewBox="0 0 24 24"
-                            stroke-width="1.5" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round"
-                                d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
+                <div class="flex items-center rounded-full bg-black/5 p-1 dark:bg-white/10 ml-2" aria-label="テーマ切替">
+                    <!-- Light -->
+                    <button @click="updateTheme('light')" type="button"
+                        class="rounded-full p-1.5 transition-colors"
+                        :class="theme === 'light' ? 'bg-white text-accent shadow-sm dark:bg-surface-dark dark:text-accent' : 'text-text-secondary hover:text-text-primary dark:text-text-tertiary dark:hover:text-white'"
+                        title="ライトモード">
+                        <svg class="size-4.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
                         </svg>
                     </button>
-                    <div x-show="open" x-cloak x-transition
-                        class="absolute right-0 top-full mt-2 w-32 rounded-xl border border-border/40 bg-surface-elevated py-1 shadow-lg dark:border-border-dark/40 dark:bg-surface-elevated-dark overflow-hidden">
-                        <button @click="updateTheme('light'); open = false"
-                            class="flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-                            :class="theme === 'light' ? 'text-accent' : ''">
-                            <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                                stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round"
-                                    d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
-                            </svg>
-                            ライト
-                        </button>
-                        <button @click="updateTheme('dark'); open = false"
-                            class="flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-                            :class="theme === 'dark' ? 'text-accent' : ''">
-                            <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                                stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round"
-                                    d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
-                            </svg>
-                            ダーク
-                        </button>
-                        <button @click="updateTheme('system'); open = false"
-                            class="flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-                            :class="theme === 'system' ? 'text-accent' : ''">
-                            <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                                stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round"
-                                    d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
-                            </svg>
-                            システム
-                        </button>
-                    </div>
+                    <!-- System -->
+                    <button @click="updateTheme('system')" type="button"
+                        class="rounded-full p-1.5 transition-colors"
+                        :class="theme === 'system' ? 'bg-white text-accent shadow-sm dark:bg-surface-dark dark:text-accent' : 'text-text-secondary hover:text-text-primary dark:text-text-tertiary dark:hover:text-white'"
+                        title="システム設定">
+                        <svg class="size-4.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
+                        </svg>
+                    </button>
+                    <!-- Dark -->
+                    <button @click="updateTheme('dark')" type="button"
+                        class="rounded-full p-1.5 transition-colors"
+                        :class="theme === 'dark' ? 'bg-white text-accent shadow-sm dark:bg-surface-dark dark:text-accent' : 'text-text-secondary hover:text-text-primary dark:text-text-tertiary dark:hover:text-white'"
+                        title="ダークモード">
+                        <svg class="size-4.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+                        </svg>
+                    </button>
                 </div>
             </nav>
 
@@ -237,32 +224,26 @@
                 <div
                     class="mt-2 flex items-center justify-between border-t border-border/40 pt-2 pb-1 dark:border-border-dark/40">
                     <span class="px-3 text-sm font-medium text-text-secondary dark:text-text-tertiary">テーマ設定</span>
-                    <div class="flex items-center gap-1">
+                    <div class="flex items-center gap-1 rounded-full bg-black/5 p-1 dark:bg-white/10">
                         <button @click="updateTheme('light')"
-                            class="rounded-lg p-2 transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-                            :class="theme === 'light' ? 'text-accent' : 'text-text-secondary dark:text-text-tertiary'">
-                            <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                                stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round"
-                                    d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
-                            </svg>
-                        </button>
-                        <button @click="updateTheme('dark')"
-                            class="rounded-lg p-2 transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-                            :class="theme === 'dark' ? 'text-accent' : 'text-text-secondary dark:text-text-tertiary'">
-                            <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                                stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round"
-                                    d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+                            class="rounded-full p-2 transition-colors"
+                            :class="theme === 'light' ? 'bg-white text-accent shadow-sm dark:bg-surface-dark dark:text-accent' : 'text-text-secondary hover:text-text-primary dark:text-text-tertiary dark:hover:text-white'">
+                            <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
                             </svg>
                         </button>
                         <button @click="updateTheme('system')"
-                            class="rounded-lg p-2 transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-                            :class="theme === 'system' ? 'text-accent' : 'text-text-secondary dark:text-text-tertiary'">
-                            <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                                stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round"
-                                    d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
+                            class="rounded-full p-2 transition-colors"
+                            :class="theme === 'system' ? 'bg-white text-accent shadow-sm dark:bg-surface-dark dark:text-accent' : 'text-text-secondary hover:text-text-primary dark:text-text-tertiary dark:hover:text-white'">
+                            <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
+                            </svg>
+                        </button>
+                        <button @click="updateTheme('dark')"
+                            class="rounded-full p-2 transition-colors"
+                            :class="theme === 'dark' ? 'bg-white text-accent shadow-sm dark:bg-surface-dark dark:text-accent' : 'text-text-secondary hover:text-text-primary dark:text-text-tertiary dark:hover:text-white'">
+                            <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
                             </svg>
                         </button>
                     </div>
