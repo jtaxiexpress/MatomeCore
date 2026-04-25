@@ -61,118 +61,82 @@ class extends Component {
         <div class="space-y-6">
             {{-- 総合RSS --}}
             <section>
-                <h2 class="mb-3 flex items-center gap-2 text-base font-bold text-text-primary dark:text-white">
+                <h2 class="mb-2 mt-6 px-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-text-secondary dark:text-text-tertiary">
                     <span class="text-accent">🌐</span> 総合RSS
                 </h2>
-                <div class="overflow-hidden rounded-xl border border-border/40 bg-surface-elevated/60 backdrop-blur-xl dark:border-border-dark/40 dark:bg-surface-elevated-dark/60">
+                <div class="overflow-hidden rounded-2xl bg-surface-elevated dark:bg-surface-elevated-dark shadow-sm">
                     @php $crossRssUrl = url('/rss'); @endphp
-                    <div class="flex items-center gap-2 px-4 py-3">
-                        <a href="{{ $crossRssUrl }}"
-                           target="_blank" rel="noopener noreferrer"
-                           class="flex-1 truncate text-sm font-medium text-accent hover:underline">
-                            {{ $crossRssUrl }}
-                        </a>
-                        <button
-                            type="button"
-                            @click="copyText(@js($crossRssUrl), 'cross')"
-                            class="inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full border border-border/40 bg-surface-elevated/80 px-2.5 text-text-secondary transition-all hover:border-accent/30 hover:bg-accent/5 hover:text-accent dark:border-border-dark/40 dark:bg-surface-elevated-dark/80 dark:hover:border-accent/40 dark:hover:bg-accent/10 dark:hover:text-accent"
-                            title="URLをコピー"
-                        >
-                            <span x-show="copied !== 'cross'" x-transition.opacity.duration.150ms>📋</span>
-                            <span
-                                x-show="copied === 'cross'"
-                                x-cloak
-                                x-transition.opacity.duration.150ms
-                                class="inline-flex items-center gap-1 text-[10px] font-semibold leading-none"
-                            >
-                                <span>✅</span>
-                                <span>Copied!</span>
+                    <button
+                        type="button"
+                        @click="copyText(@js($crossRssUrl), 'cross')"
+                        class="w-full flex items-center justify-between px-4 py-3 min-h-[44px] transition-colors hover:bg-black/5 dark:hover:bg-white/5 text-left"
+                    >
+                        <span class="truncate text-sm font-medium text-text-primary dark:text-white">ゆにこーんアンテナ 総合RSS</span>
+                        <div class="shrink-0 pl-4">
+                            <span x-show="copied !== 'cross'" class="text-xs text-text-secondary dark:text-text-tertiary transition-opacity duration-150">コピー</span>
+                            <span x-show="copied === 'cross'" x-cloak class="inline-flex items-center gap-1 text-xs font-semibold text-accent transition-opacity duration-150">
+                                <span>✅</span> Copied!
                             </span>
-                        </button>
-                    </div>
+                        </div>
+                    </button>
                 </div>
             </section>
 
             {{-- アプリごとのRSS --}}
             @foreach ($this->apps as $app)
                 <section>
-                    <h2 class="mb-3 flex items-center gap-2 text-base font-bold text-text-primary dark:text-white">
+                    <h2 class="mb-2 mt-6 px-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-text-secondary dark:text-text-tertiary">
                         @if($app->icon_path)
-                            <img src="{{ Storage::url($app->icon_path) }}" alt="" class="size-5 rounded">
+                            <img src="{{ Storage::url($app->icon_path) }}" alt="" class="size-4 rounded">
                         @endif
                         {{ $app->name }}
                     </h2>
 
-                    <div class="overflow-hidden rounded-xl border border-border/40 bg-surface-elevated/60 backdrop-blur-xl dark:border-border-dark/40 dark:bg-surface-elevated-dark/60">
-                        @php $appRssUrl = url('/s/' . $app->api_slug . '/rss'); @endphp
+                    <div class="overflow-hidden rounded-2xl bg-surface-elevated dark:bg-surface-elevated-dark shadow-sm">
+                        <ul class="divide-y divide-border/40 dark:divide-border-dark/40">
+                            @php $appRssUrl = url('/s/' . $app->api_slug . '/rss'); @endphp
 
-                        {{-- App-wide RSS row --}}
-                        <div class="flex items-center gap-2 border-b border-border/30 px-4 py-3 dark:border-border-dark/30">
-                            <div class="min-w-0 flex-1">
-                                <span class="text-[10px] font-bold uppercase tracking-wider text-text-secondary dark:text-text-tertiary">アプリ全体</span>
-                                <a href="{{ $appRssUrl }}"
-                                   target="_blank" rel="noopener noreferrer"
-                                   class="block truncate text-sm font-medium text-accent hover:underline">
-                                    {{ $appRssUrl }}
-                                </a>
-                            </div>
-                            <button
-                                type="button"
-                                @click="copyText(@js($appRssUrl), 'app-{{ $app->id }}')"
-                                class="inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full border border-border/40 bg-surface-elevated/80 px-2.5 text-text-secondary transition-all hover:border-accent/30 hover:bg-accent/5 hover:text-accent dark:border-border-dark/40 dark:bg-surface-elevated-dark/80 dark:hover:border-accent/40 dark:hover:bg-accent/10 dark:hover:text-accent"
-                                title="URLをコピー"
-                            >
-                                <span x-show="copied !== 'app-{{ $app->id }}'" x-transition.opacity.duration.150ms>📋</span>
-                                <span
-                                    x-show="copied === 'app-{{ $app->id }}'"
-                                    x-cloak
-                                    x-transition.opacity.duration.150ms
-                                    class="inline-flex items-center gap-1 text-[10px] font-semibold leading-none"
+                            {{-- App-wide RSS row --}}
+                            <li>
+                                <button
+                                    type="button"
+                                    @click="copyText(@js($appRssUrl), 'app-{{ $app->id }}')"
+                                    class="w-full flex items-center justify-between px-4 py-3 min-h-[44px] transition-colors hover:bg-black/5 dark:hover:bg-white/5 text-left"
                                 >
-                                    <span>✅</span>
-                                    <span>Copied!</span>
-                                </span>
-                            </button>
-                        </div>
+                                    <span class="truncate text-sm font-bold text-text-primary dark:text-white">アプリ全体</span>
+                                    <div class="shrink-0 pl-4">
+                                        <span x-show="copied !== 'app-{{ $app->id }}'" class="text-xs text-text-secondary dark:text-text-tertiary transition-opacity duration-150">コピー</span>
+                                        <span x-show="copied === 'app-{{ $app->id }}'" x-cloak class="inline-flex items-center gap-1 text-xs font-semibold text-accent transition-opacity duration-150">
+                                            <span>✅</span> Copied!
+                                        </span>
+                                    </div>
+                                </button>
+                            </li>
 
-                        @if ($app->categories->isNotEmpty())
-                            {{-- Category RSS -- list each + select dropdown --}}
-                            <div class="divide-y divide-border/20 dark:divide-border-dark/20">
+                            @if ($app->categories->isNotEmpty())
                                 @foreach ($app->categories as $category)
                                     @php
                                         $catRssUrl = url('/s/' . $app->api_slug . '/c/' . $category->api_slug . '/rss');
                                         $copyKey = 'cat-' . $category->id;
                                     @endphp
-                                    <div class="flex items-center gap-2 px-4 py-2.5">
-                                        <div class="min-w-0 flex-1">
-                                            <span class="mr-2 text-xs font-medium text-text-secondary dark:text-text-tertiary">{{ $category->name }}</span>
-                                            <a href="{{ $catRssUrl }}"
-                                               target="_blank" rel="noopener noreferrer"
-                                               class="truncate text-xs text-accent hover:underline">
-                                                {{ $catRssUrl }}
-                                            </a>
-                                        </div>
+                                    <li>
                                         <button
                                             type="button"
                                             @click="copyText(@js($catRssUrl), '{{ $copyKey }}')"
-                                            class="inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full border border-border/40 bg-surface-elevated/80 px-2 text-text-secondary transition-all hover:border-accent/30 hover:bg-accent/5 hover:text-accent dark:border-border-dark/40 dark:bg-surface-elevated-dark/80 dark:hover:border-accent/40 dark:hover:bg-accent/10 dark:hover:text-accent"
-                                            title="URLをコピー"
+                                            class="w-full flex items-center justify-between px-4 py-3 min-h-[44px] transition-colors hover:bg-black/5 dark:hover:bg-white/5 text-left"
                                         >
-                                            <span x-show="copied !== '{{ $copyKey }}'" x-transition.opacity.duration.150ms>📋</span>
-                                            <span
-                                                x-show="copied === '{{ $copyKey }}'"
-                                                x-cloak
-                                                x-transition.opacity.duration.150ms
-                                                class="inline-flex items-center gap-1 text-[10px] font-semibold leading-none"
-                                            >
-                                                <span>✅</span>
-                                                <span>Copied!</span>
-                                            </span>
+                                            <span class="truncate text-sm font-medium text-text-primary dark:text-white">{{ $category->name }}</span>
+                                            <div class="shrink-0 pl-4">
+                                                <span x-show="copied !== '{{ $copyKey }}'" class="text-xs text-text-secondary dark:text-text-tertiary transition-opacity duration-150">コピー</span>
+                                                <span x-show="copied === '{{ $copyKey }}'" x-cloak class="inline-flex items-center gap-1 text-xs font-semibold text-accent transition-opacity duration-150">
+                                                    <span>✅</span> Copied!
+                                                </span>
+                                            </div>
                                         </button>
-                                    </div>
+                                    </li>
                                 @endforeach
-                            </div>
-                        @endif
+                            @endif
+                        </ul>
                     </div>
                 </section>
             @endforeach

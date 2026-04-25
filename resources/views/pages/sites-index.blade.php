@@ -66,37 +66,31 @@ class extends Component {
             @foreach ($this->appsWithSites as $app)
                 @if ($app->sites->isNotEmpty())
                     <section>
-                        <h2 class="mb-3 flex items-center gap-2 text-base font-bold text-text-primary dark:text-white">
+                        <h2 class="mb-2 mt-6 flex items-center gap-2 px-4 text-sm font-semibold uppercase tracking-wider text-text-secondary dark:text-text-tertiary">
                             @if($app->icon_path)
-                                <img src="{{ Storage::url($app->icon_path) }}" alt="" class="size-5 rounded">
+                                <img src="{{ Storage::url($app->icon_path) }}" alt="" class="size-4 rounded">
                             @endif
                             {{ $app->name }}
-                            <span class="ml-auto text-xs font-normal text-text-secondary dark:text-text-tertiary">
+                            <span class="ml-auto text-xs font-normal">
                                 {{ $app->sites->count() }}サイト
                             </span>
                         </h2>
 
-                        <div class="overflow-hidden rounded-xl border border-border/40 bg-surface-elevated/60 backdrop-blur-xl dark:border-border-dark/40 dark:bg-surface-elevated-dark/60">
-                            {{-- Column header --}}
-                            <div class="grid grid-cols-[1fr_auto] gap-2 border-b border-border/30 bg-black/5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-text-secondary dark:border-border-dark/30 dark:bg-white/5 dark:text-text-tertiary">
-                                <div>サイト名</div>
-                                <div class="text-right pr-8">記事数</div>
-                            </div>
-
-                            <ul class="divide-y divide-border/30 dark:divide-border-dark/30">
+                        <div class="overflow-hidden rounded-2xl bg-surface-elevated dark:bg-surface-elevated-dark shadow-sm">
+                            <ul class="divide-y divide-border/40 dark:divide-border-dark/40">
                                 @foreach ($app->sites as $site)
-                                    <li class="grid grid-cols-[1fr_auto] items-center gap-2 px-3 py-2 transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.03]">
+                                    <li class="flex items-center justify-between px-4 py-3 min-h-[44px] transition-colors hover:bg-black/5 dark:hover:bg-white/5">
                                         {{-- Site name --}}
-                                        <div class="min-w-0">
+                                        <div class="min-w-0 flex-1 pr-4">
                                             <a href="{{ $site->url }}"
                                                target="_blank" rel="noopener noreferrer"
-                                               class="truncate text-sm font-medium text-text-primary transition-colors hover:text-accent dark:text-white dark:hover:text-accent">
+                                               class="block truncate text-sm font-medium text-text-primary transition-colors hover:text-accent dark:text-white dark:hover:text-accent">
                                                 {{ $site->name }}
                                             </a>
                                         </div>
 
                                         {{-- Article count --}}
-                                        <div class="shrink-0 pr-2 text-right">
+                                        <div class="shrink-0 text-right">
                                             <span class="text-xs text-text-secondary dark:text-text-tertiary">
                                                 {{ number_format($site->articles_count) }}件
                                             </span>

@@ -10,10 +10,10 @@
         'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
 
     /* Surface colors */
-    --color-surface: #F5F5F7;
+    --color-surface: #F2F2F7;
     --color-surface-elevated: #FFFFFF;
-    --color-surface-dark: #1C1C1E;
-    --color-surface-elevated-dark: #2C2C2E;
+    --color-surface-dark: #000000;
+    --color-surface-elevated-dark: #1C1C1E;
 
     /* Text colors */
     --color-text-primary: #1D1D1F;
