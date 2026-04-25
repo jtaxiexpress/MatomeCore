@@ -24,28 +24,7 @@ class extends Component {
     }
 }; ?>
 
-<div
-    x-data="{
-        copied: null,
-        copiedTimer: null,
-        async copyText(text, key) {
-            try {
-                await navigator.clipboard.writeText(text);
-                this.copied = key;
-                if (this.copiedTimer) {
-                    window.clearTimeout(this.copiedTimer);
-                }
-                this.copiedTimer = window.setTimeout(() => {
-                    if (this.copied === key) {
-                        this.copied = null;
-                    }
-                }, 1500);
-            } catch (error) {
-                console.error(error);
-            }
-        },
-    }"
->
+<div>
     @section('title', 'RSS配信一覧')
     @section('tenant_name', config('app.name'))
 
@@ -54,7 +33,7 @@ class extends Component {
             <h1 class="text-2xl font-bold tracking-tight text-text-primary dark:text-white">📡 RSS配信一覧</h1>
             <p class="mt-1 text-sm text-text-secondary dark:text-text-tertiary">
                 各カテゴリやアプリごとの新着記事をRSS形式で配信しています。
-                📋 をクリックするとURLをコピー、サイト名をクリックするとRSSフィードへ遷移します。
+                リストをクリックするとそれぞれのRSSフィードを表示します。
             </p>
         </div>
 
@@ -66,19 +45,16 @@ class extends Component {
                 </h2>
                 <div class="overflow-hidden rounded-2xl bg-surface-elevated dark:bg-surface-elevated-dark shadow-sm">
                     @php $crossRssUrl = url('/rss'); @endphp
-                    <button
-                        type="button"
-                        @click="copyText(@js($crossRssUrl), 'cross')"
-                        class="w-full flex items-center justify-between px-4 py-3 min-h-[44px] transition-colors hover:bg-black/5 dark:hover:bg-white/5 text-left"
+                    <a
+                        href="{{ $crossRssUrl }}"
+                        target="_blank"
+                        class="w-full flex items-center justify-between px-4 py-3 min-h-[44px] transition-colors hover:bg-black/5 dark:hover:bg-white/5 text-left group"
                     >
                         <span class="truncate text-sm font-medium text-text-primary dark:text-white">ゆにこーんアンテナ 総合RSS</span>
-                        <div class="shrink-0 pl-4">
-                            <span x-show="copied !== 'cross'" class="text-xs text-text-secondary dark:text-text-tertiary transition-opacity duration-150">コピー</span>
-                            <span x-show="copied === 'cross'" x-cloak class="inline-flex items-center gap-1 text-xs font-semibold text-accent transition-opacity duration-150">
-                                <span>✅</span> Copied!
-                            </span>
+                        <div class="shrink-0 pl-4 text-text-tertiary group-hover:text-text-primary dark:group-hover:text-white transition-colors">
+                            <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
                         </div>
-                    </button>
+                    </a>
                 </div>
             </section>
 
@@ -98,41 +74,34 @@ class extends Component {
 
                             {{-- App-wide RSS row --}}
                             <li>
-                                <button
-                                    type="button"
-                                    @click="copyText(@js($appRssUrl), 'app-{{ $app->id }}')"
-                                    class="w-full flex items-center justify-between px-4 py-3 min-h-[44px] transition-colors hover:bg-black/5 dark:hover:bg-white/5 text-left"
+                                <a
+                                    href="{{ $appRssUrl }}"
+                                    target="_blank"
+                                    class="w-full flex items-center justify-between px-4 py-3 min-h-[44px] transition-colors hover:bg-black/5 dark:hover:bg-white/5 text-left group"
                                 >
                                     <span class="truncate text-sm font-bold text-text-primary dark:text-white">アプリ全体</span>
-                                    <div class="shrink-0 pl-4">
-                                        <span x-show="copied !== 'app-{{ $app->id }}'" class="text-xs text-text-secondary dark:text-text-tertiary transition-opacity duration-150">コピー</span>
-                                        <span x-show="copied === 'app-{{ $app->id }}'" x-cloak class="inline-flex items-center gap-1 text-xs font-semibold text-accent transition-opacity duration-150">
-                                            <span>✅</span> Copied!
-                                        </span>
+                                    <div class="shrink-0 pl-4 text-text-tertiary group-hover:text-text-primary dark:group-hover:text-white transition-colors">
+                                        <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
                                     </div>
-                                </button>
+                                </a>
                             </li>
 
                             @if ($app->categories->isNotEmpty())
                                 @foreach ($app->categories as $category)
                                     @php
                                         $catRssUrl = url('/s/' . $app->api_slug . '/c/' . $category->api_slug . '/rss');
-                                        $copyKey = 'cat-' . $category->id;
                                     @endphp
                                     <li>
-                                        <button
-                                            type="button"
-                                            @click="copyText(@js($catRssUrl), '{{ $copyKey }}')"
-                                            class="w-full flex items-center justify-between px-4 py-3 min-h-[44px] transition-colors hover:bg-black/5 dark:hover:bg-white/5 text-left"
+                                        <a
+                                            href="{{ $catRssUrl }}"
+                                            target="_blank"
+                                            class="w-full flex items-center justify-between px-4 py-3 min-h-[44px] transition-colors hover:bg-black/5 dark:hover:bg-white/5 text-left group"
                                         >
                                             <span class="truncate text-sm font-medium text-text-primary dark:text-white">{{ $category->name }}</span>
-                                            <div class="shrink-0 pl-4">
-                                                <span x-show="copied !== '{{ $copyKey }}'" class="text-xs text-text-secondary dark:text-text-tertiary transition-opacity duration-150">コピー</span>
-                                                <span x-show="copied === '{{ $copyKey }}'" x-cloak class="inline-flex items-center gap-1 text-xs font-semibold text-accent transition-opacity duration-150">
-                                                    <span>✅</span> Copied!
-                                                </span>
+                                            <div class="shrink-0 pl-4 text-text-tertiary group-hover:text-text-primary dark:group-hover:text-white transition-colors">
+                                                <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
                                             </div>
-                                        </button>
+                                        </a>
                                     </li>
                                 @endforeach
                             @endif

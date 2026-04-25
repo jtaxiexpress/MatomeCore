@@ -166,11 +166,12 @@ class extends Component {
         wire:loading.class="opacity-60"
         wire:loading.class="pointer-events-none"
         wire:target="selectCategory"
-        class="flex flex-col gap-0 transition-opacity duration-200"
+        class="space-y-6 transition-opacity duration-200"
         id="article-feed"
     >
         @php
             $lastDate = null;
+            $isFirst = true;
         @endphp
         @forelse ($this->articles as $index => $article)
             @php
@@ -178,31 +179,42 @@ class extends Component {
             @endphp
 
             @if ($lastDate !== $currentDate)
-                <div class="mt-3 mb-1 flex items-center gap-2 first:mt-0">
-                    <span class="text-sm font-bold text-text-primary dark:text-white">{{ $currentDate }}</span>
-                    <div class="h-px flex-1 bg-border/50 dark:bg-border-dark/50"></div>
-                </div>
+                @if (!$isFirst)
+                        </div>
+                    </div>
+                @endif
+                <div class="date-group">
+                    <h3 class="mb-2 px-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-text-secondary dark:text-text-tertiary">
+                        {{ $currentDate }}
+                    </h3>
+                    <div class="overflow-hidden rounded-2xl bg-surface-elevated dark:bg-surface-elevated-dark shadow-sm divide-y divide-border/40 dark:divide-border-dark/40">
                 @php
                     $lastDate = $currentDate;
+                    $isFirst = false;
                 @endphp
             @endif
 
             {{-- Infeed ad every N articles --}}
             @if ($index > 0 && $index % $this->adInterval === 0)
-                <div class="py-2">
+                <div class="py-3 px-4 bg-transparent">
                     <x-ad-infeed />
                 </div>
             @endif
 
             <x-article-card :article="$article" wire:key="article-{{ $article->id }}" />
         @empty
-            <div class="flex flex-col items-center justify-center rounded-xl bg-surface-elevated px-4 py-16 text-center dark:bg-surface-elevated-dark">
+            <div class="flex flex-col items-center justify-center rounded-2xl bg-surface-elevated px-4 py-16 text-center dark:bg-surface-elevated-dark shadow-sm">
                 <span class="mb-2 text-4xl">📭</span>
                 <p class="text-sm font-medium text-text-secondary dark:text-text-tertiary">
                     記事が見つかりませんでした
                 </p>
             </div>
         @endforelse
+
+        @if (!$isFirst)
+                </div>
+            </div>
+        @endif
     </div>
 
     {{-- Pagination --}}

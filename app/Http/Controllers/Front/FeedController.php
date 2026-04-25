@@ -15,12 +15,12 @@ class FeedController extends Controller
 {
     public function index(): Response
     {
-        $content = Cache::remember('rss_feed_index', now()->addMinutes(5), function () {
-            $activeAppIds = Cache::remember('active_app_ids', now()->addMinutes(60), function () {
-                return App::where('is_active', true)->pluck('id');
-            });
+        $activeAppIds = Cache::remember('active_app_ids', now()->addMinutes(60), function () {
+            return App::where('is_active', true)->pluck('id');
+        });
 
-            $articles = Article::query()
+        $articles = Cache::remember('rss_feed_index_articles', now()->addMinutes(5), function () use ($activeAppIds) {
+            return Article::query()
                 ->whereIn('app_id', $activeAppIds)
                 ->with(['app:id,api_slug', 'site:id,name'])
                 ->trafficFiltered()
@@ -28,14 +28,14 @@ class FeedController extends Controller
                 ->orderByDesc('id')
                 ->limit(50)
                 ->get();
-
-            return view('rss', [
-                'title' => 'ゆにこーんアンテナ - 横断アンテナ',
-                'description' => '最新のまとめ記事を横断して配信します。',
-                'link' => url('/'),
-                'articles' => $articles,
-            ])->render();
         });
+
+        $content = view('rss', [
+            'title' => 'ゆにこーんアンテナ - 横断アンテナ',
+            'description' => '最新のまとめ記事を横断して配信します。',
+            'link' => url('/'),
+            'articles' => $articles,
+        ])->render();
 
         return response($content, 200, ['Content-Type' => 'application/xml; charset=utf-8']);
     }
@@ -44,9 +44,9 @@ class FeedController extends Controller
     {
         abort_unless($app->is_active, 404);
 
-        $cacheKey = "rss_feed_app_{$app->id}";
-        $content = Cache::remember($cacheKey, now()->addMinutes(5), function () use ($app) {
-            $articles = Article::query()
+        $cacheKey = "rss_feed_app_{$app->id}_articles";
+        $articles = Cache::remember($cacheKey, now()->addMinutes(5), function () use ($app) {
+            return Article::query()
                 ->whereBelongsTo($app)
                 ->with(['app:id,api_slug', 'site:id,name'])
                 ->trafficFiltered()
@@ -54,14 +54,14 @@ class FeedController extends Controller
                 ->orderByDesc('id')
                 ->limit(50)
                 ->get();
-
-            return view('rss', [
-                'title' => $app->name,
-                'description' => $app->name.'の最新まとめ記事を配信します。',
-                'link' => route('front.home', $app),
-                'articles' => $articles,
-            ])->render();
         });
+
+        $content = view('rss', [
+            'title' => $app->name,
+            'description' => $app->name.'の最新まとめ記事を配信します。',
+            'link' => route('front.home', $app),
+            'articles' => $articles,
+        ])->render();
 
         return response($content, 200, ['Content-Type' => 'application/xml; charset=utf-8']);
     }
@@ -71,9 +71,9 @@ class FeedController extends Controller
         abort_unless($app->is_active, 404);
         abort_unless($category->app_id === $app->id, 404);
 
-        $cacheKey = "rss_feed_category_{$category->id}";
-        $content = Cache::remember($cacheKey, now()->addMinutes(5), function () use ($app, $category) {
-            $articles = Article::query()
+        $cacheKey = "rss_feed_category_{$category->id}_articles";
+        $articles = Cache::remember($cacheKey, now()->addMinutes(5), function () use ($app, $category) {
+            return Article::query()
                 ->whereBelongsTo($app)
                 ->whereBelongsTo($category)
                 ->with(['app:id,api_slug', 'site:id,name'])
@@ -82,14 +82,14 @@ class FeedController extends Controller
                 ->orderByDesc('id')
                 ->limit(50)
                 ->get();
-
-            return view('rss', [
-                'title' => $category->name.' - '.$app->name,
-                'description' => $category->name.'カテゴリの最新まとめ記事を配信します。',
-                'link' => route('front.home', ['app' => $app, 'cat' => $category->api_slug]),
-                'articles' => $articles,
-            ])->render();
         });
+
+        $content = view('rss', [
+            'title' => $category->name.' - '.$app->name,
+            'description' => $category->name.'カテゴリの最新まとめ記事を配信します。',
+            'link' => route('front.home', ['app' => $app, 'cat' => $category->api_slug]),
+            'articles' => $articles,
+        ])->render();
 
         return response($content, 200, ['Content-Type' => 'application/xml; charset=utf-8']);
     }

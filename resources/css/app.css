@@ -5,6 +5,8 @@
 @source '../**/*.blade.php';
 @source '../**/*.js';
 
+@custom-variant dark (&:is(.dark *));
+
 @theme {
     --font-sans: 'Inter', 'Noto Sans JP', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
         'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';

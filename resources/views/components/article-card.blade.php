@@ -28,7 +28,7 @@
 <article 
     x-show="!mutedSites.includes({{ $article->site_id ?? 'null' }})"
     x-transition.out.opacity.duration.300ms
-    class="group relative flex items-center gap-2 py-2 mb-1.5 border border-slate-200/50 bg-white/40 backdrop-blur-md rounded-xl hover:bg-white/60 active:bg-white/80 transition-colors px-3 dark:border-white/10 dark:bg-black/40 dark:hover:bg-white/5 dark:active:bg-white/10"
+    class="group relative flex items-center gap-3 py-3 px-4 bg-transparent hover:bg-black/5 active:bg-black/10 dark:hover:bg-white/5 dark:active:bg-white/10 transition-colors"
 >
     {{-- Published time --}}
     @if ($publishedAt)

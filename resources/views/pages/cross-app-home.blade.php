@@ -116,9 +116,10 @@ class extends Component {
             <span class="text-accent">🌟</span> 全アプリ総合最新記事
         </h2>
         
-        <div class="flex flex-col gap-0" id="article-feed">
+        <div class="space-y-6" id="article-feed">
             @php
                 $lastDate = null;
+                $isFirst = true;
             @endphp
             @forelse ($this->articles as $index => $article)
                 @php
@@ -126,31 +127,42 @@ class extends Component {
                 @endphp
 
                 @if ($lastDate !== $currentDate)
-                    <div class="mt-3 mb-1 flex items-center gap-2 first:mt-0">
-                        <span class="text-sm font-bold text-text-primary dark:text-white">{{ $currentDate }}</span>
-                        <div class="h-px flex-1 bg-border/50 dark:bg-border-dark/50"></div>
-                    </div>
+                    @if (!$isFirst)
+                            </div>
+                        </div>
+                    @endif
+                    <div class="date-group">
+                        <h3 class="mb-2 px-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-text-secondary dark:text-text-tertiary">
+                            {{ $currentDate }}
+                        </h3>
+                        <div class="overflow-hidden rounded-2xl bg-surface-elevated dark:bg-surface-elevated-dark shadow-sm divide-y divide-border/40 dark:divide-border-dark/40">
                     @php
                         $lastDate = $currentDate;
+                        $isFirst = false;
                     @endphp
                 @endif
 
                 {{-- Infeed ad every N articles --}}
                 @if ($index > 0 && $index % $this->adInterval === 0)
-                    <div class="py-2">
+                    <div class="py-3 px-4 bg-transparent">
                         <x-ad-infeed />
                     </div>
                 @endif
 
                 <x-article-card :article="$article" wire:key="article-cross-{{ $article->id }}" />
             @empty
-                <div class="flex flex-col items-center justify-center rounded-xl bg-surface-elevated px-4 py-16 text-center dark:bg-surface-elevated-dark border border-border/40 dark:border-border-dark/40">
+                <div class="flex flex-col items-center justify-center rounded-2xl bg-surface-elevated px-4 py-16 text-center dark:bg-surface-elevated-dark shadow-sm">
                     <span class="mb-2 text-4xl">📭</span>
                     <p class="text-sm font-medium text-text-secondary dark:text-text-tertiary">
                         記事が見つかりませんでした
                     </p>
                 </div>
             @endforelse
+
+            @if (!$isFirst)
+                    </div>
+                </div>
+            @endif
         </div>
 
         {{-- Pagination --}}
@@ -165,13 +177,12 @@ class extends Component {
             @if($app->latest_articles->isNotEmpty())
                 <section>
                     {{-- Section header --}}
-                    <div class="mb-3 flex items-center justify-between border-b border-border/30 pb-2 dark:border-border-dark/30">
-                        <h2 class="flex items-center gap-2 text-base font-bold text-text-primary dark:text-white">
+                    <div class="mb-2 px-4 flex items-center justify-between pb-1">
+                        <h2 class="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-text-secondary dark:text-text-tertiary">
                             @if($app->icon_path)
-                                <img src="{{ Storage::url($app->icon_path) }}" alt="" class="size-5 rounded">
+                                <img src="{{ Storage::url($app->icon_path) }}" alt="" class="size-4 rounded">
                             @endif
                             {{ $app->name }}
-                            <span class="ml-1 text-xs font-normal text-text-secondary dark:text-text-tertiary">最新</span>
                         </h2>
                         <a href="{{ route('front.home', $app) }}"
                            class="flex items-center gap-1 text-xs font-medium text-accent transition-colors hover:text-accent/70"
@@ -181,7 +192,7 @@ class extends Component {
                         </a>
                     </div>
 
-                    <div class="flex flex-col gap-0">
+                    <div class="overflow-hidden rounded-2xl bg-surface-elevated dark:bg-surface-elevated-dark shadow-sm divide-y divide-border/40 dark:divide-border-dark/40">
                         @foreach($app->latest_articles as $article)
                             <x-article-card :article="$article" wire:key="app-{{ $app->id }}-article-{{ $article->id }}" />
                         @endforeach

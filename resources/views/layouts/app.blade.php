@@ -44,13 +44,43 @@
     @endif
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 
+    {{-- Dark Mode Init (prevents FOUC) --}}
+    <script>
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark')
+        } else {
+            document.documentElement.classList.remove('dark')
+        }
+    </script>
+
     {{-- Livewire Styles --}}
     @livewireStyles
 </head>
 
 <body
     class="min-h-dvh bg-surface text-text-primary antialiased dark:bg-surface-dark dark:text-white"
-    x-data="{ mobileMenuOpen: false }"
+    x-data="{ 
+        mobileMenuOpen: false,
+        theme: localStorage.theme || 'system',
+        updateTheme(val) {
+            this.theme = val;
+            if (val === 'system') {
+                localStorage.removeItem('theme');
+                if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+            } else {
+                localStorage.theme = val;
+                if (val === 'dark') {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+            }
+        }
+    }"
 >
     {{-- Header --}}
     <header class="sticky top-0 z-40 border-b border-border/60 bg-surface-elevated/80 backdrop-blur-xl dark:border-border-dark/60 dark:bg-surface-elevated-dark/80">
@@ -73,6 +103,29 @@
                 <a href="{{ route('front.ranking') }}" class="transition-colors hover:text-text-primary dark:hover:text-white" wire:navigate>ブログランキング</a>
                 <a href="{{ route('front.apply') }}" class="transition-colors hover:text-text-primary dark:hover:text-white" wire:navigate>相互リンク申請</a>
                 <a href="{{ route('front.about') }}" class="transition-colors hover:text-text-primary dark:hover:text-white" wire:navigate>このサイトについて</a>
+
+                {{-- Theme Toggle --}}
+                <div class="relative ml-2" x-data="{ open: false }">
+                    <button @click="open = !open" @click.outside="open = false" type="button" class="flex items-center justify-center rounded-full p-1.5 transition-colors hover:bg-black/5 dark:hover:bg-white/10" aria-label="テーマ切替">
+                        <svg x-show="theme === 'light'" class="size-4.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" /></svg>
+                        <svg x-show="theme === 'dark'" x-cloak class="size-4.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" /></svg>
+                        <svg x-show="theme === 'system'" x-cloak class="size-4.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" /></svg>
+                    </button>
+                    <div x-show="open" x-cloak x-transition class="absolute right-0 top-full mt-2 w-32 rounded-xl border border-border/40 bg-surface-elevated py-1 shadow-lg dark:border-border-dark/40 dark:bg-surface-elevated-dark overflow-hidden">
+                        <button @click="updateTheme('light'); open = false" class="flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-black/5 dark:hover:bg-white/10" :class="theme === 'light' ? 'text-accent' : ''">
+                            <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" /></svg>
+                            ライト
+                        </button>
+                        <button @click="updateTheme('dark'); open = false" class="flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-black/5 dark:hover:bg-white/10" :class="theme === 'dark' ? 'text-accent' : ''">
+                            <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" /></svg>
+                            ダーク
+                        </button>
+                        <button @click="updateTheme('system'); open = false" class="flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-black/5 dark:hover:bg-white/10" :class="theme === 'system' ? 'text-accent' : ''">
+                            <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" /></svg>
+                            システム
+                        </button>
+                    </div>
+                </div>
             </nav>
 
             {{-- Mobile hamburger --}}
@@ -122,6 +175,21 @@
                 <a href="{{ route('front.ranking') }}" class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10" wire:navigate>ブログランキング</a>
                 <a href="{{ route('front.apply') }}" class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10" wire:navigate>相互リンク申請</a>
                 <a href="{{ route('front.about') }}" class="rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10" wire:navigate>このサイトについて</a>
+
+                <div class="mt-2 flex items-center justify-between border-t border-border/40 pt-2 pb-1 dark:border-border-dark/40">
+                    <span class="px-3 text-sm font-medium text-text-secondary dark:text-text-tertiary">テーマ設定</span>
+                    <div class="flex items-center gap-1">
+                        <button @click="updateTheme('light')" class="rounded-lg p-2 transition-colors hover:bg-black/5 dark:hover:bg-white/10" :class="theme === 'light' ? 'text-accent' : 'text-text-secondary dark:text-text-tertiary'">
+                            <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" /></svg>
+                        </button>
+                        <button @click="updateTheme('dark')" class="rounded-lg p-2 transition-colors hover:bg-black/5 dark:hover:bg-white/10" :class="theme === 'dark' ? 'text-accent' : 'text-text-secondary dark:text-text-tertiary'">
+                            <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" /></svg>
+                        </button>
+                        <button @click="updateTheme('system')" class="rounded-lg p-2 transition-colors hover:bg-black/5 dark:hover:bg-white/10" :class="theme === 'system' ? 'text-accent' : 'text-text-secondary dark:text-text-tertiary'">
+                            <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" /></svg>
+                        </button>
+                    </div>
+                </div>
             </nav>
         </div>
     </header>
