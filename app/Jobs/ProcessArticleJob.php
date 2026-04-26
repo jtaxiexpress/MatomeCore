@@ -4,42 +4,16 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
-use App\Actions\CleanArticleTitleAction;
-use App\DTOs\AiAnalyzedData;
-use App\DTOs\ScrapedArticleData;
-use App\Models\App as AppModel;
-use App\Models\Article;
-use App\Models\Category;
-use App\Models\Site;
-use App\Services\ArticleAiService;
-use App\Services\ArticleMetadataResolverService;
-use App\Services\ArticleScraperService;
-use Exception;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
-use Throwable;
+use Illuminate\Support\Facades\Bus;
 
 class ProcessArticleJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-    public int $tries = 3;
-
-    public int $maxExceptions = 3;
-
-    public int $timeout = 600;
-
-    public ?string $output = null;
-
-    protected Site $site;
 
     public function __construct(
         public readonly int $siteId,
@@ -48,187 +22,12 @@ class ProcessArticleJob implements ShouldQueue
         public readonly ?string $fetchSource = null
     ) {}
 
-    /**
-     * @return array<int, object>
-     */
-    public function middleware(): array
+    public function handle(): void
     {
-        return [
-            (new WithoutOverlapping(md5($this->url)))
-                ->releaseAfter(60)
-                ->expireAfter(900),
-        ];
-    }
-
-    public function handle(
-        ArticleAiService $aiService,
-        ArticleScraperService $scraper,
-        CleanArticleTitleAction $cleanTitleAction,
-        ArticleMetadataResolverService $metadataResolver,
-    ): void {
-        $this->shareLogContext();
-
-        try {
-            if (Cache::get('is_bulk_paused', false)) {
-                $this->release(60);
-
-                return;
-            }
-
-            $site = Site::with('app.categories')->find($this->siteId);
-            if (! $site || ! $site->app instanceof AppModel) {
-                Log::warning("ProcessArticleJob: Site ID {$this->siteId} or App not found.");
-
-                return;
-            }
-
-            $app = $site->app;
-            $this->site = $site;
-            $this->shareLogContext($site);
-
-            if (Article::where('url', $this->url)->exists()) {
-                return;
-            }
-
-            $metaData = $metadataResolver->resolve(
-                scraper: $scraper,
-                url: $this->url,
-                rawMetaData: $this->metaData,
-                site: $this->site,
-                logPrefix: "[Process: {$this->url}]",
-            );
-
-            $title = $cleanTitleAction->execute((string) $metaData->title, $this->site->name);
-
-            // ② AI APIの無駄打ち防止: タイトルが短すぎる場合はAI呼び出し自体をスキップ
-            if (empty($title) || mb_strlen($title) < 5) {
-                Log::warning("[Process: {$this->url}] タイトルが空または5文字未満のためAI呼び出しをスキップします");
-
-                return;
-            }
-
-            // ③ NGキーワードのチェック
-            if ($this->containsNgKeyword($title) || $this->containsNgKeyword($metaData->title)) {
-                Log::warning("[Process: {$this->url}] NGキーワードが含まれているため保存をスキップします");
-
-                return;
-            }
-
-            Log::info("[Process: {$this->url}] タイトル洗浄: 》前「{$metaData->title} -> 」後「{$title}");
-
-            $aiData = new ScrapedArticleData(
-                url: $metaData->url,
-                title: $title,
-                image: $metaData->image,
-                date: $metaData->date,
-                success: $metaData->success,
-                errorMessage: $metaData->errorMessage,
-            );
-
-            $aiResult = $this->classifyAndRewriteTitle($aiService, $aiData, $app);
-            $this->saveArticle($aiResult, $title, $metaData);
-
-        } catch (Throwable $e) {
-            report($e);
-
-            Log::error('[ProcessArticleJob] Job Error', [
-                'site_id' => $this->siteId,
-                'url' => $this->url,
-                'message' => $e->getMessage(),
-            ]);
-
-            if ($this->isTransientException($e) && $this->attempts() < $this->tries) {
-                Log::warning('[ProcessArticleJob] 一時的な通信エラーのため再試行します', [
-                    'site_id' => $this->siteId,
-                    'url' => $this->url,
-                    'attempt' => $this->attempts(),
-                    'max_attempts' => $this->tries,
-                ]);
-                $this->release(60);
-
-                return;
-            }
-
-            $this->fail($e);
-        }
-    }
-
-    /**
-     * @throws Exception
-     */
-    private function classifyAndRewriteTitle(ArticleAiService $aiService, ScrapedArticleData $articleData, AppModel $app): AiAnalyzedData
-    {
-        $categories = Category::query()
-            ->select(['id', 'name'])
-            ->where('app_id', $app->id)
-            ->get()
-            ->map(static fn (Category $category): array => [
-                'id' => $category->id,
-                'name' => $category->name,
-            ])
-            ->all();
-
-        Log::info("[Process: {$this->url}] AI(Ollama)へタイトルリライトとカテゴリ推論をリクエスト中...");
-        $aiResult = $aiService->classifyAndRewrite($articleData, $categories, $app);
-
-        if (empty($aiResult->rewrittenTitle)) {
-            throw new Exception('AI returned empty rewritten_title');
-        }
-
-        return $aiResult;
-    }
-
-    private function saveArticle(AiAnalyzedData $aiResult, string $originalTitle, ScrapedArticleData $metaData): void
-    {
-        Article::firstOrCreate(
-            ['url' => $this->url],
-            [
-                'app_id' => $this->site->app_id,
-                'site_id' => $this->site->id,
-                'category_id' => $aiResult->categoryId,
-                'title' => $aiResult->rewrittenTitle,
-                'original_title' => $originalTitle,
-                'thumbnail_url' => $metaData->image,
-                'published_at' => $metaData->date,
-                'fetch_source' => $this->fetchSource,
-            ]
-        );
-
-        Log::info("[Process: {$this->url}] 記事の保存が完了しました (カテゴリID: {$aiResult->categoryId}, リライト後: {$aiResult->rewrittenTitle})");
-        $this->output = "AI Processing completed successfully. Mapped to category_id: {$aiResult->categoryId}";
-    }
-
-    private function shareLogContext(?Site $site = null): void
-    {
-        Log::withContext([
-            'site_id' => $site?->getKey() ?? $this->siteId,
-            'app_id' => $site?->app_id,
-            'app_slug' => (string) data_get($site, 'app.api_slug'),
-            'url' => $this->url,
-        ]);
-    }
-
-    private function isTransientException(Throwable $exception): bool
-    {
-        return $exception instanceof ConnectionException || $exception instanceof RequestException;
-    }
-
-    private function containsNgKeyword(?string $title): bool
-    {
-        if (empty($title)) {
-            return false;
-        }
-
-        $ngKeywordsStr = Cache::get('ng_keywords', 'PR,AD,スポンサーリンク');
-        // カンマと改行を区切りとして配列にする
-        $ngKeywords = array_filter(array_map('trim', preg_split('/[\r\n,]+/', (string) $ngKeywordsStr)));
-
-        foreach ($ngKeywords as $keyword) {
-            if (mb_stripos($title, $keyword) !== false) {
-                return true;
-            }
-        }
-
-        return false;
+        Bus::chain([
+            new ScrapeArticleJob($this->siteId, $this->url, $this->metaData),
+            new AnalyzeArticleAiJob($this->siteId, $this->url),
+            new PublishArticleJob($this->siteId, $this->url, $this->fetchSource),
+        ])->dispatch();
     }
 }
