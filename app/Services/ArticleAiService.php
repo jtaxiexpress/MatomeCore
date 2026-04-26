@@ -97,15 +97,7 @@ PROMPT;
         array $categories,
         ?App $app = null
     ): string {
-        $categoryList = collect($categories)
-            ->map(function (array $cat): string {
-                $label = isset($cat['parent_name'])
-                    ? "{$cat['parent_name']} > {$cat['name']} (ID: {$cat['id']})"
-                    : "{$cat['name']} (ID: {$cat['id']})";
-
-                return "- {$label}";
-            })
-            ->implode("\n");
+        $categoryList = $this->formatCategoriesForPrompt($categories);
 
         // アプリ設定 > Cache > DB(system_settings) > デフォルトの順で取得する
         $template = ($app instanceof App && filled($app->ai_prompt_template))
@@ -171,15 +163,7 @@ PROMPT;
      */
     private function buildBatchPrompt(array $articles, array $categories, ?App $app = null): string
     {
-        $categoryList = collect($categories)
-            ->map(function (array $cat): string {
-                $label = isset($cat['parent_name'])
-                    ? "{$cat['parent_name']} > {$cat['name']} (ID: {$cat['id']})"
-                    : "{$cat['name']} (ID: {$cat['id']})";
-
-                return "- {$label}";
-            })
-            ->implode("\n");
+        $categoryList = $this->formatCategoriesForPrompt($categories);
 
         $articlesJson = json_encode(
             array_map(fn (array $a): array => ['article_id' => $a['id'], 'title' => $a['title']], $articles),
@@ -502,5 +486,21 @@ PROMPT;
         }
 
         return $firstCategoryId;
+    }
+
+    /**
+     * @param  array<int, array{id: int, name: string, parent_name?: string}>  $categories
+     */
+    private function formatCategoriesForPrompt(array $categories): string
+    {
+        return collect($categories)
+            ->map(function (array $cat): string {
+                $label = isset($cat['parent_name'])
+                    ? "{$cat['parent_name']} > {$cat['name']} (ID: {$cat['id']})"
+                    : "{$cat['name']} (ID: {$cat['id']})";
+
+                return "- {$label}";
+            })
+            ->implode("\n");
     }
 }

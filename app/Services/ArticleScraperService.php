@@ -74,9 +74,12 @@ class ArticleScraperService
 
             $errorMessage = $this->buildErrorMessage(['image' => $image, 'date' => $date]);
 
+        } catch (\Illuminate\Http\Client\ConnectionException | \Illuminate\Http\Client\RequestException $e) {
+            $errorMessage = 'HTTPリクエストエラー: '.$e->getMessage();
+            Log::warning('ArticleScraperService: HTTP Request Error - '.$e->getMessage()." [URL: {$url}]");
         } catch (Exception $e) {
-            $errorMessage = '通信中/パース中のエラー: '.$e->getMessage();
-            Log::warning('ArticleScraperService: '.$e->getMessage()." [URL: {$url}]");
+            $errorMessage = 'パースエラー: '.$e->getMessage();
+            Log::warning('ArticleScraperService: Parse Error - '.$e->getMessage()." [URL: {$url}]");
         }
 
         return new ScrapedArticleData(

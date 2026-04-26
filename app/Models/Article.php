@@ -34,7 +34,10 @@ class Article extends Model
         });
 
         $clearCache = function (Article $article): void {
-            Cache::tags(['articles'])->flush();
+            // TODO: バッチ処理時のパフォーマンス低下を防ぐため、キャッシュクリア処理はObserverへの切り出しや特定キーのみの削除など、より安全な実装に移行する
+            if (! app()->runningInConsole()) {
+                Cache::tags(['articles'])->flush();
+            }
         };
 
         static::saved($clearCache);
