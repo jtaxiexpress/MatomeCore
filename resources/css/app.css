@@ -83,7 +83,12 @@
    ============================================================ */
 .scrollbar-default::-webkit-scrollbar,
 .category-nav::-webkit-scrollbar {
-    height: 3px;
+    height: 4px;
+}
+
+.scrollbar-default::-webkit-scrollbar-button,
+.category-nav::-webkit-scrollbar-button {
+    display: none;
 }
 
 .scrollbar-default::-webkit-scrollbar-track,
@@ -94,7 +99,7 @@
 
 .scrollbar-default::-webkit-scrollbar-thumb,
 .category-nav::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.18);
+    background: rgba(0, 0, 0, 0.12);
     border-radius: 999px;
 }
 

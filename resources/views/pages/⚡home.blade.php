@@ -125,7 +125,7 @@ class extends Component {
     @section('tenant_name', $this->app->name)
 
     {{-- Category tabs --}}
-    <div class="sticky top-0 z-40 -mx-4 mb-2 bg-white/80 px-4 py-2 backdrop-blur-md dark:bg-surface-dark/80">
+    <div class="sticky top-2 z-40 mb-4 rounded-2xl border border-border/40 bg-surface-elevated/90 px-2 py-1.5 shadow-sm backdrop-blur-xl dark:border-border-dark/40 dark:bg-surface-elevated-dark/90 transition-all duration-300">
         <x-category-tabs
             :categories="$this->categories"
             :selected="$selectedCategory"

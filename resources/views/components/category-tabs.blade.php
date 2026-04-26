@@ -1,17 +1,17 @@
 @props(['categories', 'selected' => null])
 
-<div class="relative -mx-4" aria-label="カテゴリナビゲーション">
+<div class="relative" aria-label="カテゴリナビゲーション">
     <!-- 左エッジフェード -->
     <div
-        class="absolute left-0 top-0 bottom-[12px] w-8 sm:w-12 bg-gradient-to-r from-surface dark:from-surface-dark to-transparent pointer-events-none z-10">
+        class="absolute left-0 top-0 bottom-[20px] w-8 sm:w-12 bg-gradient-to-r from-surface-elevated dark:from-surface-elevated-dark to-transparent pointer-events-none z-10">
     </div>
 
     <!-- 右エッジフェード -->
     <div
-        class="absolute right-0 top-0 bottom-[12px] w-8 sm:w-12 bg-gradient-to-l from-surface dark:from-surface-dark to-transparent pointer-events-none z-10">
+        class="absolute right-0 top-0 bottom-[20px] w-8 sm:w-12 bg-gradient-to-l from-surface-elevated dark:from-surface-elevated-dark to-transparent pointer-events-none z-10">
     </div>
 
-    <div class="category-nav scrollbar-default flex items-center whitespace-nowrap overflow-x-auto px-4 pb-3 gap-2.5 sm:gap-3"
+    <div class="category-nav scrollbar-default flex items-center whitespace-nowrap overflow-x-auto px-4 pb-5 gap-2.5 sm:gap-3"
         style="-webkit-overflow-scrolling: touch;" role="tablist">
         {{-- All (総合) tab --}}
         <button type="button" wire:click="selectCategory(null)" role="tab"
