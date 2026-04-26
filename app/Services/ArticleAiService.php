@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Clients\OllamaClient;
+use App\DTOs\AiAnalyzedData;
+use App\DTOs\ScrapedArticleData;
 use App\Filament\Pages\SystemSettings;
 use App\Models\App;
 use App\Models\SystemSetting;
@@ -40,45 +42,45 @@ PROMPT;
      * 記事の元タイトル、カテゴリ一覧をもとに、
      * AIによる分類とタイトルリライトを1回のリクエストで実行します。
      *
-     * @param  string  $originalTitle  記事の元タイトル
+     * @param  ScrapedArticleData  $articleData  記事データ
      * @param  array<int, array{id: int, name: string, parent_name?: string}>  $categories  カテゴリ一覧
-     * @return array{category_id: int, rewritten_title: string}
+     * @return AiAnalyzedData
      *
      * @throws InvalidArgumentException
      */
     public function classifyAndRewrite(
-        string $originalTitle,
+        ScrapedArticleData $articleData,
         array $categories,
         ?App $app = null
-    ): array {
+    ): AiAnalyzedData {
         if (empty($categories)) {
             throw new InvalidArgumentException('カテゴリ一覧が空です。少なくともで1件のカテゴリが必要です。');
         }
 
-        $prompt = $this->buildPrompt($originalTitle, $categories, $app);
+        $prompt = $this->buildPrompt($articleData, $categories, $app);
         $model = $this->ollamaModel();
         $payload = $this->buildSinglePayload($prompt, $model);
 
         Log::info('[AI] 単体推論を開始', [
             'provider' => 'ollama',
             'model' => $model,
-            'title_length' => mb_strlen($originalTitle),
+            'title_length' => mb_strlen((string) $articleData->title),
             'categories' => count($categories),
         ]);
 
         $decoded = $this->requestStructuredData($payload, timeoutSeconds: 120, operation: '単体推論');
 
         if (! is_array($decoded)) {
-            return $this->singleFallbackResult($originalTitle, $categories, 'json_decode_failed');
+            return $this->singleFallbackResult($articleData, $categories, 'json_decode_failed');
         }
 
         $parsed = $this->parseSingleResult($decoded, $categories);
 
-        if (is_array($parsed)) {
+        if ($parsed instanceof AiAnalyzedData) {
             return $parsed;
         }
 
-        return $this->singleFallbackResult($originalTitle, $categories, 'unexpected_json_shape');
+        return $this->singleFallbackResult($articleData, $categories, 'unexpected_json_shape');
     }
 
     /**
@@ -88,7 +90,7 @@ PROMPT;
      * @param  array<int, array{id: int, name: string, parent_name?: string}>  $categories
      */
     private function buildPrompt(
-        string $originalTitle,
+        ScrapedArticleData $articleData,
         array $categories,
         ?App $app = null
     ): string {
@@ -107,7 +109,7 @@ PROMPT;
             ? $app->ai_prompt_template
             : $this->singlePromptTemplate();
 
-        return str_replace(['{categories}', '{title}'], [$categoryList, $originalTitle], $template);
+        return str_replace(['{categories}', '{title}'], [$categoryList, (string) $articleData->title], $template);
     }
 
     // =========================================================================
@@ -332,9 +334,9 @@ PROMPT;
     /**
      * @param  array<string, mixed>  $decoded
      * @param  array<int, array{id: int, name: string, parent_name?: string}>  $categories
-     * @return array{category_id: int, rewritten_title: string}|null
+     * @return AiAnalyzedData|null
      */
-    private function parseSingleResult(array $decoded, array $categories): ?array
+    private function parseSingleResult(array $decoded, array $categories): ?AiAnalyzedData
     {
         $allowedCategoryIds = array_map(
             static fn (array $category): int => (int) $category['id'],
@@ -364,10 +366,10 @@ PROMPT;
             return null;
         }
 
-        return [
-            'category_id' => (int) $validated['category_id'],
-            'rewritten_title' => $rewrittenTitle,
-        ];
+        return new AiAnalyzedData(
+            categoryId: (int) $validated['category_id'],
+            rewrittenTitle: $rewrittenTitle,
+        );
     }
 
     /**
@@ -437,9 +439,9 @@ PROMPT;
 
     /**
      * @param  array<int, array{id: int, name: string, parent_name?: string}>  $categories
-     * @return array{category_id: int, rewritten_title: string}
+     * @return AiAnalyzedData
      */
-    private function singleFallbackResult(string $originalTitle, array $categories, string $reason): array
+    private function singleFallbackResult(ScrapedArticleData $articleData, array $categories, string $reason): AiAnalyzedData
     {
         $categoryId = $this->resolveFallbackCategoryId($categories);
 
@@ -448,10 +450,10 @@ PROMPT;
             'fallback_category_id' => $categoryId,
         ]);
 
-        return [
-            'category_id' => $categoryId,
-            'rewritten_title' => $originalTitle,
-        ];
+        return new AiAnalyzedData(
+            categoryId: $categoryId,
+            rewrittenTitle: (string) $articleData->title,
+        );
     }
 
     /**

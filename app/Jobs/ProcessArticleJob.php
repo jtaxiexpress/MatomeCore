@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Actions\CleanArticleTitleAction;
+use App\DTOs\AiAnalyzedData;
+use App\DTOs\ScrapedArticleData;
 use App\Models\App as AppModel;
 use App\Models\Article;
 use App\Models\Category;
@@ -96,7 +98,7 @@ class ProcessArticleJob implements ShouldQueue
                 logPrefix: "[Process: {$this->url}]",
             );
 
-            $title = $cleanTitleAction->execute($metaData['title'], $this->site->name);
+            $title = $cleanTitleAction->execute((string) $metaData->title, $this->site->name);
 
             // ② AI APIの無駄打ち防止: タイトルが短すぎる場合はAI呼び出し自体をスキップ
             if (empty($title) || mb_strlen($title) < 5) {
@@ -106,15 +108,24 @@ class ProcessArticleJob implements ShouldQueue
             }
 
             // ③ NGキーワードのチェック
-            if ($this->containsNgKeyword($title) || $this->containsNgKeyword($metaData['title'])) {
+            if ($this->containsNgKeyword($title) || $this->containsNgKeyword($metaData->title)) {
                 Log::warning("[Process: {$this->url}] NGキーワードが含まれているため保存をスキップします");
 
                 return;
             }
 
-            Log::info("[Process: {$this->url}] タイトル洗浄: 》前「{$metaData['title']} -> 」後「{$title}");
+            Log::info("[Process: {$this->url}] タイトル洗浄: 》前「{$metaData->title} -> 」後「{$title}");
 
-            $aiResult = $this->classifyAndRewriteTitle($aiService, $title, $app);
+            $aiData = new ScrapedArticleData(
+                url: $metaData->url,
+                title: $title,
+                image: $metaData->image,
+                date: $metaData->date,
+                success: $metaData->success,
+                errorMessage: $metaData->errorMessage,
+            );
+
+            $aiResult = $this->classifyAndRewriteTitle($aiService, $aiData, $app);
             $this->saveArticle($aiResult, $title, $metaData);
 
         } catch (Throwable $e) {
@@ -143,11 +154,9 @@ class ProcessArticleJob implements ShouldQueue
     }
 
     /**
-     * @return array{category_id: int, rewritten_title: string}
-     *
      * @throws Exception
      */
-    private function classifyAndRewriteTitle(ArticleAiService $aiService, string $title, AppModel $app): array
+    private function classifyAndRewriteTitle(ArticleAiService $aiService, ScrapedArticleData $articleData, AppModel $app): AiAnalyzedData
     {
         $categories = Category::query()
             ->select(['id', 'name'])
@@ -160,37 +169,33 @@ class ProcessArticleJob implements ShouldQueue
             ->all();
 
         Log::info("[Process: {$this->url}] AI(Ollama)へタイトルリライトとカテゴリ推論をリクエスト中...");
-        $aiResult = $aiService->classifyAndRewrite($title, $categories, $app);
+        $aiResult = $aiService->classifyAndRewrite($articleData, $categories, $app);
 
-        if (empty($aiResult['rewritten_title'])) {
+        if (empty($aiResult->rewrittenTitle)) {
             throw new Exception('AI returned empty rewritten_title');
         }
 
         return $aiResult;
     }
 
-    /**
-     * @param  array{category_id: int, rewritten_title: string}  $aiResult
-     * @param  array{title: string|null, image: string|null, date: string}  $metaData
-     */
-    private function saveArticle(array $aiResult, string $originalTitle, array $metaData): void
+    private function saveArticle(AiAnalyzedData $aiResult, string $originalTitle, ScrapedArticleData $metaData): void
     {
         Article::firstOrCreate(
             ['url' => $this->url],
             [
                 'app_id' => $this->site->app_id,
                 'site_id' => $this->site->id,
-                'category_id' => $aiResult['category_id'],
-                'title' => $aiResult['rewritten_title'],
+                'category_id' => $aiResult->categoryId,
+                'title' => $aiResult->rewrittenTitle,
                 'original_title' => $originalTitle,
-                'thumbnail_url' => $metaData['image'],
-                'published_at' => $metaData['date'],
+                'thumbnail_url' => $metaData->image,
+                'published_at' => $metaData->date,
                 'fetch_source' => $this->fetchSource,
             ]
         );
 
-        Log::info("[Process: {$this->url}] 記事の保存が完了しました (カテゴリID: {$aiResult['category_id']}, リライト後: {$aiResult['rewritten_title']})");
-        $this->output = "AI Processing completed successfully. Mapped to category_id: {$aiResult['category_id']}";
+        Log::info("[Process: {$this->url}] 記事の保存が完了しました (カテゴリID: {$aiResult->categoryId}, リライト後: {$aiResult->rewrittenTitle})");
+        $this->output = "AI Processing completed successfully. Mapped to category_id: {$aiResult->categoryId}";
     }
 
     private function shareLogContext(?Site $site = null): void
@@ -219,7 +224,7 @@ class ProcessArticleJob implements ShouldQueue
         $ngKeywords = array_filter(array_map('trim', preg_split('/[\r\n,]+/', (string) $ngKeywordsStr)));
 
         foreach ($ngKeywords as $keyword) {
-            if ($keyword !== '' && mb_stripos($title, $keyword) !== false) {
+            if (mb_stripos($title, $keyword) !== false) {
                 return true;
             }
         }

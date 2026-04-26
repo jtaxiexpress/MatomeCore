@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\DTOs\ScrapedArticleData;
 use App\Support\DateParser;
 use Exception;
 use Illuminate\Support\Facades\Log;
@@ -29,23 +30,15 @@ class ArticleScraperService
      *
      * @param  string  $url  取得対象の記事URL
      * @param  string|null  $siteDateSelector  (任意) サイト設定の固有の日付セレクタ
-     * @return array{success: bool, data: array{title: ?string, url: string, date: ?string, image: ?string}, error_message: ?string}
-     */
-    /**
      * @param  array<string>  $siteNgImages  サイト固有の除外画像URLリスト（管理画面から設定）
      */
-    public function scrape(string $url, ?string $siteDateSelector = null, array $siteNgImages = []): array
+    public function scrape(string $url, ?string $siteDateSelector = null, array $siteNgImages = []): ScrapedArticleData
     {
-        $result = [
-            'success' => false,
-            'data' => [
-                'title' => null,
-                'url' => $url,
-                'date' => null,
-                'image' => null,
-            ],
-            'error_message' => null,
-        ];
+        $title = null;
+        $image = null;
+        $date = null;
+        $success = false;
+        $errorMessage = null;
 
         try {
             $response = $this->crawlHttpClient->get(
@@ -62,9 +55,11 @@ class ArticleScraperService
             );
 
             if (! $response->successful()) {
-                $result['error_message'] = 'HTTP通信失敗 ('.$response->status().')';
-
-                return $result;
+                return new ScrapedArticleData(
+                    url: $url,
+                    success: false,
+                    errorMessage: 'HTTP通信失敗 ('.$response->status().')',
+                );
             }
 
             $crawler = new Crawler($response->body(), $url);
@@ -72,19 +67,26 @@ class ArticleScraperService
             // グローバルNGリストとサイト固有NGリストをマージして使用
             $mergedNgImages = array_filter(array_unique(array_merge(self::GLOBAL_NG_IMAGES, $siteNgImages)));
 
-            $result['data']['title'] = $this->extractTitle($crawler);
-            $result['data']['image'] = $this->extractImage($crawler, $mergedNgImages);
-            $result['data']['date'] = $this->extractDate($crawler, $siteDateSelector);
-            $result['success'] = true;
+            $title = $this->extractTitle($crawler);
+            $image = $this->extractImage($crawler, $mergedNgImages);
+            $date = $this->extractDate($crawler, $siteDateSelector);
+            $success = true;
 
-            $result['error_message'] = $this->buildErrorMessage($result['data']);
+            $errorMessage = $this->buildErrorMessage(['image' => $image, 'date' => $date]);
 
         } catch (Exception $e) {
-            $result['error_message'] = '通信中/パース中のエラー: '.$e->getMessage();
+            $errorMessage = '通信中/パース中のエラー: '.$e->getMessage();
             Log::warning('ArticleScraperService: '.$e->getMessage()." [URL: {$url}]");
         }
 
-        return $result;
+        return new ScrapedArticleData(
+            url: $url,
+            title: $title,
+            image: $image,
+            date: $date,
+            success: $success,
+            errorMessage: $errorMessage,
+        );
     }
 
     private function extractTitle(Crawler $crawler): ?string
