@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Support\AdminScreen;
 use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Models\Contracts\HasTenants;
@@ -16,7 +17,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
 
-#[Fillable(['name', 'email', 'password', 'is_admin'])]
+#[Fillable(['name', 'email', 'password', 'is_admin', 'admin_screen_permissions'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements FilamentUser, HasTenants
 {
@@ -32,6 +33,7 @@ class User extends Authenticatable implements FilamentUser, HasTenants
     {
         return [
             'email_verified_at' => 'datetime',
+            'admin_screen_permissions' => 'array',
             'is_admin' => 'boolean',
             'password' => 'hashed',
         ];
@@ -77,5 +79,35 @@ class User extends Authenticatable implements FilamentUser, HasTenants
             'app' => $this->is_admin || $this->apps()->exists(),
             default => false,
         };
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function adminScreenPermissionValues(): array
+    {
+        $permissions = $this->admin_screen_permissions;
+
+        if (! is_array($permissions)) {
+            return [];
+        }
+
+        return array_values(array_intersect(
+            array_map(static fn (mixed $permission): string => (string) $permission, $permissions),
+            AdminScreen::selectableValues(),
+        ));
+    }
+
+    public function canAccessAdminScreen(AdminScreen $screen): bool
+    {
+        if (! $this->is_admin) {
+            return false;
+        }
+
+        if ($screen === AdminScreen::Dashboard) {
+            return true;
+        }
+
+        return in_array($screen->value, $this->adminScreenPermissionValues(), true);
     }
 }

@@ -1,6 +1,5 @@
 {
     "agents": [
-        "gemini",
         "copilot"
     ],
     "guidelines": true,

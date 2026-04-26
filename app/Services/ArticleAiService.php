@@ -4,198 +4,107 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-use App\Ai\Agents\BatchCategorizeAgent;
-use App\Ai\Agents\CategorizeArticleAgent;
+use App\Clients\OllamaClient;
+use App\DTOs\AiAnalyzedData;
+use App\DTOs\ScrapedArticleData;
 use App\Filament\Pages\SystemSettings;
 use App\Models\App;
+use App\Models\SystemSetting;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use InvalidArgumentException;
-use RuntimeException;
+use Throwable;
 
 class ArticleAiService
 {
+    public const SINGLE_TIMEOUT_SECONDS = 120;
+
+    public const BATCH_TIMEOUT_SECONDS = 180;
+
+    public function __construct(
+        private readonly OllamaClient $ollamaClient,
+    ) {}
+
+    private const DEFAULT_SINGLE_PROMPT_TEMPLATE = <<<'PROMPT'
+以下のカテゴリ一覧から最も適切な category_id を1つ選び、元タイトルを自然な日本語でリライトしてください。
+
+カテゴリ一覧:
+{categories}
+
+元タイトル:
+{title}
+
+必ず JSON で以下の形式のみを返してください:
+{"category_id": 1, "rewritten_title": "..."}
+PROMPT;
+
     /**
      * 記事の元タイトル、カテゴリ一覧をもとに、
      * AIによる分類とタイトルリライトを1回のリクエストで実行します。
      *
-     * @param  string  $originalTitle  記事の元タイトル
-     * @param  array  $categories  カテゴリ一覧 [['id' => int, 'name' => string], ...]
-     * @return array{category_id: int, rewritten_title: string}
+     * @param  ScrapedArticleData  $articleData  記事データ
+     * @param  array<int, array{id: int, name: string, parent_name?: string}>  $categories  カテゴリ一覧
      *
      * @throws InvalidArgumentException
-     * @throws RuntimeException
      */
     public function classifyAndRewrite(
-        string $originalTitle,
+        ScrapedArticleData $articleData,
         array $categories,
-        string $driver = 'gemini',
         ?App $app = null
-    ): array {
+    ): AiAnalyzedData {
         if (empty($categories)) {
             throw new InvalidArgumentException('カテゴリ一覧が空です。少なくともで1件のカテゴリが必要です。');
         }
 
-        if ($driver === 'ollama') {
-            return $this->processWithOllama($originalTitle, $categories, $app);
-        }
-
-        $prompt = $this->buildPrompt($originalTitle, $categories, $app);
-
-        // システムのグローバル設定を使用
-        $geminiModel = Cache::get('gemini_model', 'gemini-1.5-flash-lite');
+        $prompt = $this->buildPrompt($articleData, $categories, $app);
+        $model = $this->ollamaModel();
+        $payload = $this->buildSinglePayload($prompt, $model);
 
         Log::info('[AI] 単体推論を開始', [
-            'driver' => 'gemini',
-            'model' => $geminiModel,
-            'title_length' => mb_strlen($originalTitle),
-            'categories' => count($categories),
-        ]);
-
-        $response = CategorizeArticleAgent::make()->prompt($prompt, model: $geminiModel);
-
-        if (is_string($response)) {
-            $parsedResponse = $this->extractJsonResponse($response);
-            if ($parsedResponse) {
-                return $parsedResponse;
-            }
-
-            Log::warning('[AI] Geminiレスポンス解析に失敗', [
-                'preview' => mb_substr($response, 0, 200),
-            ]);
-            throw new RuntimeException('Gemini generation failed or returned invalid JSON structure.');
-        }
-
-        return [
-            'category_id' => (int) $response['category_id'],
-            'rewritten_title' => (string) $response['rewritten_title'],
-        ];
-    }
-
-    /**
-     * Ollama APIを使用してカテゴリ分類とタイトルリライトを行います。
-     * JSONフォーマットのみを出力するよう厳格に指定します。
-     *
-     * @return array{category_id: int, rewritten_title: string}
-     */
-    private function processWithOllama(string $title, array $categories, ?App $app = null): array
-    {
-        $prompt = $this->buildPrompt($title, $categories, $app);
-        $ollamaUrl = config('services.ollama.url', 'http://host.docker.internal:11434/api/generate');
-
-        $model = Cache::get('ollama_model', 'qwen3.5:9b');
-        $numPredict = Cache::get('ollama_num_predict', 3000);
-        $numCtx = Cache::get('ollama_num_ctx', 8192);
-
-        Log::info('[AI] 単体推論を開始', [
-            'driver' => 'ollama',
+            'provider' => 'ollama',
             'model' => $model,
-            'title_length' => mb_strlen($title),
+            'title_length' => mb_strlen((string) $articleData->title),
             'categories' => count($categories),
         ]);
 
-        try {
-            $response = Http::timeout(120)->post($ollamaUrl, [
-                'model' => $model,
-                'prompt' => $prompt,
-                'stream' => false,
-                'format' => 'json',
-                'options' => [
-                    'num_predict' => (int) $numPredict,
-                    'num_ctx' => (int) $numCtx,
-                    'repeat_penalty' => 1.0,
-                    'temperature' => 0.2,
-                ],
-            ]);
+        $decoded = $this->requestStructuredData($payload, timeoutSeconds: self::SINGLE_TIMEOUT_SECONDS, operation: '単体推論');
 
-            $jsonResponse = $response->json();
-
-            if ($response->failed() || ! is_array($jsonResponse)) {
-                Log::error('[AI] Ollama APIエラー', [
-                    'status' => $response->status(),
-                    'body_preview' => mb_substr($response->body(), 0, 200),
-                ]);
-                throw new RuntimeException('Ollama API HTTP error or invalid response mapping.');
-            }
-
-            $rawText = ($jsonResponse['response'] ?? '')."\n".($jsonResponse['thinking'] ?? '');
-
-            $parsedResponse = $this->extractJsonResponse($rawText);
-            if ($parsedResponse) {
-                return $parsedResponse;
-            }
-
-            Log::warning('[AI] Ollamaレスポンス解析に失敗', [
-                'preview' => mb_substr($response->body(), 0, 200),
-            ]);
-            throw new RuntimeException('Ollama generation returned unparseable text.');
-        } catch (\Exception $e) {
-            Log::error('[AI] 単体推論エラー', ['message' => $e->getMessage()]);
-            throw $e;
-        }
-    }
-
-    /**
-     * AIのテキストからJSONフォーマットを抽出し、カテゴリIDと書き換えたタイトルを取得します。
-     *
-     * @return array{category_id: int, rewritten_title: string}|null
-     */
-    private function extractJsonResponse(string $text): ?array
-    {
-        preg_match_all('/\{(?:[^{}]|(?R))*\}/x', $text, $matches);
-
-        if (empty($matches[0])) {
-            return null;
+        if (! is_array($decoded)) {
+            return $this->singleFallbackResult($articleData, $categories, 'json_decode_failed');
         }
 
-        foreach ($matches[0] as $match) {
-            $data = json_decode($match, true);
-            if (is_array($data)) {
-                $rewrittenTitle = $data['rewritten_title'] ?? $data['rewrite'] ?? $data['title'] ?? null;
-                $categoryId = $data['category_id'] ?? $data['category'] ?? null;
+        $parsed = $this->parseSingleResult($decoded, $categories);
 
-                if ($rewrittenTitle !== null && $categoryId !== null) {
-                    return [
-                        'category_id' => (int) $categoryId,
-                        'rewritten_title' => (string) $rewrittenTitle,
-                    ];
-                }
-            }
+        if ($parsed instanceof AiAnalyzedData) {
+            return $parsed;
         }
 
-        return null;
+        return $this->singleFallbackResult($articleData, $categories, 'unexpected_json_shape');
     }
 
     /**
      * AIエージェントへ送信するプロンプトを構築します。
      */
+    /**
+     * @param  array<int, array{id: int, name: string, parent_name?: string}>  $categories
+     */
     private function buildPrompt(
-        string $originalTitle,
+        ScrapedArticleData $articleData,
         array $categories,
         ?App $app = null
     ): string {
-        $categoryList = collect($categories)
-            ->map(function (array $cat): string {
-                $label = isset($cat['parent_name'])
-                    ? "{$cat['parent_name']} > {$cat['name']} (ID: {$cat['id']})"
-                    : "{$cat['name']} (ID: {$cat['id']})";
+        $categoryList = $this->formatCategoriesForPrompt($categories);
 
-                return "- {$label}";
-            })
-            ->implode("\n");
-
-        // アプリ設定またはシステム設定（Cache）からのみ取得
-        $template = (! empty($app?->ai_prompt_template))
+        // アプリ設定 > Cache > DB(system_settings) > デフォルトの順で取得する
+        $template = ($app instanceof App && filled($app->ai_prompt_template))
             ? $app->ai_prompt_template
-            : Cache::get('ai_prompt_template');
+            : $this->singlePromptTemplate();
 
-        // テンプレートが存在しない場合は例外を投げる
-        if (empty($template)) {
-            throw new RuntimeException('AIプロンプトのテンプレートが設定されていません。システム設定またはアプリ設定を確認してください。');
-        }
-
-        return str_replace(['{categories}', '{title}'], [$categoryList, $originalTitle], $template);
+        return str_replace(['{categories}', '{title}'], [$categoryList, (string) $articleData->title], $template);
     }
 
     // =========================================================================
@@ -206,7 +115,7 @@ class ArticleAiService
      * 複数記事のカテゴリ分類とタイトルリライトを1回のAIリクエストで実行します。
      *
      * @param  array<int, array{id: int, title: string}>  $articles  処理対象の記事配列
-     * @param  array<int, array{id: int, name: string}>  $categories  カテゴリ一覧
+     * @param  array<int, array{id: int, name: string, parent_name?: string}>  $categories  カテゴリ一覧
      * @return array<int, array{category_id: int, rewritten_title: string}> 記事IDをキーとした結果配列
      *
      * @throws InvalidArgumentException
@@ -214,7 +123,6 @@ class ArticleAiService
     public function classifyAndRewriteBatch(
         array $articles,
         array $categories,
-        string $driver = 'gemini',
         ?App $app = null
     ): array {
         if (empty($categories)) {
@@ -226,138 +134,46 @@ class ArticleAiService
         }
 
         $prompt = $this->buildBatchPrompt($articles, $categories, $app);
-
-        return $driver === 'ollama'
-            ? $this->batchWithOllama($prompt, $app)
-            : $this->batchWithGemini($prompt, $app);
-    }
-
-    /**
-     * GeminiでバッチAI処理を実行します。
-     *
-     * @return array<int, array{category_id: int, rewritten_title: string}>
-     */
-    private function batchWithGemini(string $prompt, ?App $app = null): array
-    {
-        $geminiModel = Cache::get('gemini_model', 'gemini-1.5-flash-lite');
+        $model = $this->ollamaModel();
+        $payload = $this->buildBatchPayload($prompt, $model);
 
         Log::debug('[AI] 送信プロンプト:'."\n".$prompt);
 
         Log::info('[AI] バッチ推論を開始', [
-            'driver' => 'gemini',
-            'model' => $geminiModel,
-            'payload_length' => mb_strlen($prompt),
-        ]);
-
-        $response = BatchCategorizeAgent::make()->prompt($prompt, model: $geminiModel);
-
-        $data = match (true) {
-            is_array($response), is_string($response) => $response,
-            is_object($response) && method_exists($response, 'toArray') => $this->safeResponseToArray($response),
-            default => (string) $response,
-        };
-
-        return $this->extractBatchJsonResponse($data);
-    }
-
-    /**
-     * OllamaでバッチAI処理を実行します。
-     *
-     * @return array<int, array{category_id: int, rewritten_title: string}>
-     */
-    private function batchWithOllama(string $prompt, ?App $app = null): array
-    {
-        $ollamaUrl = config('services.ollama.url', 'http://host.docker.internal:11434/api/generate');
-        $model = Cache::get('ollama_model', 'qwen3.5:9b');
-
-        $numPredict = Cache::get('ollama_num_predict', 3000);
-        $numCtx = Cache::get('ollama_num_ctx', 8192);
-
-        Log::debug('[AI] 送信プロンプト:'."\n".$prompt);
-
-        Log::info('[AI] バッチ推論を開始', [
-            'driver' => 'ollama',
+            'provider' => 'ollama',
             'model' => $model,
             'payload_length' => mb_strlen($prompt),
+            'articles' => count($articles),
         ]);
 
-        try {
-            $response = Http::timeout(180)->post($ollamaUrl, [
-                'model' => $model,
-                'prompt' => $prompt,
-                'stream' => false,
-                'format' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'results' => [
-                            'type' => 'array',
-                            'items' => [
-                                'type' => 'object',
-                                'properties' => [
-                                    'article_id' => ['type' => 'integer'],
-                                    'rewritten_title' => ['type' => 'string'],
-                                    'category_id' => ['type' => 'integer'],
-                                ],
-                                'required' => ['article_id', 'rewritten_title', 'category_id'],
-                            ],
-                        ],
-                    ],
-                    'required' => ['results'],
-                ],
-                'options' => [
-                    'num_predict' => (int) $numPredict,
-                    'num_ctx' => (int) $numCtx,
-                    'repeat_penalty' => 1.0,
-                    'temperature' => 0.2,
-                ],
-            ]);
+        $decoded = $this->requestStructuredData($payload, timeoutSeconds: self::BATCH_TIMEOUT_SECONDS, operation: 'バッチ推論');
 
-            $jsonResponse = $response->json();
-
-            if ($response->failed() || ! is_array($jsonResponse) || empty($jsonResponse['response'])) {
-                Log::error('[AI] バッチOllama APIエラー', [
-                    'status' => $response->status(),
-                    'body_preview' => mb_substr($response->body(), 0, 200),
-                ]);
-
-                return [];
-            }
-
-            $rawText = $jsonResponse['response'];
-
-            return $this->extractBatchJsonResponse($rawText);
-        } catch (\Exception $e) {
-            Log::error('[AI] バッチ推論エラー', ['message' => $e->getMessage()]);
-
-            return [];
+        if (! is_array($decoded)) {
+            return $this->buildBatchFallbackResults($articles, $categories);
         }
+
+        return $this->parseBatchResults($decoded, $articles, $categories);
     }
 
     /**
      * バッチ処理用のプロンプトを構築します。
      *
      * @param  array<int, array{id: int, title: string}>  $articles
-     * @param  array<int, array{id: int, name: string}>  $categories
+     * @param  array<int, array{id: int, name: string, parent_name?: string}>  $categories
      */
     private function buildBatchPrompt(array $articles, array $categories, ?App $app = null): string
     {
-        $categoryList = collect($categories)
-            ->map(function (array $cat): string {
-                $label = isset($cat['parent_name'])
-                    ? "{$cat['parent_name']} > {$cat['name']} (ID: {$cat['id']})"
-                    : "{$cat['name']} (ID: {$cat['id']})";
-
-                return "- {$label}";
-            })
-            ->implode("\n");
+        $categoryList = $this->formatCategoriesForPrompt($categories);
 
         $articlesJson = json_encode(
             array_map(fn (array $a): array => ['article_id' => $a['id'], 'title' => $a['title']], $articles),
             JSON_UNESCAPED_UNICODE
         );
 
-        $basePrompt = Cache::get('ai_base_prompt', SystemSettings::getDefaultPromptTemplate());
-        $appPrompt = $app?->ai_prompt_template ?? '';
+        $basePrompt = $this->basePromptTemplate();
+        $appPrompt = ($app instanceof App && is_string($app->ai_prompt_template))
+            ? $app->ai_prompt_template
+            : '';
 
         $count = count($articles);
 
@@ -371,69 +187,320 @@ class ArticleAiService
     }
 
     /**
-     * AIの返答からJSONオブジェクト群を抽出・パースして記事IDをキーとした結果配列を返します。
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>|null
      *
-     * @return array<int, array{category_id: int, rewritten_title: string}>
+     * @throws ConnectionException
+     * @throws RequestException
      */
-    private function extractBatchJsonResponse(array|string $data): array
+    private function requestStructuredData(array $payload, int $timeoutSeconds, string $operation): ?array
     {
-        $decoded = is_string($data) ? json_decode($data, true) : $data;
-
-        if (is_string($data) && (json_last_error() !== JSON_ERROR_NONE || ! is_array($decoded))) {
-            Log::warning('[AI] バッチJSONパース失敗', [
-                'preview' => mb_substr($data, 0, 200),
+        try {
+            return $this->ollamaClient->generateStructuredResponse($payload, $timeoutSeconds, $operation);
+        } catch (ConnectionException|RequestException $exception) {
+            throw $exception;
+        } catch (Throwable $exception) {
+            Log::warning('[AI] Structured Output取得に失敗したためフォールバックします', [
+                'operation' => $operation,
+                'message' => $exception->getMessage(),
             ]);
 
-            return [];
+            return null;
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildSinglePayload(string $prompt, string $model): array
+    {
+        return [
+            'model' => $model,
+            'prompt' => $prompt,
+            'stream' => (bool) config('ai.providers.ollama.stream', false),
+            'format' => 'json',
+            'options' => $this->ollamaOptions(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildBatchPayload(string $prompt, string $model): array
+    {
+        return [
+            'model' => $model,
+            'prompt' => $prompt,
+            'stream' => (bool) config('ai.providers.ollama.stream', false),
+            'format' => [
+                'type' => 'object',
+                'properties' => [
+                    'results' => [
+                        'type' => 'array',
+                        'items' => [
+                            'type' => 'object',
+                            'properties' => [
+                                'article_id' => ['type' => 'integer'],
+                                'rewritten_title' => ['type' => 'string'],
+                                'category_id' => ['type' => 'integer'],
+                            ],
+                            'required' => ['article_id', 'rewritten_title', 'category_id'],
+                        ],
+                    ],
+                ],
+                'required' => ['results'],
+            ],
+            'options' => $this->ollamaOptions(),
+        ];
+    }
+
+    private function ollamaModel(): string
+    {
+        return $this->readStringSetting(
+            cacheKey: 'ollama_model',
+            default: (string) config('ai.providers.ollama.model', 'gemma4:e2b'),
+        );
+    }
+
+    /**
+     * @return array{num_predict: int, num_ctx: int, temperature: float, repeat_penalty: float}
+     */
+    private function ollamaOptions(): array
+    {
+        /** @var array<string, mixed> $configOptions */
+        $configOptions = config('ai.providers.ollama.options', []);
+
+        return [
+            'num_predict' => $this->readIntSetting(
+                cacheKey: 'ollama_num_predict',
+                default: (int) ($configOptions['num_predict'] ?? 3000),
+            ),
+            'num_ctx' => $this->readIntSetting(
+                cacheKey: 'ollama_num_ctx',
+                default: (int) ($configOptions['num_ctx'] ?? 8192),
+            ),
+            'temperature' => (float) ($configOptions['temperature'] ?? 0.2),
+            'repeat_penalty' => (float) ($configOptions['repeat_penalty'] ?? 1.0),
+        ];
+    }
+
+    private function singlePromptTemplate(): string
+    {
+        return $this->readStringSetting(
+            cacheKey: 'ai_prompt_template',
+            default: self::DEFAULT_SINGLE_PROMPT_TEMPLATE,
+        );
+    }
+
+    private function basePromptTemplate(): string
+    {
+        return $this->readStringSetting(
+            cacheKey: 'ai_base_prompt',
+            default: SystemSettings::getDefaultPromptTemplate(),
+        );
+    }
+
+    private function readStringSetting(string $cacheKey, string $default): string
+    {
+        $value = Cache::rememberForever($cacheKey, function () use ($cacheKey, $default): string {
+            return SystemSetting::getValue($cacheKey) ?? $default;
+        });
+
+        return $value !== '' ? $value : $default;
+    }
+
+    private function readIntSetting(string $cacheKey, int $default): int
+    {
+        $value = Cache::rememberForever($cacheKey, function () use ($cacheKey, $default): string {
+            return SystemSetting::getValue($cacheKey) ?? (string) $default;
+        });
+
+        return is_numeric($value) ? (int) $value : $default;
+    }
+
+    /**
+     * @param  array<string, mixed>  $decoded
+     * @param  array<int, array{id: int, name: string, parent_name?: string}>  $categories
+     */
+    private function parseSingleResult(array $decoded, array $categories): ?AiAnalyzedData
+    {
+        $allowedCategoryIds = array_map(
+            static fn (array $category): int => (int) $category['id'],
+            $categories
+        );
+
+        $validator = Validator::make($decoded, [
+            'category_id' => ['required', 'integer', Rule::in($allowedCategoryIds)],
+            'rewritten_title' => ['required', 'string'],
+        ]);
+
+        if ($validator->fails()) {
+            Log::warning('[AI] 単体Structured Outputの構造が不正です', [
+                'errors' => $validator->errors()->toArray(),
+            ]);
+
+            return null;
         }
 
-        if (! is_array($decoded)) {
-            return [];
+        /** @var array{category_id: int, rewritten_title: string} $validated */
+        $validated = $validator->validated();
+        $rewrittenTitle = trim($validated['rewritten_title']);
+
+        if ($rewrittenTitle === '') {
+            Log::warning('[AI] 単体Structured Outputのrewritten_titleが空白のみです');
+
+            return null;
         }
 
-        $items = $decoded['results'] ?? $decoded;
+        return new AiAnalyzedData(
+            categoryId: (int) $validated['category_id'],
+            rewrittenTitle: $rewrittenTitle,
+        );
+    }
 
-        if (! is_array($items)) {
-            Log::warning('[AI] バッチ結果配列が見つかりません');
+    /**
+     * @param  array<string, mixed>  $decoded
+     * @param  array<int, array{id: int, title: string}>  $articles
+     * @param  array<int, array{id: int, name: string, parent_name?: string}>  $categories
+     * @return array<int, array{category_id: int, rewritten_title: string}>
+     */
+    private function parseBatchResults(array $decoded, array $articles, array $categories): array
+    {
+        $fallbackResults = $this->buildBatchFallbackResults($articles, $categories);
+        $allowedCategoryIds = array_map(
+            static fn (array $category): int => (int) $category['id'],
+            $categories
+        );
 
-            return [];
+        $validator = Validator::make($decoded, [
+            'results' => ['required', 'array'],
+            'results.*.article_id' => ['required', 'integer'],
+            'results.*.category_id' => ['required', 'integer', Rule::in($allowedCategoryIds)],
+            'results.*.rewritten_title' => ['required', 'string'],
+        ]);
+
+        if ($validator->fails()) {
+            Log::warning('[AI] バッチStructured Outputの検証に失敗しました', [
+                'errors' => $validator->errors()->toArray(),
+            ]);
+
+            return $fallbackResults;
         }
-
-        $results = [];
+        /** @var array<int, array{article_id: int, category_id: int, rewritten_title: string}> $items */
+        $items = $validator->validated()['results'];
+        $results = $fallbackResults;
+        $resolvedByAi = [];
 
         foreach ($items as $item) {
-            if (! is_array($item)) {
+            $normalizedArticleId = (int) $item['article_id'];
+            $normalizedCategoryId = (int) $item['category_id'];
+            $rewrittenTitle = trim($item['rewritten_title']);
+
+            if (! isset($fallbackResults[$normalizedArticleId])) {
                 continue;
             }
 
-            $articleId = $item['article_id'] ?? null;
-            $categoryId = $item['category_id'] ?? null;
-            $rewrittenTitle = $item['rewritten_title'] ?? null;
-
-            if ($articleId !== null && $categoryId !== null && $rewrittenTitle !== null) {
-                $results[(int) $articleId] = [
-                    'category_id' => (int) $categoryId,
-                    'rewritten_title' => (string) $rewrittenTitle,
-                ];
+            if ($rewrittenTitle === '') {
+                continue;
             }
+
+            $results[$normalizedArticleId] = new AiAnalyzedData(
+                categoryId: $normalizedCategoryId,
+                rewrittenTitle: $rewrittenTitle,
+            );
+            $resolvedByAi[$normalizedArticleId] = true;
         }
 
-        if (empty($results)) {
-            Log::warning('[AI] バッチ結果に有効な記事データがありません');
+        $fallbackCount = count($fallbackResults) - count($resolvedByAi);
+
+        if ($fallbackCount > 0) {
+            Log::warning('[AI] バッチ結果の一部をフォールバックで補完しました', [
+                'total' => count($fallbackResults),
+                'fallback_count' => $fallbackCount,
+            ]);
         }
 
         return $results;
     }
 
-    private function safeResponseToArray(object $response): array|string
+    /**
+     * @param  array<int, array{id: int, name: string, parent_name?: string}>  $categories
+     */
+    private function singleFallbackResult(ScrapedArticleData $articleData, array $categories, string $reason): AiAnalyzedData
     {
-        try {
-            /** @var array<string, mixed>|array<int, mixed> $result */
-            $result = $response->toArray();
+        $categoryId = $this->resolveFallbackCategoryId($categories);
 
-            return $result;
-        } catch (\Throwable) {
-            return (string) $response;
+        Log::warning('[AI] 単体結果をフォールバックしました', [
+            'reason' => $reason,
+            'fallback_category_id' => $categoryId,
+        ]);
+
+        return new AiAnalyzedData(
+            categoryId: $categoryId,
+            rewrittenTitle: (string) $articleData->title,
+        );
+    }
+
+    /**
+     * @param  array<int, array{id: int, title: string}>  $articles
+     * @param  array<int, array{id: int, name: string, parent_name?: string}>  $categories
+     * @return array<int, array{category_id: int, rewritten_title: string}>
+     */
+    private function buildBatchFallbackResults(array $articles, array $categories): array
+    {
+        $fallbackCategoryId = $this->resolveFallbackCategoryId($categories);
+        $results = [];
+
+        foreach ($articles as $article) {
+            $results[$article['id']] = new AiAnalyzedData(
+                categoryId: $fallbackCategoryId,
+                rewrittenTitle: $article['title'],
+            );
         }
+
+        return $results;
+    }
+
+    /**
+     * @param  array<int, array{id: int, name: string, parent_name?: string}>  $categories
+     */
+    private function resolveFallbackCategoryId(array $categories): int
+    {
+        $markers = ['未分類', 'uncategorized', 'その他', 'misc'];
+        $firstCategoryId = null;
+
+        foreach ($categories as $category) {
+            $normalizedId = $category['id'];
+            $firstCategoryId ??= $normalizedId;
+            $categoryName = mb_strtolower($category['name']);
+
+            foreach ($markers as $marker) {
+                if ($categoryName !== '' && mb_stripos($categoryName, mb_strtolower($marker)) !== false) {
+                    return $normalizedId;
+                }
+            }
+        }
+
+        if ($firstCategoryId === null) {
+            throw new InvalidArgumentException('カテゴリ一覧に有効なカテゴリIDがありません。');
+        }
+
+        return $firstCategoryId;
+    }
+
+    /**
+     * @param  array<int, array{id: int, name: string, parent_name?: string}>  $categories
+     */
+    private function formatCategoriesForPrompt(array $categories): string
+    {
+        return collect($categories)
+            ->map(function (array $cat): string {
+                $label = isset($cat['parent_name'])
+                    ? "{$cat['parent_name']} > {$cat['name']} (ID: {$cat['id']})"
+                    : "{$cat['name']} (ID: {$cat['id']})";
+
+                return "- {$label}";
+            })
+            ->implode("\n");
     }
 }

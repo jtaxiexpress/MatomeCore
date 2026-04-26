@@ -1,0 +1,291 @@
+
+  ................................⨯...⨯.....................⨯⨯....⨯.⨯.........
+  ...........................................................................s
+  ⨯⨯⨯⨯⨯⨯....⨯⨯⨯.
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\AboutSectionTest > rss list page shows copy feedbac…   
+  Expected: <!DOCTYPE html>\n
+  <html lang="ja" class="scroll-smooth">\n
+  \n
+  ... (372 more lines)
+
+  To contain: Copied!
+
+  at tests/Feature/AboutSectionTest.php:95
+     91▕         App::factory()->create(['is_active' => true]);
+     92▕ 
+     93▕         $this->get('/rss-list')
+     94▕             ->assertOk()
+  ➜  95▕             ->assertSee('Copied!', false);
+     96▕     }
+     97▕ 
+     98▕     public function test_rss_list_page_hides_category_jump_ui(): void
+     99▕     {
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\AggregateTrafficMetricsTest > command aggregates ar…   
+  Failed asserting that a row in the table [articles] matches the attributes {
+    "id": 1,
+    "daily_out_count": 2
+}.
+
+Found similar results: [
+    {
+        "id": 1,
+        "daily_out_count": 0
+    }
+].
+
+  at tests/Feature/AggregateTrafficMetricsTest.php:41
+     37▕         ]);
+     38▕ 
+     39▕         $this->artisan('traffic:aggregate')->assertExitCode(0);
+     40▕ 
+  ➜  41▕         $this->assertDatabaseHas('articles', [
+     42▕             'id' => $articleA->id,
+     43▕             'daily_out_count' => 2,
+     44▕         ]);
+     45▕
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\ArticleAiServiceBatchTest > classify and rew…  Error   
+  Unknown named parameter $originalTitle
+
+  at tests/Feature/ArticleAiServiceBatchTest.php:43
+     39▕             return Http::response(null, 404);
+     40▕         });
+     41▕ 
+     42▕         $result = $this->service->classifyAndRewrite(
+  ➜  43▕             originalTitle: '元タイトル',
+     44▕             categories: [
+     45▕                 ['id' => 10, 'name' => 'テクノロジー'],
+     46▕                 ['id' => 99, 'name' => '未分類'],
+     47▕             ],
+
+  1   tests/Feature/ArticleAiServiceBatchTest.php:43
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\ArticleAiServiceBatchTest > classify and rew…  Error   
+  Unknown named parameter $originalTitle
+
+  at tests/Feature/ArticleAiServiceBatchTest.php:77
+     73▕             return Http::response(null, 404);
+     74▕         });
+     75▕ 
+     76▕         $result = $this->service->classifyAndRewrite(
+  ➜  77▕             originalTitle: '元タイトル',
+     78▕             categories: [
+     79▕                 ['id' => 10, 'name' => 'テクノロジー'],
+     80▕                 ['id' => 99, 'name' => '未分類'],
+     81▕             ],
+
+  1   tests/Feature/ArticleAiServiceBatchTest.php:77
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\ArticleRedirectTest > article redirect records clic…   
+  The expected [App\Jobs\ProcessOutTraffic] job was not pushed.
+Failed asserting that false is true.
+
+  at vendor/laravel/framework/src/Illuminate/Support/Testing/Fakes/QueueFake.php:121
+    117▕         if (is_numeric($callback)) {
+    118▕             return $this->assertPushedTimes($job, $callback);
+    119▕         }
+    120▕ 
+  ➜ 121▕         PHPUnit::assertTrue(
+    122▕             $this->pushed($job, $callback)->count() > 0,
+    123▕             "The expected [{$job}] job was not pushed."
+    124▕         );
+    125▕     }
+
+      [2m+2 vendor frames [22m
+  3   tests/Feature/ArticleRedirectTest.php:39
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\ArticleRedirectTest > article redirect allows same…    
+  The expected [App\Jobs\ProcessOutTraffic] job was pushed 0 times instead of 2 times.
+Failed asserting that 0 is identical to 2.
+
+  at vendor/laravel/framework/src/Illuminate/Support/Testing/Fakes/QueueFake.php:138
+    134▕     public function assertPushedTimes($job, $times = 1)
+    135▕     {
+    136▕         $count = $this->pushed($job)->count();
+    137▕ 
+  ➜ 138▕         PHPUnit::assertSame(
+    139▕             $times, $count,
+    140▕             sprintf(
+    141▕                 "The expected [{$job}] job was pushed {$count} %s instead of {$times} %s.",
+    142▕                 Str::plural('time', $count),
+
+      [2m+2 vendor frames [22m
+  3   tests/Feature/ArticleRedirectTest.php:81
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\ProcessArticleBatchJobTest > jo…  ArgumentCountError   
+  Too few arguments to function App\Jobs\ProcessArticleBatchJob::handle(), 4 passed in /var/www/html/tests/Feature/ProcessArticleBatchJobTest.php on line 40 and exactly 5 expected
+
+  at app/Jobs/ProcessArticleBatchJob.php:57
+     53▕         ArticleAiService $aiService,
+     54▕         ArticleScraperService $scraper,
+     55▕         CleanArticleTitleAction $cleanTitleAction,
+     56▕         ArticleMetadataResolverService $metadataResolver,
+  ➜  57▕         CheckNgKeywordAction $checkNgKeywordAction,
+     58▕     ): void {
+     59▕         $this->shareLogContext();
+     60▕ 
+     61▕         if (Cache::get('is_bulk_paused', false)) {
+
+  1   app/Jobs/ProcessArticleBatchJob.php:57
+  2   tests/Feature/ProcessArticleBatchJobTest.php:40
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\ProcessArticleBatchJobTest > jo…  ArgumentCountError   
+  Too few arguments to function App\Jobs\ProcessArticleBatchJob::handle(), 4 passed in /var/www/html/tests/Feature/ProcessArticleBatchJobTest.php on line 63 and exactly 5 expected
+
+  at app/Jobs/ProcessArticleBatchJob.php:57
+     53▕         ArticleAiService $aiService,
+     54▕         ArticleScraperService $scraper,
+     55▕         CleanArticleTitleAction $cleanTitleAction,
+     56▕         ArticleMetadataResolverService $metadataResolver,
+  ➜  57▕         CheckNgKeywordAction $checkNgKeywordAction,
+     58▕     ): void {
+     59▕         $this->shareLogContext();
+     60▕ 
+     61▕         if (Cache::get('is_bulk_paused', false)) {
+
+  1   app/Jobs/ProcessArticleBatchJob.php:57
+  2   tests/Feature/ProcessArticleBatchJobTest.php:63
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\ProcessArticleBatchJobTest > jo…  ArgumentCountError   
+  Too few arguments to function App\Jobs\ProcessArticleBatchJob::handle(), 4 passed in /var/www/html/tests/Feature/ProcessArticleBatchJobTest.php on line 118 and exactly 5 expected
+
+  at app/Jobs/ProcessArticleBatchJob.php:57
+     53▕         ArticleAiService $aiService,
+     54▕         ArticleScraperService $scraper,
+     55▕         CleanArticleTitleAction $cleanTitleAction,
+     56▕         ArticleMetadataResolverService $metadataResolver,
+  ➜  57▕         CheckNgKeywordAction $checkNgKeywordAction,
+     58▕     ): void {
+     59▕         $this->shareLogContext();
+     60▕ 
+     61▕         if (Cache::get('is_bulk_paused', false)) {
+
+  1   app/Jobs/ProcessArticleBatchJob.php:57
+  2   tests/Feature/ProcessArticleBatchJobTest.php:118
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\ProcessArticleBatchJobTest > jo…  ArgumentCountError   
+  Too few arguments to function App\Jobs\ProcessArticleBatchJob::handle(), 4 passed in /var/www/html/tests/Feature/ProcessArticleBatchJobTest.php on line 190 and exactly 5 expected
+
+  at app/Jobs/ProcessArticleBatchJob.php:57
+     53▕         ArticleAiService $aiService,
+     54▕         ArticleScraperService $scraper,
+     55▕         CleanArticleTitleAction $cleanTitleAction,
+     56▕         ArticleMetadataResolverService $metadataResolver,
+  ➜  57▕         CheckNgKeywordAction $checkNgKeywordAction,
+     58▕     ): void {
+     59▕         $this->shareLogContext();
+     60▕ 
+     61▕         if (Cache::get('is_bulk_paused', false)) {
+
+  1   app/Jobs/ProcessArticleBatchJob.php:57
+  2   tests/Feature/ProcessArticleBatchJobTest.php:190
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\ProcessArticleBatchJobTest > jo…  ArgumentCountError   
+  Too few arguments to function App\Jobs\ProcessArticleBatchJob::handle(), 4 passed in /var/www/html/tests/Feature/ProcessArticleBatchJobTest.php on line 240 and exactly 5 expected
+
+  at app/Jobs/ProcessArticleBatchJob.php:57
+     53▕         ArticleAiService $aiService,
+     54▕         ArticleScraperService $scraper,
+     55▕         CleanArticleTitleAction $cleanTitleAction,
+     56▕         ArticleMetadataResolverService $metadataResolver,
+  ➜  57▕         CheckNgKeywordAction $checkNgKeywordAction,
+     58▕     ): void {
+     59▕         $this->shareLogContext();
+     60▕ 
+     61▕         if (Cache::get('is_bulk_paused', false)) {
+
+  1   app/Jobs/ProcessArticleBatchJob.php:57
+  2   tests/Feature/ProcessArticleBatchJobTest.php:240
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\ProcessArticleJobTest > job dispatches chain           
+  The expected [App\Jobs\ScrapeArticleJob] job was not dispatched.
+Failed asserting that false is true.
+
+  at vendor/laravel/framework/src/Illuminate/Support/Testing/Fakes/BusFake.php:381
+    377▕                 return serialize($this->resetChainPropertiesToDefaults($job)) === serialize($instance);
+    378▕             };
+    379▕         }
+    380▕ 
+  ➜ 381▕         PHPUnit::assertTrue(
+    382▕             $this->dispatched($command, $callback)->isNotEmpty(),
+    383▕             "The expected [{$command}] job was not dispatched."
+    384▕         );
+    385▕
+
+      [2m+2 vendor frames [22m
+  3   tests/Feature/ProcessArticleJobTest.php:32
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\TrackInTrafficTest > query site id takes precedence…   
+  Failed asserting that a row in the table [site_ins] matches the attributes {
+    "site_id": 55
+}.
+
+The table is empty.
+
+  at tests/Feature/TrackInTrafficTest.php:33
+     29▕             ->get('/?in_site_id='.$preferredSite->id);
+     30▕ 
+     31▕         $response->assertOk();
+     32▕ 
+  ➜  33▕         $this->assertDatabaseHas('site_ins', [
+     34▕             'site_id' => $preferredSite->id,
+     35▕         ]);
+     36▕ 
+     37▕         $this->assertDatabaseMissing('site_ins', [
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\TrackInTrafficTest > query site slug takes preceden…   
+  Failed asserting that a row in the table [site_ins] matches the attributes {
+    "site_id": 57
+}.
+
+The table is empty.
+
+  at tests/Feature/TrackInTrafficTest.php:58
+     54▕             ->get('/?in_site_slug='.$preferredSite->api_slug);
+     55▕ 
+     56▕         $response->assertOk();
+     57▕ 
+  ➜  58▕         $this->assertDatabaseHas('site_ins', [
+     59▕             'site_id' => $preferredSite->id,
+     60▕         ]);
+     61▕ 
+     62▕         $this->assertDatabaseMissing('site_ins', [
+
+  ────────────────────────────────────────────────────────────────────────────  
+   FAILED  Tests\Feature\TrackInTrafficTest > referer is used when no query…    
+  Failed asserting that a row in the table [site_ins] matches the attributes {
+    "site_id": 59
+}.
+
+The table is empty.
+
+  at tests/Feature/TrackInTrafficTest.php:82
+     78▕             ->get('/');
+     79▕ 
+     80▕         $response->assertOk();
+     81▕ 
+  ➜  82▕         $this->assertDatabaseHas('site_ins', [
+     83▕             'site_id' => $site->id,
+     84▕         ]);
+     85▕     }
+     86▕
+
+
+  Tests:    15 failed, 1 skipped, 150 passed (654 assertions)
+  Duration: 209.17s
+

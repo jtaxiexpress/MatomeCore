@@ -4,14 +4,18 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\DTOs\ScrapedArticleData;
 use App\Support\DateParser;
 use Exception;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\DomCrawler\Crawler;
 
 class ArticleScraperService
 {
+    public function __construct(
+        private readonly CrawlHttpClient $crawlHttpClient,
+    ) {}
+
     /**
      * システム全体で共通の除外画像URL（デフォルトのサービスアイコン等）
      * これらはサムネイルとして不適切なためAPIコール前にフィルタリングする
@@ -26,38 +30,36 @@ class ArticleScraperService
      *
      * @param  string  $url  取得対象の記事URL
      * @param  string|null  $siteDateSelector  (任意) サイト設定の固有の日付セレクタ
-     * @return array{success: bool, data: array{title: ?string, url: string, date: ?string, image: ?string}, error_message: ?string}
-     */
-    /**
      * @param  array<string>  $siteNgImages  サイト固有の除外画像URLリスト（管理画面から設定）
      */
-    public function scrape(string $url, ?string $siteDateSelector = null, array $siteNgImages = []): array
+    public function scrape(string $url, ?string $siteDateSelector = null, array $siteNgImages = []): ScrapedArticleData
     {
-        $result = [
-            'success' => false,
-            'data' => [
-                'title' => null,
-                'url' => $url,
-                'date' => null,
-                'image' => null,
-            ],
-            'error_message' => null,
-        ];
+        $title = null;
+        $image = null;
+        $date = null;
+        $success = false;
+        $errorMessage = null;
 
         try {
-            $response = Http::withHeaders([
-                'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                'Accept-Language' => 'ja,en-US;q=0.9,en;q=0.8',
-            ])->withOptions([
-                'verify' => false,
-                'allow_redirects' => true,
-            ])->timeout(10)->get($url);
+            $response = $this->crawlHttpClient->get(
+                url: $url,
+                headers: [
+                    'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                    'Accept-Language' => 'ja,en-US;q=0.9,en;q=0.8',
+                ],
+                timeoutSeconds: 10,
+                options: [
+                    'verify' => false,
+                    'allow_redirects' => true,
+                ],
+            );
 
             if (! $response->successful()) {
-                $result['error_message'] = 'HTTP通信失敗 ('.$response->status().')';
-
-                return $result;
+                return new ScrapedArticleData(
+                    url: $url,
+                    success: false,
+                    errorMessage: 'HTTP通信失敗 ('.$response->status().')',
+                );
             }
 
             $crawler = new Crawler($response->body(), $url);
@@ -65,19 +67,29 @@ class ArticleScraperService
             // グローバルNGリストとサイト固有NGリストをマージして使用
             $mergedNgImages = array_filter(array_unique(array_merge(self::GLOBAL_NG_IMAGES, $siteNgImages)));
 
-            $result['data']['title'] = $this->extractTitle($crawler);
-            $result['data']['image'] = $this->extractImage($crawler, $mergedNgImages);
-            $result['data']['date'] = $this->extractDate($crawler, $siteDateSelector);
-            $result['success'] = true;
+            $title = $this->extractTitle($crawler);
+            $image = $this->extractImage($crawler, $mergedNgImages);
+            $date = $this->extractDate($crawler, $siteDateSelector);
+            $success = true;
 
-            $result['error_message'] = $this->buildErrorMessage($result['data']);
+            $errorMessage = $this->buildErrorMessage(['image' => $image, 'date' => $date]);
 
+        } catch (\Illuminate\Http\Client\ConnectionException | \Illuminate\Http\Client\RequestException $e) {
+            $errorMessage = 'HTTPリクエストエラー: '.$e->getMessage();
+            Log::warning('ArticleScraperService: HTTP Request Error - '.$e->getMessage()." [URL: {$url}]");
         } catch (Exception $e) {
-            $result['error_message'] = '通信中/パース中のエラー: '.$e->getMessage();
-            Log::warning('ArticleScraperService: '.$e->getMessage()." [URL: {$url}]");
+            $errorMessage = 'パースエラー: '.$e->getMessage();
+            Log::warning('ArticleScraperService: Parse Error - '.$e->getMessage()." [URL: {$url}]");
         }
 
-        return $result;
+        return new ScrapedArticleData(
+            url: $url,
+            title: $title,
+            image: $image,
+            date: $date,
+            success: $success,
+            errorMessage: $errorMessage,
+        );
     }
 
     private function extractTitle(Crawler $crawler): ?string
@@ -126,7 +138,8 @@ class ArticleScraperService
                 if (! empty($trimmedSrc)) {
                     Log::debug("[ArticleScraperService] NG画像のためスキップ: {$trimmedSrc}");
                 }
-            } catch (Exception) {
+            } catch (Exception $e) {
+                Log::debug("[ArticleScraperService] 画像抽出エラー({$img['selector']}): ".$e->getMessage());
                 // ignore image parsing errors
             }
         }
@@ -157,13 +170,6 @@ class ArticleScraperService
                 if (! empty(trim((string) $val))) {
                     return DateParser::parse(trim((string) $val))?->toDateTimeString();
                 }
-            }
-        }
-
-        if ($crawler->filter('body')->count() > 0) {
-            $bodyText = $crawler->filter('body')->text();
-            if (preg_match('/(20\d{2})[年\/\-\s]+(\d{1,2})[月\/\-\s]+(\d{1,2})日?\s*(?:[（\(][日月火水木金土祝][）\)])?\s*(?:(\d{1,2})[:時](\d{1,2})(?::(\d{1,2}))?)?/', $bodyText, $matches)) {
-                return DateParser::parse($matches[0])?->toDateTimeString();
             }
         }
 

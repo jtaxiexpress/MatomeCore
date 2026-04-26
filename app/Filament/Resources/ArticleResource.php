@@ -2,10 +2,13 @@
 
 namespace App\Filament\Resources;
 
-use App\Actions\CategorizeArticleAction;
+use App\Actions\ReprocessSelectedArticlesAction;
 use App\Filament\Resources\ArticleResource\Pages;
 use App\Models\Article;
+use App\Models\Category;
+use App\Notifications\FilamentDatabaseNotification;
 use Filament\Actions\Action;
+use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -13,6 +16,7 @@ use Filament\Facades\Filament;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Events\DatabaseNotificationsSent;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
@@ -21,11 +25,18 @@ use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Storage;
 
 class ArticleResource extends Resource
 {
     protected static ?string $model = Article::class;
+
+    protected static string|\UnitEnum|null $navigationGroup = 'コンテンツ管理';
+
+    protected static ?int $navigationSort = 3;
+
+    protected static ?string $navigationLabel = '記事管理';
 
     protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-document-text';
 
@@ -58,18 +69,7 @@ class ArticleResource extends Resource
                             ->relationship(
                                 name: 'category',
                                 titleAttribute: 'name',
-                                modifyQueryUsing: function (Builder $query): Builder {
-                                    $tenant = Filament::getTenant();
-
-                                    if (! $tenant) {
-                                        return $query->whereRaw('1 = 0');
-                                    }
-
-                                    return $query
-                                        ->whereBelongsTo($tenant, 'app')
-                                        ->orderBy('sort_order')
-                                        ->orderBy('name');
-                                },
+                                modifyQueryUsing: fn (Builder $query): Builder => self::scopeCategoryQueryToTenant($query),
                             )
                             ->searchable()
                             ->preload(),
@@ -161,19 +161,6 @@ class ArticleResource extends Resource
             ])
             ->filters([])
             ->actions([
-                Action::make('categorize')
-                    ->label('AI自動分類')
-                    ->icon('heroicon-o-sparkles')
-                    ->color('primary')
-                    ->action(function (Article $record, CategorizeArticleAction $action) {
-                        $action->execute($record);
-                        Notification::make()
-                            ->title('AIによるカテゴリ分類が完了しました')
-                            ->success()
-                            ->send();
-                    })
-                    ->requiresConfirmation()
-                    ->modalHeading('この記事をAIで自動分類しますか？'),
                 EditAction::make()
                     ->modalWidth('4xl')
                     ->modalHeading('記事の編集')
@@ -181,9 +168,193 @@ class ArticleResource extends Resource
                     ->modalSubmitActionLabel('更新する'),
             ])
             ->bulkActions([
-                BulkActionGroup::make([DeleteBulkAction::make()]),
+                BulkActionGroup::make([
+                    BulkAction::make('reprocessSelectedArticles')
+                        ->label('AIで再処理（タイトル+カテゴリ）')
+                        ->icon('heroicon-o-sparkles')
+                        ->color('primary')
+                        ->requiresConfirmation()
+                        ->modalWidth('4xl')
+                        ->modalHeading('選択した記事のタイトルとカテゴリをAIで再処理しますか？')
+                        ->modalDescription('選択した記事をまとめてAIで再分類し、タイトルとカテゴリの両方を更新します。')
+                        ->modalSubmitActionLabel('実行する')
+                        ->action(function (Collection $records, ReprocessSelectedArticlesAction $reprocessSelectedArticlesAction): void {
+                            $updatedCount = $reprocessSelectedArticlesAction->executeCombined($records);
+
+                            if ($updatedCount === 0) {
+                                Notification::make()
+                                    ->title('AIで再処理できる記事がありませんでした')
+                                    ->warning()
+                                    ->send();
+
+                                return;
+                            }
+
+                            Notification::make()
+                                ->title($updatedCount.'件の記事のタイトルとカテゴリを再処理しました')
+                                ->success()
+                                ->send();
+
+                            self::sendAppReprocessNotification(
+                                title: 'AI再処理が完了しました',
+                                body: $updatedCount.'件の記事のタイトルとカテゴリを再処理しました',
+                            );
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                    BulkAction::make('rewriteSelectedArticleTitles')
+                        ->label('AIでタイトルのみ再リライト')
+                        ->icon('heroicon-o-pencil-square')
+                        ->color('warning')
+                        ->requiresConfirmation()
+                        ->modalWidth('4xl')
+                        ->modalHeading('選択した記事のタイトルのみをAIで再リライトしますか？')
+                        ->modalDescription('選択した記事のカテゴリはそのままにして、タイトルだけをAIで整えます。')
+                        ->modalSubmitActionLabel('実行する')
+                        ->action(function (Collection $records, ReprocessSelectedArticlesAction $reprocessSelectedArticlesAction): void {
+                            $updatedCount = $reprocessSelectedArticlesAction->executeTitleOnly($records);
+
+                            if ($updatedCount === 0) {
+                                Notification::make()
+                                    ->title('AIで再リライトできる記事がありませんでした')
+                                    ->warning()
+                                    ->send();
+
+                                return;
+                            }
+
+                            Notification::make()
+                                ->title($updatedCount.'件の記事のタイトルを再リライトしました')
+                                ->success()
+                                ->send();
+
+                            self::sendAppReprocessNotification(
+                                title: 'AIタイトル再リライトが完了しました',
+                                body: $updatedCount.'件の記事のタイトルを再リライトしました',
+                            );
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                    BulkAction::make('reclassifySelectedArticleCategories')
+                        ->label('AIでカテゴリのみ再振り分け')
+                        ->icon('heroicon-o-tag')
+                        ->color('info')
+                        ->requiresConfirmation()
+                        ->modalWidth('4xl')
+                        ->modalHeading('選択した記事のカテゴリのみをAIで再振り分けしますか？')
+                        ->modalDescription('選択した記事のタイトルはそのままにして、カテゴリだけをAIで見直します。')
+                        ->modalSubmitActionLabel('実行する')
+                        ->action(function (Collection $records, ReprocessSelectedArticlesAction $reprocessSelectedArticlesAction): void {
+                            $updatedCount = $reprocessSelectedArticlesAction->executeCategoryOnly($records);
+
+                            if ($updatedCount === 0) {
+                                Notification::make()
+                                    ->title('AIで再振り分けできる記事がありませんでした')
+                                    ->warning()
+                                    ->send();
+
+                                return;
+                            }
+
+                            Notification::make()
+                                ->title($updatedCount.'件の記事のカテゴリを再振り分けしました')
+                                ->success()
+                                ->send();
+
+                            self::sendAppReprocessNotification(
+                                title: 'AIカテゴリ再振り分けが完了しました',
+                                body: $updatedCount.'件の記事のカテゴリを再振り分けしました',
+                            );
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                    BulkAction::make('changeCategory')
+                        ->label('カテゴリを一括変更')
+                        ->icon('heroicon-o-arrows-right-left')
+                        ->requiresConfirmation()
+                        ->modalWidth('4xl')
+                        ->modalHeading('選択した記事のカテゴリを変更')
+                        ->modalDescription('選択した記事をまとめて別のカテゴリへ移動します。')
+                        ->form([
+                            Select::make('new_category_id')
+                                ->label('移動先カテゴリ')
+                                ->options(fn (): array => self::getTenantCategoryOptions())
+                                ->searchable()
+                                ->required(),
+                        ])
+                        ->action(function (Collection $records, array $data): void {
+                            $records->toQuery()->update([
+                                'category_id' => (int) $data['new_category_id'],
+                            ]);
+
+                            Notification::make()
+                                ->title($records->count().'件の記事のカテゴリを変更しました')
+                                ->success()
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                    DeleteBulkAction::make(),
+                ]),
             ])
+            ->modifyQueryUsing(fn (Builder $query): Builder => $query->with(['category', 'site']))
             ->defaultSort('published_at', 'desc');
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function getTenantCategoryOptions(): array
+    {
+        $tenant = Filament::getTenant();
+
+        if (! $tenant) {
+            return [];
+        }
+
+        return Category::query()
+            ->whereBelongsTo($tenant, 'app')
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->pluck('name', 'id')
+            ->toArray();
+    }
+
+    private static function scopeCategoryQueryToTenant(Builder $query): Builder
+    {
+        $tenant = Filament::getTenant();
+
+        if (! $tenant) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query
+            ->whereBelongsTo($tenant, 'app')
+            ->orderBy('sort_order')
+            ->orderBy('name');
+    }
+
+    private static function sendAppReprocessNotification(string $title, string $body): void
+    {
+        $tenant = Filament::getTenant();
+        $user = Filament::auth()->user();
+
+        if (! $tenant || ! $user) {
+            return;
+        }
+
+        $payload = Notification::make()
+            ->title($title)
+            ->success()
+            ->body($body)
+            ->actions([
+                Action::make('markAsRead')
+                    ->label('既読にする')
+                    ->button()
+                    ->markAsRead(),
+            ])
+            ->getDatabaseMessage();
+
+        $payload['app_id'] = $tenant->getKey();
+
+        $user->notify(new FilamentDatabaseNotification($payload));
+        DatabaseNotificationsSent::dispatch($user);
     }
 
     public static function getPages(): array

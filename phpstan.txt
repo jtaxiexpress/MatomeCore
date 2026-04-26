@@ -1,0 +1,132 @@
+Note: Using configuration file /var/www/html/phpstan.neon.
+ 0/4 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   0%[1G[2K 4/4 [▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓] 100%
+
+ ------ ----------------------------------------------------------------------- 
+  Line   Filament/Resources/SiteResource.php                                    
+ ------ ----------------------------------------------------------------------- 
+  138    Offset 'diagnostics' on array{site_title: string|null, rss_url:        
+         string|null, crawler_type: string, sitemap_url: string|null,           
+         crawl_start_url: string|null, list_item_selector: string|null,         
+         link_selector: string|null, pagination_url_template: string|null,      
+         ...} on left side of ?? always exists and is not nullable.             
+         🪪  nullCoalesce.offset                                                
+  178    Offset 'items' on array{error: string|null, items: array<int, array{t  
+         itle: string, url: string, date: string, image: string}>} on left sid  
+         e of ?? always exists and is not nullable.                             
+         🪪  nullCoalesce.offset                                                
+  198    Offset 'total_count' on array{error: string|null, urls: array<int, st  
+         ring>, count: int, total_count: int, next_url: string|null, sample_it  
+         ems: array<int, array{title: string, url: string, image: string, date  
+         : string}>, sample_complete_count: int, sample_checked_count: int} on  
+          left side of ?? always exists and is not nullable.                    
+         🪪  nullCoalesce.offset                                                
+  343    Offset 'total_count' on array{error: string|null, urls: array<int, st  
+         ring>, count: int, total_count: int, next_url: string|null, sample_it  
+         ems: array<int, array{title: string, url: string, image: string, date  
+         : string}>, sample_complete_count: int, sample_checked_count: int} on  
+          left side of ?? always exists and is not nullable.                    
+         🪪  nullCoalesce.offset                                                
+  417    Offset 'diagnostics' on array{site_title: string|null, rss_url:        
+         string|null, crawler_type: string, sitemap_url: string|null,           
+         crawl_start_url: string|null, list_item_selector: string|null,         
+         link_selector: string|null, pagination_url_template: string|null,      
+         ...} on left side of ?? always exists and is not nullable.             
+         🪪  nullCoalesce.offset                                                
+  449    Offset 'items' on array{error: string|null, items: array<int, array{t  
+         itle: string, url: string, date: string, image: string}>} on left sid  
+         e of ?? always exists and is not nullable.                             
+         🪪  nullCoalesce.offset                                                
+  605    Call to function is_array() with array{title: string, url: string,     
+         date: string, image: string} will always evaluate to true.             
+         🪪  function.alreadyNarrowedType                                       
+  605    Call to function is_object() with *NEVER* will always evaluate to      
+         true.                                                                  
+         🪪  function.alreadyNarrowedType                                       
+  605    Call to function method_exists() with *NEVER* and 'toArray' will       
+         always evaluate to true.                                               
+         🪪  function.alreadyNarrowedType                                       
+  606    Offset 'title' on array{title: string, url: string, date: string,      
+         image: string} on left side of ?? always exists and is not nullable.   
+         🪪  nullCoalesce.offset                                                
+  607    Offset 'url' on array{title: string, url: string, date: string,        
+         image: string} on left side of ?? always exists and is not nullable.   
+         🪪  nullCoalesce.offset                                                
+  608    Offset 'image' on array{title: string, url: string, date: string,      
+         image: string} on left side of ?? always exists and is not nullable.   
+         🪪  nullCoalesce.offset                                                
+  609    Offset 'date' on array{title: string, url: string, date: string,       
+         image: string} on left side of ?? always exists and is not nullable.   
+         🪪  nullCoalesce.offset                                                
+ ------ ----------------------------------------------------------------------- 
+
+ ------ ----------------------------------------------------------------------- 
+  Line   Jobs/ProcessArticleBatchJob.php                                        
+ ------ ----------------------------------------------------------------------- 
+  73     Access to an undefined property                                        
+         Illuminate\Database\Eloquent\Model::$categories.                       
+         🪪  property.notFound                                                  
+         💡  Learn more: https://phpstan.org/blog/solving-phpstan-access-to-und  
+         efined-property                                                        
+  104    Parameter #3 $app of method                                            
+         App\Services\ArticleAiService::classifyAndRewriteBatch() expects       
+         App\Models\App|null, Illuminate\Database\Eloquent\Model|null given.    
+         🪪  argument.type                                                      
+  123    Instanceof between App\Models\Site and App\Models\Site will always     
+         evaluate to true.                                                      
+         🪪  instanceof.alwaysTrue                                              
+         💡  Because the type is coming from a PHPDoc, you can turn off this    
+         check by setting treatPhpDocTypesAsCertain: false in your phpstan.neo  
+         n.                                                                     
+  123    Result of && is always true.                                           
+         🪪  booleanAnd.alwaysTrue                                              
+         💡  Because the type is coming from a PHPDoc, you can turn off this    
+         check by setting treatPhpDocTypesAsCertain: false in your phpstan.neo  
+         n.                                                                     
+  123    Variable $site in isset() always exists and is not nullable.           
+         🪪  isset.variable                                                     
+  159    Offset 'metaData' on array{url: string, metaData: array<string, mixed  
+         >} on left side of ?? always exists and is not nullable.               
+         🪪  nullCoalesce.offset                                                
+  196    Method App\Jobs\ProcessArticleBatchJob::resolveValidArticles() should  
+         return array<int, array{id: int, url: string, title: string, metaData  
+         : array{title: string|null, image: string|null, date: string}}> but r  
+         eturns list<array{id: int<1, max>, url: string, title:                 
+         non-falsy-string, metaData: App\DTOs\ScrapedArticleData}>.             
+         🪪  return.type                                                        
+         💡  Offset 'metaData' (array{title: string|null, image: string|null,   
+         date: string}) does not accept type App\DTOs\ScrapedArticleData.       
+  211    Access to an undefined property                                        
+         Illuminate\Database\Eloquent\Model::$categories.                       
+         🪪  property.notFound                                                  
+         💡  Learn more: https://phpstan.org/blog/solving-phpstan-access-to-und  
+         efined-property                                                        
+  246    Cannot access property $image on array<string, mixed>.                 
+         🪪  property.nonObject                                                 
+  247    Cannot access property $date on array<string, mixed>.                  
+         🪪  property.nonObject                                                 
+ ------ ----------------------------------------------------------------------- 
+
+ ------ ----------------------------------------------------------------------- 
+  Line   Services/SiteAnalyzerService.php                                       
+ ------ ----------------------------------------------------------------------- 
+  631    Method App\Services\SiteAnalyzerService::appCustomScrapeRule() never   
+         returns array{list_item_selector: string, link_selector: string} so    
+         it can be removed from the return type.                                
+         🪪  return.unusedType                                                  
+  633    Call to function is_array() with string|null will always evaluate to   
+         false.                                                                 
+         🪪  function.impossibleType                                            
+         💡  Because the type is coming from a PHPDoc, you can turn off this    
+         check by setting treatPhpDocTypesAsCertain: false in your phpstan.neo  
+         n.                                                                     
+  633    Result of || is always true.                                           
+         🪪  booleanOr.alwaysTrue                                               
+         💡  Because the type is coming from a PHPDoc, you can turn off this    
+         check by setting treatPhpDocTypesAsCertain: false in your phpstan.neo  
+         n.                                                                     
+  637    Unreachable statement - code above always terminates.                  
+         🪪  deadCode.unreachable                                               
+ ------ ----------------------------------------------------------------------- 
+
+ [ERROR] Found 27 errors                                                        
+

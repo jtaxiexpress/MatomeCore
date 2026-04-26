@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Actions\CheckNgKeywordAction;
 use App\Actions\CleanArticleTitleAction;
+use App\Actions\SendArticleFetchResultNotificationAction;
+use App\DTOs\ScrapedArticleData;
+use App\Models\App;
 use App\Models\Article;
 use App\Models\Site;
 use App\Services\ArticleAiService;
+use App\Services\ArticleMetadataResolverService;
 use App\Services\ArticleScraperService;
-use App\Support\DateParser;
-use Exception;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -41,14 +44,17 @@ class ProcessArticleBatchJob implements ShouldQueue
     public function __construct(
         public readonly int $siteId,
         public readonly array $articles,
-        public readonly string $aiDriver = 'gemini',
         public readonly ?string $fetchSource = null,
-    ) {}
+    ) {
+        $this->onQueue('ai');
+    }
 
     public function handle(
         ArticleAiService $aiService,
         ArticleScraperService $scraper,
         CleanArticleTitleAction $cleanTitleAction,
+        ArticleMetadataResolverService $metadataResolver,
+        CheckNgKeywordAction $checkNgKeywordAction,
     ): void {
         $this->shareLogContext();
 
@@ -68,7 +74,10 @@ class ProcessArticleBatchJob implements ShouldQueue
 
         $this->shareLogContext($site);
 
-        $categories = $site->app->categories->map(fn ($cat) => [
+        /** @var App $app */
+        $app = $site->app;
+
+        $categories = $app->categories->map(fn ($cat) => [
             'id' => $cat->id,
             'name' => $cat->name,
         ])->toArray();
@@ -79,25 +88,36 @@ class ProcessArticleBatchJob implements ShouldQueue
             return;
         }
 
-        $aiDriver = $this->aiDriver ?: ($site->app->ai_driver ?? config('ai.default', 'gemini'));
-
         try {
             // ① メタデータ解決と前処理
-            $validArticles = $this->resolveValidArticles($scraper, $cleanTitleAction, $site);
+            $validArticles = $this->resolveValidArticles($metadataResolver, $scraper, $cleanTitleAction, $checkNgKeywordAction, $site);
 
             if (empty($validArticles)) {
                 Log::info("[ProcessArticleBatchJob] Site ID {$this->siteId}: 処理対象の有効な記事が0件のため終了します。");
 
+                $this->notifyFetchResult(
+                    site: $site,
+                    savedCount: 0,
+                    missedCount: 0,
+                    detail: '処理対象の記事がありませんでした。',
+                );
+
                 return;
             }
 
-            Log::info("[ProcessArticleBatchJob] Site ID {$this->siteId}: {$aiDriver}に".count($validArticles).'件の記事をバッチ送信します。');
+            Log::info("[ProcessArticleBatchJob] Site ID {$this->siteId}: Ollamaに".count($validArticles).'件の記事をバッチ送信します。');
 
             // ② AIバッチ推論
-            $aiResults = $aiService->classifyAndRewriteBatch($validArticles, $categories, $aiDriver, $site->app);
+            $aiResults = $aiService->classifyAndRewriteBatch($validArticles, $categories, $app);
 
             // ③ 結果の保存と漏れ検出
-            $this->persistResults($validArticles, $aiResults, $site);
+            $summary = $this->persistResults($validArticles, $aiResults, $site);
+
+            $this->notifyFetchResult(
+                site: $site,
+                savedCount: $summary['savedCount'],
+                missedCount: $summary['missedCount'],
+            );
 
         } catch (\Throwable $e) {
             report($e);
@@ -106,6 +126,17 @@ class ProcessArticleBatchJob implements ShouldQueue
                 'site_id' => $this->siteId,
                 'message' => $e->getMessage(),
             ]);
+
+            if (isset($site) && $site->app) {
+                $this->notifyFetchResult(
+                    site: $site,
+                    savedCount: 0,
+                    missedCount: 0,
+                    detail: '記事取得の処理中にエラーが発生しました: '.$e->getMessage(),
+                    failed: true,
+                );
+            }
+
             $this->fail($e);
         }
     }
@@ -114,11 +145,13 @@ class ProcessArticleBatchJob implements ShouldQueue
      * 各URLのメタデータを解決し、AI処理に進む有効な記事リストを返します。
      * DBに既存のURL・タイトルが短すぎる記事はスキップします。
      *
-     * @return array<int, array{id: int, url: string, title: string, metaData: array{title: string|null, image: string|null, date: string}}>
+     * @return array<int, array{id: int, url: string, title: string, metaData: ScrapedArticleData}>
      */
     private function resolveValidArticles(
+        ArticleMetadataResolverService $metadataResolver,
         ArticleScraperService $scraper,
         CleanArticleTitleAction $cleanTitleAction,
+        CheckNgKeywordAction $checkNgKeywordAction,
         Site $site,
     ): array {
         // DB重複チェックを1クエリで一括実行
@@ -138,11 +171,23 @@ class ProcessArticleBatchJob implements ShouldQueue
                 continue;
             }
 
-            $metaData = $this->resolveMetaData($scraper, $url, $rawMetaData, $site);
-            $cleanedTitle = $cleanTitleAction->execute((string) ($metaData['title'] ?? ''), $site->name);
+            $metaData = $metadataResolver->resolve(
+                scraper: $scraper,
+                url: $url,
+                rawMetaData: $rawMetaData,
+                site: $site,
+                logPrefix: "[ProcessArticleBatchJob] {$url}",
+            );
+            $cleanedTitle = $cleanTitleAction->execute((string) ($metaData->title ?? ''), $site->name);
 
             if (empty($cleanedTitle) || mb_strlen($cleanedTitle) < 5) {
                 Log::warning("[ProcessArticleBatchJob] タイトルが空または5文字未満のためスキップ: {$url}");
+
+                continue;
+            }
+
+            if ($checkNgKeywordAction->execute($cleanedTitle) || $checkNgKeywordAction->execute($metaData->title ?? '')) {
+                Log::warning("[ProcessArticleBatchJob] NGキーワードが含まれているため保存をスキップします: {$url}");
 
                 continue;
             }
@@ -162,14 +207,19 @@ class ProcessArticleBatchJob implements ShouldQueue
      * AIバッチ結果を記事テーブルに保存します。
      * AI返答に含まれなかった記事はLog::warningで記録します。
      *
-     * @param  array<int, array{id: int, url: string, title: string, metaData: array<string, mixed>}>  $validArticles
+     * @param  array<int, array{id: int, url: string, title: string, metaData: ScrapedArticleData}>  $validArticles
      * @param  array<int, array{category_id: int, rewritten_title: string}>  $aiResults
+     * @return array{savedCount: int, missedCount: int}
      */
-    private function persistResults(array $validArticles, array $aiResults, Site $site): void
+    private function persistResults(array $validArticles, array $aiResults, Site $site): array
     {
         $savedCount = 0;
         $missedCount = 0;
-        $categoryNames = $site->app->categories->pluck('name', 'id');
+        /** @var App $app */
+        $app = $site->app;
+        $categoryNames = $app->categories->pluck('name', 'id');
+        $upsertData = [];
+        $logMessages = [];
 
         foreach ($validArticles as $article) {
             $tempId = $article['id'];
@@ -188,82 +238,58 @@ class ProcessArticleBatchJob implements ShouldQueue
 
             $aiResult = $aiResults[$tempId];
 
-            if (empty($aiResult['rewritten_title'])) {
+            if (empty($aiResult->rewrittenTitle)) {
                 Log::warning("[ProcessArticleBatchJob] rewritten_titleが空のためスキップ: {$url}");
                 $missedCount++;
 
                 continue;
             }
 
-            Article::firstOrCreate(
-                ['url' => $url],
-                [
-                    'app_id' => $site->app_id,
-                    'site_id' => $site->id,
-                    'category_id' => $aiResult['category_id'],
-                    'title' => $aiResult['rewritten_title'],
-                    'original_title' => $article['title'],
-                    'thumbnail_url' => $article['metaData']['image'],
-                    'published_at' => $article['metaData']['date'],
-                    'fetch_source' => $this->fetchSource,
-                ]
-            );
+            $upsertData[] = [
+                'url' => $url,
+                'app_id' => $site->app_id,
+                'site_id' => $site->id,
+                'category_id' => $aiResult->categoryId,
+                'title' => $aiResult->rewrittenTitle,
+                'original_title' => $article['title'],
+                'thumbnail_url' => $article['metaData']->image,
+                'published_at' => $article['metaData']->date,
+                'fetch_source' => $this->fetchSource,
+                'updated_at' => now(), // upsertで更新日を反映するため
+            ];
 
-            $categoryName = $categoryNames->get($aiResult['category_id'], '不明');
+            $categoryName = $categoryNames->get($aiResult->categoryId, '不明');
             $originalTitle = $article['title'];
 
-            Log::info(sprintf(
-                '保存完了:| リライト前 %s | リライト後: %s | カテゴリID: %d(%s) | %s |',
+            $logMessages[] = sprintf(
+                '保存予定:| リライト前 %s | リライト後: %s | カテゴリID: %d(%s) | %s |',
                 $originalTitle,
-                $aiResult['rewritten_title'],
-                $aiResult['category_id'],
+                $aiResult->rewrittenTitle,
+                $aiResult->categoryId,
                 $categoryName,
                 $url,
-            ));
+            );
             $savedCount++;
         }
 
-        Log::info("[ProcessArticleBatchJob] Site ID {$site->id}: 保存={$savedCount}件 / AI漏れ={$missedCount}件");
-    }
+        if (! empty($upsertData)) {
+            Article::upsert(
+                $upsertData,
+                ['url'],
+                ['title', 'thumbnail_url', 'updated_at', 'category_id']
+            );
 
-    /**
-     * 記事のメタデータを解決します。不足分はスクレイピングで補完します。
-     *
-     * @param  array<string, mixed>  $rawMetaData
-     * @return array{title: string|null, image: string|null, date: string}
-     */
-    private function resolveMetaData(
-        ArticleScraperService $scraper,
-        string $url,
-        array $rawMetaData,
-        Site $site,
-    ): array {
-        $title = $rawMetaData['raw_title'] ?? null;
-        $thumbnailUrl = $rawMetaData['thumbnail_url'] ?? null;
-        $rawPublishedAt = $rawMetaData['published_at'] ?? null;
-        $publishedAt = $rawPublishedAt ? DateParser::parse($rawPublishedAt)?->toDateTimeString() : null;
-
-        if (empty($title) || empty($thumbnailUrl) || empty($publishedAt)) {
-            try {
-                $siteNgImages = $site->ng_image_urls ?? [];
-                $scrapeResult = $scraper->scrape($url, $site->date_selector ?? null, $siteNgImages);
-
-                if ($scrapeResult['success']) {
-                    $title = empty($title) && ! empty($scrapeResult['data']['title']) ? $scrapeResult['data']['title'] : $title;
-                    $thumbnailUrl = empty($thumbnailUrl) && ! empty($scrapeResult['data']['image']) ? $scrapeResult['data']['image'] : $thumbnailUrl;
-                    $publishedAt = empty($publishedAt) && ! empty($scrapeResult['data']['date']) ? $scrapeResult['data']['date'] : $publishedAt;
-                } else {
-                    Log::warning("[ProcessArticleBatchJob] スクレイピング補完失敗: {$url} - ".($scrapeResult['error_message'] ?? '不明'));
-                }
-            } catch (Exception $e) {
-                Log::error("[ProcessArticleBatchJob] スクレイピングエラー: {$url} - ".$e->getMessage());
+            Log::info("[ProcessArticleBatchJob] Site ID {$site->id}: バルクUpsert実行完了({$savedCount}件)");
+            foreach ($logMessages as $msg) {
+                Log::debug($msg);
             }
         }
 
+        Log::info("[ProcessArticleBatchJob] Site ID {$site->id}: 保存={$savedCount}件 / AI漏れ={$missedCount}件");
+
         return [
-            'title' => $title,
-            'image' => $thumbnailUrl,
-            'date' => $publishedAt ?: now()->toDateTimeString(),
+            'savedCount' => $savedCount,
+            'missedCount' => $missedCount,
         ];
     }
 
@@ -275,5 +301,22 @@ class ProcessArticleBatchJob implements ShouldQueue
             'app_slug' => (string) data_get($site, 'app.api_slug'),
             'batch_size' => count($this->articles),
         ]);
+    }
+
+    private function notifyFetchResult(
+        Site $site,
+        int $savedCount,
+        int $missedCount,
+        ?string $detail = null,
+        bool $failed = false,
+    ): void {
+        app(SendArticleFetchResultNotificationAction::class)->execute(
+            site: $site,
+            fetchSource: $this->fetchSource ?? 'rss',
+            savedCount: $savedCount,
+            missedCount: $missedCount,
+            detail: $detail,
+            failed: $failed,
+        );
     }
 }

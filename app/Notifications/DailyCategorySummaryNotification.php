@@ -35,8 +35,8 @@ class DailyCategorySummaryNotification extends Notification
     public function toSlack(object $notifiable): SlackMessage
     {
         return (new SlackMessage)
-            ->text('MatomeCore daily category report')
-            ->headerBlock('MatomeCore Daily Category Report')
+            ->text('ゆにこーんアンテナ daily category report')
+            ->headerBlock('ゆにこーんアンテナ Daily Category Report')
             ->sectionBlock(function (SectionBlock $block): void {
                 $block->text($this->buildBody())->markdown();
             });

@@ -3,12 +3,18 @@
 namespace App\Filament\Resources\AppResource\Pages;
 
 use App\Filament\Resources\AppResource;
+use App\Filament\Resources\Pages\AdminManageRecords;
+use App\Support\AdminScreen;
 use Filament\Actions;
-use Filament\Resources\Pages\ManageRecords;
 
-class ManageApps extends ManageRecords
+class ManageApps extends AdminManageRecords
 {
     protected static string $resource = AppResource::class;
+
+    protected static function adminScreen(): ?AdminScreen
+    {
+        return AdminScreen::AppManagement;
+    }
 
     protected function getHeaderActions(): array
     {

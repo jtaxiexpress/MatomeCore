@@ -1,0 +1,204 @@
+<?php
+
+use App\Models\App;
+use App\Models\Article;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Cache;
+use Livewire\Attributes\Computed;
+use Livewire\Attributes\Layout;
+use Livewire\Component;
+
+use Livewire\WithPagination;
+
+new
+#[Layout('layouts::app')]
+class extends Component {
+    use WithPagination;
+
+    /** Infeed ad interval (insert ad every N articles) */
+    private const AD_INTERVAL = 10;
+
+    /**
+     * @return \Illuminate\Contracts\Pagination\LengthAwarePaginator
+     */
+    #[Computed]
+    public function articles(): \Illuminate\Contracts\Pagination\LengthAwarePaginator
+    {
+        // active_app_ids は整数の配列なので安全にキャッシュ可
+        $activeAppIds = Cache::remember('active_app_ids', now()->addMinutes(60), function () {
+            return App::where('is_active', true)->pluck('id')->toArray();
+        });
+
+        // Paginator は Eloquent モデルを含むため、シリアライズ不可 → キャッシュしない
+        return Article::query()
+            ->select([
+                'articles.id',
+                'articles.app_id',
+                'articles.category_id',
+                'articles.site_id',
+                'articles.title',
+                'articles.url',
+                'articles.thumbnail_url',
+                'articles.published_at',
+                'articles.daily_out_count',
+            ])
+            ->whereIn('articles.app_id', $activeAppIds)
+            ->with(['app:id,name,api_slug', 'site:id,name,traffic_score'])
+            ->trafficFiltered()
+            ->join('sites', 'articles.site_id', '=', 'sites.id')
+            ->orderByDesc('sites.traffic_score')
+            ->orderByDesc('articles.published_at')
+            ->orderByDesc('articles.id')
+            ->paginate(15);
+    }
+
+    #[Computed]
+    public function appSections(): Collection
+    {
+        // Eloquent モデルを含むコレクションはシリアライズ不可 → キャッシュしない
+        return App::where('is_active', true)
+            ->get()
+            ->map(function ($app) {
+                $app->setRelation('latest_articles', Article::query()
+                    ->select([
+                        'articles.id',
+                        'articles.app_id',
+                        'articles.category_id',
+                        'articles.site_id',
+                        'articles.title',
+                        'articles.url',
+                        'articles.thumbnail_url',
+                        'articles.published_at',
+                        'articles.daily_out_count',
+                    ])
+                    ->where('articles.app_id', $app->id)
+                    ->with(['app:id,name,api_slug', 'site:id,name,traffic_score'])
+                    ->trafficFiltered()
+                    ->join('sites', 'articles.site_id', '=', 'sites.id')
+                    ->orderByDesc('sites.traffic_score')
+                    ->orderByDesc('articles.published_at')
+                    ->orderByDesc('articles.id')
+                    ->limit(10)
+                    ->get()
+                );
+                return $app;
+            });
+    }
+
+    #[Computed]
+    public function adInterval(): int
+    {
+        return self::AD_INTERVAL;
+    }
+
+    #[Computed]
+    public function pageTitle(): string
+    {
+        return 'ゆにこーんアンテナ - 横断アンテナ';
+    }
+}; ?>
+
+<div x-data="{ 
+    mutedSites: JSON.parse(localStorage.getItem('muted_sites') || '[]'),
+    muteSite(id) {
+        if (!this.mutedSites.includes(id)) {
+            this.mutedSites.push(id);
+            localStorage.setItem('muted_sites', JSON.stringify(this.mutedSites));
+        }
+    }
+}">
+    @section('title', $this->pageTitle)
+    @section('tenant_name', config('app.name'))
+
+    {{-- Comprehensive Article feed --}}
+    <section class="mb-12">
+        <h2 class="mb-4 flex items-center gap-2 text-xl font-bold text-text-primary dark:text-white">
+            <span class="text-accent">🌟</span> 全アプリ総合最新記事
+        </h2>
+        
+        <div class="space-y-6" id="article-feed">
+            @php
+                $lastDate = null;
+                $isFirst = true;
+            @endphp
+            @forelse ($this->articles as $index => $article)
+                @php
+                    $currentDate = $article->published_at ? $article->published_at->translatedFormat('n月j日（D）') : '未設定';
+                @endphp
+
+                @if ($lastDate !== $currentDate)
+                    @if (!$isFirst)
+                            </div>
+                        </div>
+                    @endif
+                    <div class="date-group">
+                        <h3 class="mb-2 px-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-text-secondary dark:text-text-tertiary">
+                            {{ $currentDate }}
+                        </h3>
+                        <div class="overflow-hidden rounded-2xl bg-surface-elevated dark:bg-surface-elevated-dark shadow-sm divide-y divide-border/40 dark:divide-border-dark/40">
+                    @php
+                        $lastDate = $currentDate;
+                        $isFirst = false;
+                    @endphp
+                @endif
+
+                {{-- Infeed ad every N articles --}}
+                @if ($index > 0 && $index % $this->adInterval === 0)
+                    <div class="py-3 px-4 bg-transparent">
+                        <x-ad-infeed />
+                    </div>
+                @endif
+
+                <x-article-card :article="$article" wire:key="article-cross-{{ $article->id }}" />
+            @empty
+                <div class="flex flex-col items-center justify-center rounded-2xl bg-surface-elevated px-4 py-16 text-center dark:bg-surface-elevated-dark shadow-sm">
+                    <span class="mb-2 text-4xl">📭</span>
+                    <p class="text-sm font-medium text-text-secondary dark:text-text-tertiary">
+                        記事が見つかりませんでした
+                    </p>
+                </div>
+            @endforelse
+
+            @if (!$isFirst)
+                    </div>
+                </div>
+            @endif
+        </div>
+
+        {{-- Pagination --}}
+        <div class="mt-6 mb-8 px-4">
+            {{ $this->articles->links(data: ['scrollTo' => false]) }}
+        </div>
+    </section>
+
+    {{-- App Sections --}}
+    <div class="space-y-10">
+        @foreach($this->appSections as $app)
+            @if($app->latest_articles->isNotEmpty())
+                <section>
+                    {{-- Section header --}}
+                    <div class="mb-2 px-4 flex items-center justify-between pb-1">
+                        <h2 class="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-text-secondary dark:text-text-tertiary">
+                            @if($app->icon_path)
+                                <img src="{{ Storage::url($app->icon_path) }}" alt="" class="size-4 rounded">
+                            @endif
+                            {{ $app->name }}
+                        </h2>
+                        <a href="{{ route('front.home', $app) }}"
+                           class="flex items-center gap-1 text-xs font-medium text-accent transition-colors hover:text-accent/70"
+                           wire:navigate>
+                            もっと見る
+                            <svg class="size-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                        </a>
+                    </div>
+
+                    <div class="overflow-hidden rounded-2xl bg-surface-elevated dark:bg-surface-elevated-dark shadow-sm divide-y divide-border/40 dark:divide-border-dark/40">
+                        @foreach($app->latest_articles as $article)
+                            <x-article-card :article="$article" wire:key="app-{{ $app->id }}-article-{{ $article->id }}" />
+                        @endforeach
+                    </div>
+                </section>
+            @endif
+        @endforeach
+    </div>
+</div>

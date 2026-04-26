@@ -19,6 +19,7 @@ class AppResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
+            'icon_url' => $this->icon_url,
             'slug' => $this->api_slug,
             'theme_color' => $this->theme_color,
             'links' => [

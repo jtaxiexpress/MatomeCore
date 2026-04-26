@@ -17,7 +17,7 @@ class SiteCleanupJob implements ShouldQueue
      */
     public function __construct()
     {
-        //
+        $this->onQueue('maintenance');
     }
 
     /**
@@ -42,11 +42,15 @@ class SiteCleanupJob implements ShouldQueue
             Log::info("閉鎖サイト削除開始: サイトID {$site->id} ({$site->name})");
 
             // 2. データベースのロック・クラッシュを防ぐため、1000件ずつ分割して記事を物理削除
-            Article::where('site_id', $site->id)->chunkById(1000, function ($articles) {
-                foreach ($articles as $article) {
-                    $article->delete();
+            while (true) {
+                $deletedCount = Article::where('site_id', $site->id)->limit(1000)->delete();
+
+                if ($deletedCount === 0) {
+                    break;
                 }
-            });
+
+                usleep(500_000); // 0.5秒スリープしてDB負荷を分散
+            }
 
             // 3. 紐づく記事がすべて消えた後、サイト自体も削除する
             $site->delete();

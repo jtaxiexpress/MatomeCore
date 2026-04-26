@@ -9,6 +9,7 @@ use App\Models\Article;
 use App\Models\Category;
 use App\Models\Site;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class PublicFeedApiTest extends TestCase
@@ -25,6 +26,8 @@ class PublicFeedApiTest extends TestCase
         $activeApp = AppModel::factory()->create([
             'name' => 'Main App',
             'api_slug' => 'main-app',
+            'icon_path' => 'app-icons/main-app-icon.svg',
+            'theme_color' => '#2563EB',
             'is_active' => true,
         ]);
 
@@ -40,6 +43,8 @@ class PublicFeedApiTest extends TestCase
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.slug', 'main-app')
             ->assertJsonPath('data.0.name', 'Main App')
+            ->assertJsonPath('data.0.theme_color', '#2563EB')
+            ->assertJsonPath('data.0.icon_url', Storage::disk('public')->url('app-icons/main-app-icon.svg'))
             ->assertJsonPath(
                 'data.0.links.categories',
                 url('/api/v1/apps/'.$activeApp->api_slug.'/categories')
@@ -49,9 +54,9 @@ class PublicFeedApiTest extends TestCase
     /**
      * Arrange: 2つのアプリにカテゴリを作成
      * Act: 対象アプリのカテゴリAPIを呼ぶ
-     * Assert: 対象アプリ配下のみ返却され、子カテゴリがネストされる
+     * Assert: 対象アプリ配下のみ返却され、フラット配列でソートされる
      */
-    public function test_categories_endpoint_returns_only_target_app_categories_with_children(): void
+    public function test_categories_endpoint_returns_only_target_app_categories_as_flat_sorted_array(): void
     {
         $targetApp = AppModel::factory()->create([
             'api_slug' => 'target-app',
@@ -81,9 +86,11 @@ class PublicFeedApiTest extends TestCase
         $response = $this->getJson('/api/v1/apps/target-app/categories');
 
         $response->assertOk()
-            ->assertJsonCount(1, 'data')
+            ->assertJsonCount(2, 'data')
             ->assertJsonPath('data.0.slug', 'root')
-            ->assertJsonPath('data.0.children.0.slug', 'child');
+            ->assertJsonPath('data.0.sort_order', 1)
+            ->assertJsonPath('data.1.slug', 'child')
+            ->assertJsonPath('data.1.sort_order', 2);
     }
 
     /**
@@ -99,17 +106,20 @@ class PublicFeedApiTest extends TestCase
         ]);
         $category = Category::factory()->for($app)->create([
             'api_slug' => 'tech',
+            'default_image_path' => 'https://cdn.example.com/category-default.png',
         ]);
         $site = Site::factory()->for($app)->create();
 
         Article::factory()->for($app)->for($category)->for($site)->create([
             'title' => 'Older',
             'url' => 'https://example.com/older',
+            'thumbnail_url' => null,
             'published_at' => now()->subDay(),
         ]);
         Article::factory()->for($app)->for($category)->for($site)->create([
             'title' => 'Latest',
             'url' => 'https://example.com/latest',
+            'thumbnail_url' => null,
             'published_at' => now(),
         ]);
 
@@ -118,6 +128,7 @@ class PublicFeedApiTest extends TestCase
         $response->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.title', 'Latest')
+            ->assertJsonPath('data.0.thumbnail_url', 'https://cdn.example.com/category-default.png')
             ->assertJsonPath('meta.per_page', 1)
             ->assertJsonPath('meta.total', 2);
     }
@@ -232,14 +243,14 @@ class PublicFeedApiTest extends TestCase
         $response->assertTooManyRequests();
     }
 
-    public function test_ai_configuration_supports_only_gemini_and_ollama(): void
+    public function test_ai_configuration_supports_only_ollama(): void
     {
-        $this->assertSame(['gemini', 'ollama'], array_keys(config('ai.providers')));
-        $this->assertSame('gemini', config('ai.default'));
-        $this->assertSame('gemini', config('ai.default_for_audio'));
-        $this->assertSame('gemini', config('ai.default_for_transcription'));
-        $this->assertSame('gemini', config('ai.default_for_embeddings'));
-        $this->assertSame('gemini', config('ai.default_for_reranking'));
+        $this->assertSame(['ollama'], array_keys(config('ai.providers')));
+        $this->assertSame('ollama', config('ai.default'));
+        $this->assertSame('ollama', config('ai.default_for_audio'));
+        $this->assertSame('ollama', config('ai.default_for_transcription'));
+        $this->assertSame('ollama', config('ai.default_for_embeddings'));
+        $this->assertSame('ollama', config('ai.default_for_reranking'));
 
     }
 }

@@ -2,21 +2,23 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Pages\Dashboard as AdminDashboard;
+use App\Filament\Pages\ExceptionAlerts;
 use App\Filament\Pages\SystemSettings;
+use App\Filament\Resources\AboutSections\AboutSectionResource;
 use App\Filament\Resources\AppResource;
 use App\Filament\Resources\Users\UserResource;
+use App\Livewire\Filament\ScopedDatabaseNotifications;
+use App\Support\AdminScreen;
 use Croustibat\FilamentJobsMonitor\FilamentJobsMonitorPlugin;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\Navigation\MenuItem;
 use Filament\Navigation\NavigationItem;
-use Filament\Pages;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
-use Filament\View\PanelsRenderHook;
-use Illuminate\Contracts\View\View;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -39,16 +41,20 @@ class AdminPanelProvider extends PanelProvider
                 'gray' => Color::Slate,
             ])
             ->font('Inter')
-            ->brandName('MatomeCore Admin')
+            ->brandName('ゆにこーんアンテナ Admin')
             ->homeUrl('/admin')
             ->resources([
                 AppResource::class,
                 UserResource::class,
+                AboutSectionResource::class,
             ])
             ->pages([
-                Pages\Dashboard::class,
+                AdminDashboard::class,
                 SystemSettings::class,
+                ExceptionAlerts::class,
             ])
+            ->databaseNotifications(livewireComponent: ScopedDatabaseNotifications::class)
+            ->databaseNotificationsPolling('30s')
             ->userMenuItems([
                 MenuItem::make()
                     ->label('アプリ管理 (Appパネル) へ')
@@ -61,14 +67,16 @@ class AdminPanelProvider extends PanelProvider
                 NavigationItem::make('ログビューア')
                     ->url(fn (): string => route('log-viewer.index'))
                     ->icon('heroicon-o-document-text')
-                    ->group('システム管理')
-                    ->sort(99),
+                    ->group('監視')
+                    ->sort(1)
+                    ->visible(fn (): bool => auth()->user()?->canAccessAdminScreen(AdminScreen::LogViewer) ?? false),
+            ])
+            ->navigationGroups([
+                'プラットフォーム管理',
+                'システム設定',
+                '監視',
             ])
             ->plugin(FilamentJobsMonitorPlugin::make())
-            ->renderHook(
-                PanelsRenderHook::SIDEBAR_FOOTER,
-                fn (): View => view('filament.sidebar-footer'),
-            )
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,

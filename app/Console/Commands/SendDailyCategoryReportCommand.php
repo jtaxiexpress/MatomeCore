@@ -7,7 +7,9 @@ use App\Models\Category;
 use App\Notifications\DailyCategorySummaryNotification;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
+use Throwable;
 
 class SendDailyCategoryReportCommand extends Command
 {
@@ -40,13 +42,17 @@ class SendDailyCategoryReportCommand extends Command
             ->get();
 
         if ($recentCounts->isEmpty()) {
-            Notification::route('slack', $webhookUrl)
-                ->notify(new DailyCategorySummaryNotification(
-                    windowStart: $windowStart,
-                    windowEnd: $windowEnd,
-                    lines: [],
-                    totalNewCount: 0,
-                ));
+            if (! $this->sendReportNotification(
+                webhookUrl: $webhookUrl,
+                windowStart: $windowStart,
+                windowEnd: $windowEnd,
+                lines: [],
+                totalNewCount: 0,
+            )) {
+                $this->warn('Failed to send daily category report to Slack. See logs for details.');
+
+                return self::SUCCESS;
+            }
 
             $this->info('No new articles in the last 24 hours. Empty report sent.');
 
@@ -92,16 +98,54 @@ class SendDailyCategoryReportCommand extends Command
             );
         }
 
-        Notification::route('slack', $webhookUrl)
-            ->notify(new DailyCategorySummaryNotification(
-                windowStart: $windowStart,
-                windowEnd: $windowEnd,
-                lines: $lines,
-                totalNewCount: $totalNewCount,
-            ));
+        if (! $this->sendReportNotification(
+            webhookUrl: $webhookUrl,
+            windowStart: $windowStart,
+            windowEnd: $windowEnd,
+            lines: $lines,
+            totalNewCount: $totalNewCount,
+        )) {
+            $this->warn('Failed to send daily category report to Slack. See logs for details.');
+
+            return self::SUCCESS;
+        }
 
         $this->info('Daily category report sent to Slack.');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @param  array<int, string>  $lines
+     */
+    private function sendReportNotification(
+        string $webhookUrl,
+        CarbonImmutable $windowStart,
+        CarbonImmutable $windowEnd,
+        array $lines,
+        int $totalNewCount,
+    ): bool {
+        try {
+            Notification::route('slack', $webhookUrl)
+                ->notify(new DailyCategorySummaryNotification(
+                    windowStart: $windowStart,
+                    windowEnd: $windowEnd,
+                    lines: $lines,
+                    totalNewCount: $totalNewCount,
+                ));
+
+            return true;
+        } catch (Throwable $exception) {
+            Log::error('[SendDailyCategoryReportCommand] Failed to send report notification to Slack.', [
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+                'line_count' => count($lines),
+                'total_new_count' => $totalNewCount,
+                'window_start' => $windowStart->toIso8601String(),
+                'window_end' => $windowEnd->toIso8601String(),
+            ]);
+
+            return false;
+        }
     }
 }

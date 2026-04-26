@@ -13,12 +13,12 @@ return [
     |
     */
 
-    'default' => 'gemini',
-    'default_for_images' => 'gemini',
-    'default_for_audio' => 'gemini',
-    'default_for_transcription' => 'gemini',
-    'default_for_embeddings' => 'gemini',
-    'default_for_reranking' => 'gemini',
+    'default' => 'ollama',
+    'default_for_images' => 'ollama',
+    'default_for_audio' => 'ollama',
+    'default_for_transcription' => 'ollama',
+    'default_for_embeddings' => 'ollama',
+    'default_for_reranking' => 'ollama',
 
     /*
     |--------------------------------------------------------------------------
@@ -50,15 +50,17 @@ return [
     */
 
     'providers' => [
-        'gemini' => [
-            'driver' => 'gemini',
-            'key' => env('GEMINI_API_KEY'),
-        ],
-
         'ollama' => [
             'driver' => 'ollama',
-            'key' => env('OLLAMA_API_KEY', ''),
-            'url' => env('OLLAMA_BASE_URL', 'http://localhost:11434'),
+            'url' => env('OLLAMA_BASE_URL', 'https://ollama.unicorn.tokyo'),
+            'model' => env('OLLAMA_MODEL', 'gemma4:e2b'),
+            'stream' => false,
+            'options' => [
+                'num_predict' => (int) env('OLLAMA_NUM_PREDICT', 3000),
+                'num_ctx' => (int) env('OLLAMA_NUM_CTX', 8192),
+                'temperature' => (float) env('OLLAMA_TEMPERATURE', 0.2),
+                'repeat_penalty' => (float) env('OLLAMA_REPEAT_PENALTY', 1.0),
+            ],
         ],
     ],
 

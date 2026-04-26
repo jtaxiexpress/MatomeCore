@@ -4,21 +4,19 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 
 class Article extends Model
 {
     use HasFactory;
-    protected $guarded = [];
 
-    /**
-     * JSON シリアライズ時に display_thumbnail_url を自動付与する。
-     * API レスポンスでカテゴリのデフォルト画像フォールバックを透過的に提供するため。
-     */
-    protected $appends = ['display_thumbnail_url'];
+    protected $guarded = [];
 
     protected function casts(): array
     {
@@ -34,6 +32,16 @@ class Article extends Model
                 $article->url_hash = hash('sha256', $article->url);
             }
         });
+
+        $clearCache = function (Article $article): void {
+            // TODO: バッチ処理時のパフォーマンス低下を防ぐため、キャッシュクリア処理はObserverへの切り出しや特定キーのみの削除など、より安全な実装に移行する
+            if (! app()->runningInConsole()) {
+                Cache::tags(['articles'])->flush();
+            }
+        };
+
+        static::saved($clearCache);
+        static::deleted($clearCache);
     }
 
     public function app(): BelongsTo
@@ -51,6 +59,32 @@ class Article extends Model
         return $this->belongsTo(Site::class);
     }
 
+    public function clicks(): HasMany
+    {
+        return $this->hasMany(ArticleClick::class);
+    }
+
+    /**
+     * スコアが著しく低いサイト（IN比率が極端に低くOUTが多い）の記事を除外するスコープ
+     */
+    public function scopeTrafficFiltered($query, int $minScore = -100)
+    {
+        return $query->whereHas('site', function ($q) use ($minScore) {
+            $q->where('traffic_score', '>=', $minScore)
+                ->orWhere('is_active', false); // Optional: depends on how inactive sites are handled, but usually we only query active sites anyway.
+        });
+    }
+
+    /**
+     * 新着かつサイトスコア（勢い）を加味した独自のソート
+     * daily_out_countを基準にする、またはシンプルに新しい順
+     */
+    public function scopeTrending($query)
+    {
+        return $query->orderByDesc('daily_out_count')
+            ->orderByDesc('published_at');
+    }
+
     /**
      * 表示用サムネイルURLを返すアクセサ。
      *
@@ -59,22 +93,30 @@ class Article extends Model
      * 2. カテゴリの default_image_path（http 始まりでなければ Storage::url() で変換）
      * 3. null（どちらも未設定）
      */
-    public function getDisplayThumbnailUrlAttribute(): ?string
+    protected function displayThumbnailUrl(): Attribute
     {
-        // ① 自身のサムネイルが存在すればそれを優先
-        if (! empty($this->thumbnail_url)) {
-            return $this->thumbnail_url;
-        }
+        return Attribute::make(
+            get: function (): ?string {
+                if (! empty($this->thumbnail_url)) {
+                    return $this->thumbnail_url;
+                }
 
-        // ② カテゴリのデフォルト画像にフォールバック
-        $defaultImagePath = $this->category?->default_image_path ?? null;
-        if (empty($defaultImagePath)) {
-            return null;
-        }
+                $category = $this->getRelationValue('category');
 
-        // http(s):// で始まる絶対URLならそのまま返す、ストレージパスなら URL に変換する
-        return str_starts_with($defaultImagePath, 'http')
-            ? $defaultImagePath
-            : Storage::url($defaultImagePath);
+                if (! $category instanceof Category) {
+                    return null;
+                }
+
+                $defaultImagePath = $category->default_image_path;
+
+                if (empty($defaultImagePath)) {
+                    return null;
+                }
+
+                return str_starts_with($defaultImagePath, 'http')
+                    ? $defaultImagePath
+                    : Storage::url($defaultImagePath);
+            },
+        );
     }
 }

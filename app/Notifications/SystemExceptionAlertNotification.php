@@ -48,8 +48,8 @@ class SystemExceptionAlertNotification extends Notification
     public function toSlack(object $notifiable): SlackMessage
     {
         return (new SlackMessage)
-            ->text('MatomeCore critical system alert')
-            ->headerBlock('MatomeCore Critical Alert')
+            ->text('ゆにこーんアンテナ critical system alert')
+            ->headerBlock('ゆにこーんアンテナ Critical Alert')
             ->sectionBlock(function (SectionBlock $block): void {
                 $block->field("*Exception*\n{$this->exceptionClass}")->markdown();
                 $block->field("*Location*\n{$this->file}:{$this->line}")->markdown();

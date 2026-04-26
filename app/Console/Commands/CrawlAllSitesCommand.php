@@ -59,20 +59,22 @@ class CrawlAllSitesCommand extends Command
 
         Log::info("CrawlAllSitesCommand: Found {$sites->count()} active sites. Processing...");
 
+        $delayIndex = 0;
         foreach ($sites as $site) {
             $this->info('--------------------------------------------------');
             $this->info("Processing Site ID: {$site->id} | Name: {$site->name} | Type: {$site->crawler_type}");
-            Log::info("CrawlAllSitesCommand: Processing Site ID: {$site->id} | Name: {$site->name}");
+            Log::info("CrawlAllSitesCommand: Queueing Site ID: {$site->id} | Name: {$site->name}");
 
             try {
-                Artisan::call('app:crawl-site', ['site_id' => $site->id], $this->output);
+                // 2秒ずつ間隔を空けてキューに積む
+                $delay = now()->addSeconds($delayIndex * 2);
+                \App\Jobs\CrawlSiteJob::dispatch($site->id)->delay($delay);
+                $this->info("Queued for execution at {$delay->toDateTimeString()}");
+                $delayIndex++;
             } catch (\Exception $e) {
-                $this->error("Failed to process Site ID {$site->id}: ".$e->getMessage());
-                Log::error("CrawlAllSitesCommand: Site {$site->id} failed - ".$e->getMessage());
+                $this->error("Failed to queue Site ID {$site->id}: ".$e->getMessage());
+                Log::error("CrawlAllSitesCommand: Failed to queue Site {$site->id} - ".$e->getMessage());
             }
-
-            $this->info('Sleeping for 2 seconds to prevent server overload...');
-            sleep(2);
         }
 
         $this->info('--------------------------------------------------');

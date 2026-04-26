@@ -5,16 +5,18 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Actions\CleanArticleTitleAction;
-use App\Ai\Agents\BatchCategorizeAgent;
 use App\Jobs\ProcessArticleBatchJob;
 use App\Models\App as AppModel;
 use App\Models\Article;
 use App\Models\Category;
 use App\Models\Site;
+use App\Models\User;
 use App\Services\ArticleAiService;
+use App\Services\ArticleMetadataResolverService;
 use App\Services\ArticleScraperService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
@@ -39,6 +41,8 @@ class ProcessArticleBatchJobTest extends TestCase
             app(ArticleAiService::class),
             app(ArticleScraperService::class),
             app(CleanArticleTitleAction::class),
+            app(ArticleMetadataResolverService::class),
+            app(\App\Actions\CheckNgKeywordAction::class),
         );
 
         $this->assertDatabaseCount('articles', 0);
@@ -61,6 +65,8 @@ class ProcessArticleBatchJobTest extends TestCase
             app(ArticleAiService::class),
             app(ArticleScraperService::class),
             app(CleanArticleTitleAction::class),
+            app(ArticleMetadataResolverService::class),
+            app(\App\Actions\CheckNgKeywordAction::class),
         );
 
         $this->assertDatabaseCount('articles', 0);
@@ -81,16 +87,25 @@ class ProcessArticleBatchJobTest extends TestCase
         $category = Category::factory()->for($appModel)->create();
         /** @var Site $site */
         $site = Site::factory()->for($appModel)->create();
+        $admin = User::factory()->admin()->create();
+        $appUser = User::factory()->create();
+        $appUser->apps()->attach($appModel);
 
+        Http::preventStrayRequests();
         Log::spy();
+        Http::fake(function ($request) use ($category) {
+            if (str_ends_with($request->url(), '/api/generate')) {
+                return Http::response([
+                    'response' => json_encode([
+                        'results' => [
+                            ['article_id' => 1, 'rewritten_title' => 'AIリライトタイトル', 'category_id' => $category->id],
+                        ],
+                    ], JSON_UNESCAPED_UNICODE),
+                ]);
+            }
 
-        BatchCategorizeAgent::fake([
-            [
-                'results' => [
-                    ['article_id' => 1, 'rewritten_title' => 'AIリライトタイトル', 'category_id' => $category->id],
-                ],
-            ],
-        ]);
+            return Http::response(null, 404);
+        });
 
         $job = new ProcessArticleBatchJob(
             siteId: $site->id,
@@ -106,6 +121,8 @@ class ProcessArticleBatchJobTest extends TestCase
             app(ArticleAiService::class),
             app(ArticleScraperService::class),
             app(CleanArticleTitleAction::class),
+            app(ArticleMetadataResolverService::class),
+            app(\App\Actions\CheckNgKeywordAction::class),
         );
 
         $this->assertDatabaseHas('articles', [
@@ -115,20 +132,21 @@ class ProcessArticleBatchJobTest extends TestCase
             'category_id' => $category->id,
         ]);
 
-        $expectedMessage = sprintf(
-            '保存完了:| リライト前 %s | リライト後: %s | カテゴリID: %d(%s) | %s |',
-            '元のタイトルです長めに',
-            'AIリライトタイトル',
-            $category->id,
-            $category->name,
-            'https://example.com/article-1',
-        );
+        $this->assertDatabaseCount('notifications', 2);
 
-        Log::shouldHaveReceived('info')
-            ->withArgs(function (string $message) use ($expectedMessage): bool {
-                return $message === $expectedMessage;
-            })
-            ->once();
+        $admin->refresh();
+        $appUser->refresh();
+
+        $adminNotification = $admin->notifications()->first();
+        $appNotification = $appUser->notifications()->first();
+
+        $this->assertNotNull($adminNotification);
+        $this->assertNotNull($appNotification);
+        $this->assertSame("{$site->name} - RSS新規記事取得", $adminNotification->data['title']);
+        $this->assertSame('rss', $adminNotification->data['source']);
+        $this->assertSame("{$site->name} - RSS新規記事取得", $appNotification->data['title']);
+        $this->assertStringContainsString('保存 1件 / AI漏れ 0件', $adminNotification->data['body']);
+
     }
 
     // =========================================================================
@@ -151,10 +169,6 @@ class ProcessArticleBatchJobTest extends TestCase
             ->for($category)
             ->create(['url' => 'https://example.com/existing-article']);
 
-        BatchCategorizeAgent::fake([
-            ['results' => []],
-        ]);
-
         $job = new ProcessArticleBatchJob(
             siteId: $site->id,
             articles: [
@@ -166,6 +180,8 @@ class ProcessArticleBatchJobTest extends TestCase
             app(ArticleAiService::class),
             app(ArticleScraperService::class),
             app(CleanArticleTitleAction::class),
+            app(ArticleMetadataResolverService::class),
+            app(\App\Actions\CheckNgKeywordAction::class),
         );
 
         // 重複のため新しい記事は追加されない
@@ -173,10 +189,10 @@ class ProcessArticleBatchJobTest extends TestCase
     }
 
     // =========================================================================
-    // AI結果が部分的な場合のテスト
+    // AI結果が部分的な場合のフォールバックテスト
     // =========================================================================
 
-    public function test_job_logs_warning_for_articles_missing_from_ai_response(): void
+    public function test_job_falls_back_for_articles_missing_from_ai_response(): void
     {
         /** @var AppModel $appModel */
         $appModel = AppModel::factory()->create();
@@ -185,14 +201,21 @@ class ProcessArticleBatchJobTest extends TestCase
         /** @var Site $site */
         $site = Site::factory()->for($appModel)->create();
 
-        // AI は article_id=1 のみ返し、2 は漏れる
-        BatchCategorizeAgent::fake([
-            [
-                'results' => [
-                    ['article_id' => 1, 'rewritten_title' => 'タイトル1', 'category_id' => $category->id],
-                ],
-            ],
-        ]);
+        Http::preventStrayRequests();
+        // AI は article_id=1 のみ返し、2 はサービス側フォールバックへ
+        Http::fake(function ($request) use ($category) {
+            if (str_ends_with($request->url(), '/api/generate')) {
+                return Http::response([
+                    'response' => json_encode([
+                        'results' => [
+                            ['article_id' => 1, 'rewritten_title' => 'タイトル1', 'category_id' => $category->id],
+                        ],
+                    ], JSON_UNESCAPED_UNICODE),
+                ]);
+            }
+
+            return Http::response(null, 404);
+        });
 
         Log::spy();
 
@@ -208,12 +231,18 @@ class ProcessArticleBatchJobTest extends TestCase
             app(ArticleAiService::class),
             app(ArticleScraperService::class),
             app(CleanArticleTitleAction::class),
+            app(ArticleMetadataResolverService::class),
+            app(\App\Actions\CheckNgKeywordAction::class),
         );
 
-        // article_id=1 は保存される
+        // article_id=1 はAI結果で保存される
         $this->assertDatabaseHas('articles', ['url' => 'https://example.com/article-1']);
-        // article_id=2 は保存されない（AI漏れ）
-        $this->assertDatabaseMissing('articles', ['url' => 'https://example.com/article-2']);
+        // article_id=2 はフォールバックで保存される
+        $this->assertDatabaseHas('articles', [
+            'url' => 'https://example.com/article-2',
+            'title' => '元タイトル2元タイトル2',
+            'category_id' => $category->id,
+        ]);
 
         Log::shouldHaveReceived('warning')->atLeast()->once();
     }

@@ -31,6 +31,7 @@ return [
     'slack' => [
         'alert_webhook_url' => env('SLACK_ALERT_WEBHOOK_URL'),
         'report_webhook_url' => env('SLACK_REPORT_WEBHOOK_URL'),
+        'blog_request_webhook_url' => env('SLACK_BLOG_REQUEST_WEBHOOK_URL'),
         'notifications' => [
             'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
@@ -38,7 +39,7 @@ return [
     ],
 
     'ollama' => [
-        'url' => env('OLLAMA_URL', 'http://host.docker.internal:11434/api/generate'),
+        'url' => env('OLLAMA_BASE_URL', 'https://ollama.unicorn.tokyo'),
     ],
 
 ];

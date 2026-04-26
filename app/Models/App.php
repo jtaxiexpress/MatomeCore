@@ -7,11 +7,29 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class App extends Model
 {
     use HasFactory;
+
+    /**
+     * @return array<string, string>
+     */
+    public static function themeColorOptions(): array
+    {
+        return [
+            '#2563EB' => 'Blue (#2563EB)',
+            '#4F46E5' => 'Indigo (#4F46E5)',
+            '#7C3AED' => 'Purple (#7C3AED)',
+            '#DB2777' => 'Pink (#DB2777)',
+            '#DC2626' => 'Red (#DC2626)',
+            '#EA580C' => 'Orange (#EA580C)',
+            '#16A34A' => 'Green (#16A34A)',
+            '#4B5563' => 'Gray (#4B5563)',
+        ];
+    }
 
     protected $guarded = [];
 
@@ -19,7 +37,17 @@ class App extends Model
     {
         return [
             'is_active' => 'boolean',
+            'custom_scrape_rules' => 'array',
         ];
+    }
+
+    public function getIconUrlAttribute(): ?string
+    {
+        if (blank($this->icon_path)) {
+            return null;
+        }
+
+        return Storage::disk('public')->url((string) $this->icon_path);
     }
 
     protected static function booted(): void

@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Ai\Agents\BatchCategorizeAgent;
 use App\Services\ArticleAiService;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class ArticleAiServiceBatchTest extends TestCase
@@ -17,81 +17,73 @@ class ArticleAiServiceBatchTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        Cache::put('ai_prompt_template', 'test template {categories} {title} {articles_json}');
-        $this->service = new ArticleAiService;
+        Cache::put('ai_prompt_template', "{categories}\nタイトル:{title}");
+        Cache::put('ai_base_prompt', 'PROMPT {app_prompt} {categories} {articles_json} {count}');
+        Cache::put('ollama_model', 'gemma4:e2b');
+        $this->service = app(ArticleAiService::class);
     }
 
-    // =========================================================================
-    // extractBatchJsonResponse のテスト（リフレクションで private メソッドを呼び出す）
-    // =========================================================================
-
-    private function callExtractBatchJsonResponse(string $text): array
+    public function test_classify_and_rewrite_returns_structured_result_with_ollama_json_format(): void
     {
-        $method = new \ReflectionMethod(ArticleAiService::class, 'extractBatchJsonResponse');
+        Http::preventStrayRequests();
+        Http::fake(function ($request) {
+            if (str_ends_with($request->url(), '/api/generate')) {
+                return Http::response([
+                    'response' => json_encode([
+                        'category_id' => 10,
+                        'rewritten_title' => '完成タイトル',
+                    ], JSON_UNESCAPED_UNICODE),
+                ]);
+            }
 
-        return $method->invoke($this->service, $text);
+            return Http::response(null, 404);
+        });
+
+        $result = $this->service->classifyAndRewrite(
+            articleData: new \App\DTOs\ScrapedArticleData(url: 'https://example.com/1', title: '元タイトル'),
+            categories: [
+                ['id' => 10, 'name' => 'テクノロジー'],
+                ['id' => 99, 'name' => '未分類'],
+            ],
+        );
+
+        $this->assertSame(10, $result->categoryId);
+        $this->assertSame('完成タイトル', $result->rewrittenTitle);
+
+        Http::assertSent(function ($request): bool {
+            $data = $request->data();
+
+            return str_ends_with($request->url(), '/api/generate')
+                && $data['stream'] === false
+                && $data['format'] === 'json'
+                && $data['model'] === 'gemma4:e2b';
+        });
     }
 
-    public function test_extract_batch_json_response_parses_plain_json_array(): void
+    public function test_classify_and_rewrite_falls_back_when_json_is_invalid(): void
     {
-        $text = '[{"article_id": 1, "rewritten_title": "タイトル1", "category_id": 3}, {"article_id": 2, "rewritten_title": "タイトル2", "category_id": 5}]';
+        Http::preventStrayRequests();
+        Http::fake(function ($request) {
+            if (str_ends_with($request->url(), '/api/generate')) {
+                return Http::response([
+                    'response' => '{invalid-json}',
+                ]);
+            }
 
-        $result = $this->callExtractBatchJsonResponse($text);
+            return Http::response(null, 404);
+        });
 
-        $this->assertCount(2, $result);
-        $this->assertArrayHasKey(1, $result);
-        $this->assertSame(3, $result[1]['category_id']);
-        $this->assertSame('タイトル1', $result[1]['rewritten_title']);
-        $this->assertArrayHasKey(2, $result);
-        $this->assertSame(5, $result[2]['category_id']);
+        $result = $this->service->classifyAndRewrite(
+            articleData: new \App\DTOs\ScrapedArticleData(url: 'https://example.com/1', title: '元タイトル'),
+            categories: [
+                ['id' => 10, 'name' => 'テクノロジー'],
+                ['id' => 99, 'name' => '未分類'],
+            ],
+        );
+
+        $this->assertSame(99, $result->categoryId);
+        $this->assertSame('元タイトル', $result->rewrittenTitle);
     }
-
-    public function test_extract_batch_json_response_returns_empty_array_when_no_json_found(): void
-    {
-        $text = 'これはJSONではありません。プレーンテキストです。';
-
-        $result = $this->callExtractBatchJsonResponse($text);
-
-        $this->assertEmpty($result);
-    }
-
-    public function test_extract_batch_json_response_returns_empty_array_on_invalid_json(): void
-    {
-        $text = '[{invalid json}]';
-
-        $result = $this->callExtractBatchJsonResponse($text);
-
-        $this->assertEmpty($result);
-    }
-
-    public function test_extract_batch_json_response_skips_items_with_missing_fields(): void
-    {
-        $text = '[{"article_id": 1, "rewritten_title": "OK", "category_id": 2}, {"article_id": 2, "category_id": 3}]';
-
-        $result = $this->callExtractBatchJsonResponse($text);
-
-        // article_id=2 は rewritten_title がないのでスキップされる
-        $this->assertCount(1, $result);
-        $this->assertArrayHasKey(1, $result);
-        $this->assertArrayNotHasKey(2, $result);
-    }
-
-    public function test_extract_batch_json_response_handles_partial_result(): void
-    {
-        // 3件送っても2件しか返ってこないケース（部分成功）
-        $text = '[{"article_id": 1, "rewritten_title": "タイトル1", "category_id": 1}, {"article_id": 3, "rewritten_title": "タイトル3", "category_id": 2}]';
-
-        $result = $this->callExtractBatchJsonResponse($text);
-
-        $this->assertCount(2, $result);
-        $this->assertArrayHasKey(1, $result);
-        $this->assertArrayNotHasKey(2, $result);
-        $this->assertArrayHasKey(3, $result);
-    }
-
-    // =========================================================================
-    // classifyAndRewriteBatch のバリデーションテスト
-    // =========================================================================
 
     public function test_classify_and_rewrite_batch_throws_when_categories_empty(): void
     {
@@ -113,67 +105,76 @@ class ArticleAiServiceBatchTest extends TestCase
         $this->assertEmpty($result);
     }
 
-    // =========================================================================
-    // buildBatchPrompt のテスト
-    // =========================================================================
-
-    public function test_build_batch_prompt_contains_categories_and_articles(): void
+    public function test_classify_and_rewrite_batch_uses_json_schema_and_fills_missing_items_by_fallback(): void
     {
-        $method = new \ReflectionMethod(ArticleAiService::class, 'buildBatchPrompt');
+        Http::preventStrayRequests();
+        Http::fake(function ($request) {
+            if (str_ends_with($request->url(), '/api/generate')) {
+                return Http::response([
+                    'response' => json_encode([
+                        'results' => [
+                            [
+                                'article_id' => 1,
+                                'rewritten_title' => '完成タイトル',
+                                'category_id' => 10,
+                            ],
+                        ],
+                    ], JSON_UNESCAPED_UNICODE),
+                ]);
+            }
 
-        $articles = [
-            ['id' => 1, 'title' => 'テスト記事タイトル1'],
-            ['id' => 2, 'title' => 'テスト記事タイトル2'],
-        ];
-        $categories = [
-            ['id' => 10, 'name' => 'テクノロジー'],
-            ['id' => 20, 'name' => 'スポーツ'],
-        ];
-
-        $prompt = $method->invoke($this->service, $articles, $categories, null);
-
-        $this->assertStringContainsString('テクノロジー (ID: 10)', $prompt);
-        $this->assertStringContainsString('スポーツ (ID: 20)', $prompt);
-        $this->assertStringContainsString('"article_id":1', $prompt);
-        $this->assertStringContainsString('テスト記事タイトル1', $prompt);
-        $this->assertStringContainsString('"article_id":2', $prompt);
-    }
-
-    public function test_classify_and_rewrite_batch_logs_the_final_prompt_before_sending_to_ai(): void
-    {
-        Cache::put('ai_base_prompt', 'PROMPT {app_prompt} {categories} {articles_json} {count}');
-        Log::spy();
-
-        BatchCategorizeAgent::fake([
-            [
-                'results' => [
-                    [
-                        'article_id' => 1,
-                        'rewritten_title' => '完成タイトル',
-                        'category_id' => 10,
-                    ],
-                ],
-            ],
-        ]);
+            return Http::response(null, 404);
+        });
 
         $result = $this->service->classifyAndRewriteBatch(
             articles: [
-                ['id' => 1, 'title' => '元タイトル'],
+                ['id' => 1, 'title' => '元タイトル1'],
+                ['id' => 2, 'title' => '元タイトル2'],
             ],
             categories: [
                 ['id' => 10, 'name' => 'テクノロジー'],
+                ['id' => 99, 'name' => '未分類'],
             ],
         );
 
-        $this->assertSame(10, $result[1]['category_id']);
-        $this->assertSame('完成タイトル', $result[1]['rewritten_title']);
+        $this->assertSame(10, $result[1]->categoryId);
+        $this->assertSame('完成タイトル', $result[1]->rewrittenTitle);
+        $this->assertSame(99, $result[2]->categoryId);
+        $this->assertSame('元タイトル2', $result[2]->rewrittenTitle);
 
-        Log::shouldHaveReceived('debug')
-            ->withArgs(function (string $message): bool {
-                return str_contains($message, '[AI] 送信プロンプト:')
-                    && str_contains($message, '元タイトル')
-                    && str_contains($message, 'テクノロジー');
-            })
-            ->once();
+        Http::assertSent(function ($request): bool {
+            $data = $request->data();
+
+            return str_ends_with($request->url(), '/api/generate')
+                && $data['stream'] === false
+                && is_array($data['format'])
+                && ($data['format']['type'] ?? null) === 'object'
+                && ($data['format']['required'] ?? []) === ['results'];
+        });
+    }
+
+    public function test_classify_and_rewrite_batch_throws_on_connection_error(): void
+    {
+        $this->expectException(ConnectionException::class);
+
+        Http::preventStrayRequests();
+        Http::fake(function ($request) {
+            if (str_ends_with($request->url(), '/api/generate')) {
+                return Http::failedConnection();
+            }
+
+            return Http::response(null, 404);
+        });
+
+        $this->service->classifyAndRewriteBatch(
+            articles: [
+                ['id' => 1, 'title' => '元タイトル1'],
+                ['id' => 2, 'title' => '元タイトル2'],
+            ],
+            categories: [
+                ['id' => 10, 'name' => 'テクノロジー'],
+                ['id' => 99, 'name' => '未分類'],
+            ],
+        );
     }
 }

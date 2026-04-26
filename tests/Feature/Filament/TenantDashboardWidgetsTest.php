@@ -5,14 +5,17 @@ declare(strict_types=1);
 namespace Tests\Feature\Filament;
 
 use App\Filament\Widgets\ArticleTrendChart;
+use App\Filament\Widgets\InactiveSitesTable;
 use App\Filament\Widgets\SystemStatsOverview;
 use App\Models\App as AppModel;
 use App\Models\Article;
 use App\Models\Category;
 use App\Models\Site;
+use App\Models\User;
 use Filament\Facades\Filament;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Livewire\Livewire;
 use Tests\TestCase;
 
 class TenantDashboardWidgetsTest extends TestCase
@@ -109,6 +112,29 @@ class TenantDashboardWidgetsTest extends TestCase
         $this->assertSame(2, $chart['datasets'][0]['data'][6]);
 
         Filament::setTenant(null, isQuiet: true);
+    }
+
+    public function test_inactive_sites_table_renders_when_latest_article_date_is_missing(): void
+    {
+        $tenant = AppModel::factory()->create(['api_slug' => 'app-3']);
+        $user = User::factory()->create(['is_admin' => false]);
+        $user->apps()->attach($tenant);
+
+        Site::factory()->for($tenant, 'app')->create([
+            'name' => 'Stopped site',
+            'is_active' => true,
+        ]);
+
+        Filament::setTenant(null, isQuiet: true);
+        Filament::setCurrentPanel(Filament::getPanel('app'));
+        Filament::setTenant($tenant, isQuiet: true);
+
+        Livewire::actingAs($user)
+            ->test(InactiveSitesTable::class)
+            ->assertSee('Stopped site');
+
+        Filament::setTenant(null, isQuiet: true);
+        Filament::setCurrentPanel(null);
     }
 
     private function callProtectedMethod(object $instance, string $method): mixed
