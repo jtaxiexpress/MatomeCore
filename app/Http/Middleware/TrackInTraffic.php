@@ -15,6 +15,12 @@ use Symfony\Component\HttpFoundation\Response;
 
 class TrackInTraffic
 {
+    private const MAX_DAILY_LIMIT = 100;
+
+    private const CACHE_DURATION_SECONDS = 3600;
+
+    private const DAILY_SECONDS = 86400;
+
     /**
      * Handle an incoming request.
      *
@@ -34,7 +40,7 @@ class TrackInTraffic
 
             // 1日あたりの最大IN回数（100回）の制限
             $dailyLimiterKey = "in_daily_limit_{$siteId}_{$ip}";
-            if (RateLimiter::tooManyAttempts($dailyLimiterKey, 100)) {
+            if (RateLimiter::tooManyAttempts($dailyLimiterKey, self::MAX_DAILY_LIMIT)) {
                 return $next($request);
             }
 
@@ -42,10 +48,10 @@ class TrackInTraffic
 
             if (! Cache::has($cacheKey)) {
                 // 連続流入を1時間防止
-                Cache::put($cacheKey, true, 3600);
+                Cache::put($cacheKey, true, self::CACHE_DURATION_SECONDS);
 
                 // 日次リミットをカウントアップ (24時間保持)
-                RateLimiter::hit($dailyLimiterKey, 86400);
+                RateLimiter::hit($dailyLimiterKey, self::DAILY_SECONDS);
 
                 // 非同期で流入を記録
                 ProcessInTraffic::dispatch($siteId, now()->toDateTimeString());
@@ -126,7 +132,7 @@ class TrackInTraffic
 
         $normalizedHost = Str::lower($host);
 
-        return Cache::remember("site_host_{$normalizedHost}", 3600, function () use ($normalizedHost): ?int {
+        return Cache::remember("site_host_{$normalizedHost}", self::CACHE_DURATION_SECONDS, function () use ($normalizedHost): ?int {
             return Site::query()
                 ->where('url', 'like', "%{$normalizedHost}%")
                 ->value('id');

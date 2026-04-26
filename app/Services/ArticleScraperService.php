@@ -135,7 +135,8 @@ class ArticleScraperService
                 if (! empty($trimmedSrc)) {
                     Log::debug("[ArticleScraperService] NG画像のためスキップ: {$trimmedSrc}");
                 }
-            } catch (Exception) {
+            } catch (Exception $e) {
+                Log::debug("[ArticleScraperService] 画像抽出エラー({$img['selector']}): ".$e->getMessage());
                 // ignore image parsing errors
             }
         }

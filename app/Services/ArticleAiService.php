@@ -21,6 +21,10 @@ use Throwable;
 
 class ArticleAiService
 {
+    public const SINGLE_TIMEOUT_SECONDS = 120;
+
+    public const BATCH_TIMEOUT_SECONDS = 180;
+
     public function __construct(
         private readonly OllamaClient $ollamaClient,
     ) {}
@@ -44,7 +48,6 @@ PROMPT;
      *
      * @param  ScrapedArticleData  $articleData  記事データ
      * @param  array<int, array{id: int, name: string, parent_name?: string}>  $categories  カテゴリ一覧
-     * @return AiAnalyzedData
      *
      * @throws InvalidArgumentException
      */
@@ -68,7 +71,7 @@ PROMPT;
             'categories' => count($categories),
         ]);
 
-        $decoded = $this->requestStructuredData($payload, timeoutSeconds: 120, operation: '単体推論');
+        $decoded = $this->requestStructuredData($payload, timeoutSeconds: self::SINGLE_TIMEOUT_SECONDS, operation: '単体推論');
 
         if (! is_array($decoded)) {
             return $this->singleFallbackResult($articleData, $categories, 'json_decode_failed');
@@ -151,7 +154,7 @@ PROMPT;
             'articles' => count($articles),
         ]);
 
-        $decoded = $this->requestStructuredData($payload, timeoutSeconds: 180, operation: 'バッチ推論');
+        $decoded = $this->requestStructuredData($payload, timeoutSeconds: self::BATCH_TIMEOUT_SECONDS, operation: 'バッチ推論');
 
         if (! is_array($decoded)) {
             return $this->buildBatchFallbackResults($articles, $categories);
@@ -334,7 +337,6 @@ PROMPT;
     /**
      * @param  array<string, mixed>  $decoded
      * @param  array<int, array{id: int, name: string, parent_name?: string}>  $categories
-     * @return AiAnalyzedData|null
      */
     private function parseSingleResult(array $decoded, array $categories): ?AiAnalyzedData
     {
@@ -439,7 +441,6 @@ PROMPT;
 
     /**
      * @param  array<int, array{id: int, name: string, parent_name?: string}>  $categories
-     * @return AiAnalyzedData
      */
     private function singleFallbackResult(ScrapedArticleData $articleData, array $categories, string $reason): AiAnalyzedData
     {

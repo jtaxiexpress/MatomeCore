@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Actions\CheckNgKeywordAction;
 use App\Actions\CleanArticleTitleAction;
 use App\Actions\SendArticleFetchResultNotificationAction;
 use App\Models\Article;
@@ -49,6 +50,7 @@ class ProcessArticleBatchJob implements ShouldQueue
         ArticleScraperService $scraper,
         CleanArticleTitleAction $cleanTitleAction,
         ArticleMetadataResolverService $metadataResolver,
+        CheckNgKeywordAction $checkNgKeywordAction,
     ): void {
         $this->shareLogContext();
 
@@ -81,7 +83,7 @@ class ProcessArticleBatchJob implements ShouldQueue
 
         try {
             // ① メタデータ解決と前処理
-            $validArticles = $this->resolveValidArticles($metadataResolver, $scraper, $cleanTitleAction, $site);
+            $validArticles = $this->resolveValidArticles($metadataResolver, $scraper, $cleanTitleAction, $checkNgKeywordAction, $site);
 
             if (empty($validArticles)) {
                 Log::info("[ProcessArticleBatchJob] Site ID {$this->siteId}: 処理対象の有効な記事が0件のため終了します。");
@@ -142,6 +144,7 @@ class ProcessArticleBatchJob implements ShouldQueue
         ArticleMetadataResolverService $metadataResolver,
         ArticleScraperService $scraper,
         CleanArticleTitleAction $cleanTitleAction,
+        CheckNgKeywordAction $checkNgKeywordAction,
         Site $site,
     ): array {
         // DB重複チェックを1クエリで一括実行
@@ -176,7 +179,7 @@ class ProcessArticleBatchJob implements ShouldQueue
                 continue;
             }
 
-            if ($this->containsNgKeyword($cleanedTitle) || $this->containsNgKeyword($metaData['title'] ?? '')) {
+            if ($checkNgKeywordAction->execute($cleanedTitle) || $checkNgKeywordAction->execute($metaData['title'] ?? '')) {
                 Log::warning("[ProcessArticleBatchJob] NGキーワードが含まれているため保存をスキップします: {$url}");
 
                 continue;
@@ -206,6 +209,8 @@ class ProcessArticleBatchJob implements ShouldQueue
         $savedCount = 0;
         $missedCount = 0;
         $categoryNames = $site->app->categories->pluck('name', 'id');
+        $upsertData = [];
+        $logMessages = [];
 
         foreach ($validArticles as $article) {
             $tempId = $article['id'];
@@ -231,32 +236,44 @@ class ProcessArticleBatchJob implements ShouldQueue
                 continue;
             }
 
-            Article::firstOrCreate(
-                ['url' => $url],
-                [
-                    'app_id' => $site->app_id,
-                    'site_id' => $site->id,
-                    'category_id' => $aiResult['category_id'],
-                    'title' => $aiResult['rewritten_title'],
-                    'original_title' => $article['title'],
-                    'thumbnail_url' => $article['metaData']['image'],
-                    'published_at' => $article['metaData']['date'],
-                    'fetch_source' => $this->fetchSource,
-                ]
-            );
+            $upsertData[] = [
+                'url' => $url,
+                'app_id' => $site->app_id,
+                'site_id' => $site->id,
+                'category_id' => $aiResult['category_id'],
+                'title' => $aiResult['rewritten_title'],
+                'original_title' => $article['title'],
+                'thumbnail_url' => $article['metaData']['image'],
+                'published_at' => $article['metaData']['date'],
+                'fetch_source' => $this->fetchSource,
+                'updated_at' => now(), // upsertで更新日を反映するため
+            ];
 
             $categoryName = $categoryNames->get($aiResult['category_id'], '不明');
             $originalTitle = $article['title'];
 
-            Log::info(sprintf(
-                '保存完了:| リライト前 %s | リライト後: %s | カテゴリID: %d(%s) | %s |',
+            $logMessages[] = sprintf(
+                '保存予定:| リライト前 %s | リライト後: %s | カテゴリID: %d(%s) | %s |',
                 $originalTitle,
                 $aiResult['rewritten_title'],
                 $aiResult['category_id'],
                 $categoryName,
                 $url,
-            ));
+            );
             $savedCount++;
+        }
+
+        if (! empty($upsertData)) {
+            Article::upsert(
+                $upsertData,
+                ['url'],
+                ['title', 'thumbnail_url', 'updated_at', 'category_id']
+            );
+
+            Log::info("[ProcessArticleBatchJob] Site ID {$site->id}: バルクUpsert実行完了({$savedCount}件)");
+            foreach ($logMessages as $msg) {
+                Log::debug($msg);
+            }
         }
 
         Log::info("[ProcessArticleBatchJob] Site ID {$site->id}: 保存={$savedCount}件 / AI漏れ={$missedCount}件");
@@ -292,23 +309,5 @@ class ProcessArticleBatchJob implements ShouldQueue
             detail: $detail,
             failed: $failed,
         );
-    }
-
-    private function containsNgKeyword(?string $title): bool
-    {
-        if (empty($title)) {
-            return false;
-        }
-
-        $ngKeywordsStr = Cache::get('ng_keywords', 'PR,AD,スポンサーリンク');
-        $ngKeywords = array_filter(array_map('trim', preg_split('/[\r\n,]+/', (string) $ngKeywordsStr)));
-
-        foreach ($ngKeywords as $keyword) {
-            if ($keyword !== '' && mb_stripos($title, $keyword) !== false) {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

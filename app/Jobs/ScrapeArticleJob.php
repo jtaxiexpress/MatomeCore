@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
+use App\Actions\CheckNgKeywordAction;
 use App\Actions\CleanArticleTitleAction;
 use App\DTOs\ScrapedArticleData;
 use App\Models\App as AppModel;
@@ -57,6 +58,7 @@ class ScrapeArticleJob implements ShouldQueue
         ArticleScraperService $scraper,
         CleanArticleTitleAction $cleanTitleAction,
         ArticleMetadataResolverService $metadataResolver,
+        CheckNgKeywordAction $checkNgKeywordAction,
     ): void {
         $this->shareLogContext();
 
@@ -103,7 +105,7 @@ class ScrapeArticleJob implements ShouldQueue
             }
 
             // ③ NGキーワードのチェック
-            if ($this->containsNgKeyword($title) || $this->containsNgKeyword($metaData->title)) {
+            if ($checkNgKeywordAction->execute($title) || $checkNgKeywordAction->execute($metaData->title)) {
                 Log::warning("[Process: {$this->url}] NGキーワードが含まれているため保存をスキップします");
                 $this->markAsSkip();
 
@@ -169,23 +171,5 @@ class ScrapeArticleJob implements ShouldQueue
     private function isTransientException(Throwable $exception): bool
     {
         return $exception instanceof ConnectionException || $exception instanceof RequestException;
-    }
-
-    private function containsNgKeyword(?string $title): bool
-    {
-        if (empty($title)) {
-            return false;
-        }
-
-        $ngKeywordsStr = Cache::get('ng_keywords', 'PR,AD,スポンサーリンク');
-        $ngKeywords = array_filter(array_map('trim', preg_split('/[\r\n,]+/', (string) $ngKeywordsStr)));
-
-        foreach ($ngKeywords as $keyword) {
-            if (mb_stripos($title, $keyword) !== false) {
-                return true;
-            }
-        }
-
-        return false;
     }
 }
