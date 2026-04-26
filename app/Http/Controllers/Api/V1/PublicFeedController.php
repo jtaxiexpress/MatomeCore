@@ -21,6 +21,7 @@ use App\Services\PublicApiService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Cache;
 use Throwable;
 
 class PublicFeedController extends Controller
@@ -137,28 +138,33 @@ class PublicFeedController extends Controller
             abort_if($category->app_id !== $app->id, 404);
 
             $perPage = (int) $request->validated('per_page', 30);
+            $page = (int) $request->input('page', 1);
 
-            $articles = $category->articles()
-                ->select([
-                    'id',
-                    'app_id',
-                    'category_id',
-                    'site_id',
-                    'title',
-                    'summary',
-                    'lead_text',
-                    'url',
-                    'thumbnail_url',
-                    'fetch_source',
-                    'published_at',
-                    'created_at',
-                    'updated_at',
-                ])
-                ->with(['category:id,default_image_path'])
-                ->orderByDesc('published_at')
-                ->orderByDesc('id')
-                ->paginate($perPage)
-                ->withQueryString();
+            $cacheKey = "articles.app_{$app->id}.category_{$category->id}.page_{$page}.perPage_{$perPage}";
+
+            $articles = Cache::tags(['articles'])->remember($cacheKey, now()->addMinutes(10), function () use ($category, $perPage) {
+                return $category->articles()
+                    ->select([
+                        'id',
+                        'app_id',
+                        'category_id',
+                        'site_id',
+                        'title',
+                        'summary',
+                        'lead_text',
+                        'url',
+                        'thumbnail_url',
+                        'fetch_source',
+                        'published_at',
+                        'created_at',
+                        'updated_at',
+                    ])
+                    ->with(['category:id,default_image_path'])
+                    ->orderByDesc('published_at')
+                    ->orderByDesc('id')
+                    ->paginate($perPage)
+                    ->withQueryString();
+            });
 
             return ArticleResource::collection($articles);
         } catch (Throwable $e) {

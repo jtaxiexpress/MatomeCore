@@ -19,7 +19,7 @@ class FeedController extends Controller
             return App::where('is_active', true)->pluck('id');
         });
 
-        $articles = Cache::remember('rss_feed_index_articles', now()->addMinutes(5), function () use ($activeAppIds) {
+        $articles = Cache::tags(['articles'])->remember('rss_feed_index_articles', now()->addMinutes(5), function () use ($activeAppIds) {
             return Article::query()
                 ->whereIn('app_id', $activeAppIds)
                 ->with(['app:id,api_slug', 'site:id,name'])
@@ -45,7 +45,7 @@ class FeedController extends Controller
         abort_unless($app->is_active, 404);
 
         $cacheKey = "rss_feed_app_{$app->id}_articles";
-        $articles = Cache::remember($cacheKey, now()->addMinutes(5), function () use ($app) {
+        $articles = Cache::tags(['articles'])->remember($cacheKey, now()->addMinutes(5), function () use ($app) {
             return Article::query()
                 ->whereBelongsTo($app)
                 ->with(['app:id,api_slug', 'site:id,name'])
@@ -72,7 +72,7 @@ class FeedController extends Controller
         abort_unless($category->app_id === $app->id, 404);
 
         $cacheKey = "rss_feed_category_{$category->id}_articles";
-        $articles = Cache::remember($cacheKey, now()->addMinutes(5), function () use ($app, $category) {
+        $articles = Cache::tags(['articles'])->remember($cacheKey, now()->addMinutes(5), function () use ($app, $category) {
             return Article::query()
                 ->whereBelongsTo($app)
                 ->whereBelongsTo($category)

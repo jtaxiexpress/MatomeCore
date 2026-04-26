@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 
 class Article extends Model
@@ -31,6 +32,13 @@ class Article extends Model
                 $article->url_hash = hash('sha256', $article->url);
             }
         });
+
+        $clearCache = function (Article $article): void {
+            Cache::tags(['articles'])->flush();
+        };
+
+        static::saved($clearCache);
+        static::deleted($clearCache);
     }
 
     public function app(): BelongsTo
