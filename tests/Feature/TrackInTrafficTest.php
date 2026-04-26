@@ -8,6 +8,7 @@ use App\Models\App;
 use App\Models\Site;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Redis;
 use Tests\TestCase;
 
 class TrackInTrafficTest extends TestCase
@@ -30,13 +31,9 @@ class TrackInTrafficTest extends TestCase
 
         $response->assertOk();
 
-        $this->assertDatabaseHas('site_ins', [
-            'site_id' => $preferredSite->id,
-        ]);
-
-        $this->assertDatabaseMissing('site_ins', [
-            'site_id' => $fallbackSite->id,
-        ]);
+        $today = now()->format('Y-m-d');
+        $this->assertEquals(1, (int) Redis::hGet("traffic:in:{$today}", (string) $preferredSite->id));
+        $this->assertEquals(0, (int) Redis::hGet("traffic:in:{$today}", (string) $fallbackSite->id));
     }
 
     public function test_query_site_slug_takes_precedence_over_referer(): void
@@ -55,13 +52,9 @@ class TrackInTrafficTest extends TestCase
 
         $response->assertOk();
 
-        $this->assertDatabaseHas('site_ins', [
-            'site_id' => $preferredSite->id,
-        ]);
-
-        $this->assertDatabaseMissing('site_ins', [
-            'site_id' => $fallbackSite->id,
-        ]);
+        $today = now()->format('Y-m-d');
+        $this->assertEquals(1, (int) Redis::hGet("traffic:in:{$today}", (string) $preferredSite->id));
+        $this->assertEquals(0, (int) Redis::hGet("traffic:in:{$today}", (string) $fallbackSite->id));
     }
 
     public function test_referer_is_used_when_no_query_params_are_present(): void
@@ -79,9 +72,8 @@ class TrackInTrafficTest extends TestCase
 
         $response->assertOk();
 
-        $this->assertDatabaseHas('site_ins', [
-            'site_id' => $site->id,
-        ]);
+        $today = now()->format('Y-m-d');
+        $this->assertEquals(1, (int) Redis::hGet("traffic:in:{$today}", (string) $site->id));
     }
 
     public function test_bot_is_filtered_before_site_resolution(): void
@@ -96,8 +88,7 @@ class TrackInTrafficTest extends TestCase
 
         $response->assertOk();
 
-        $this->assertDatabaseMissing('site_ins', [
-            'site_id' => $site->id,
-        ]);
+        $today = now()->format('Y-m-d');
+        $this->assertEquals(0, (int) Redis::hGet("traffic:in:{$today}", (string) $site->id));
     }
 }

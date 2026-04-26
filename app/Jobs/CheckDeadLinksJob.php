@@ -32,7 +32,7 @@ class CheckDeadLinksJob implements ShouldQueue
      */
     public function __construct()
     {
-        //
+        $this->onQueue('maintenance');
     }
 
     /**

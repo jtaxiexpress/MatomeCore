@@ -29,7 +29,9 @@ class FetchSitePastArticlesJob implements ShouldQueue
     public function __construct(
         public Site $site,
         public int $limit = 10
-    ) {}
+    ) {
+        $this->onQueue('scraping');
+    }
 
     /**
      * Execute the job.

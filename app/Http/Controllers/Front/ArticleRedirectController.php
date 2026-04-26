@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Front;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\ProcessOutTraffic;
 use App\Models\App;
 use App\Models\Article;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Redis;
 
 class ArticleRedirectController extends Controller
 {
@@ -31,8 +31,10 @@ class ArticleRedirectController extends Controller
             // 連続クリックを1時間防止
             Cache::put($cacheKey, true, 3600);
 
-            // 非同期でクリックを記録
-            ProcessOutTraffic::dispatch($article->id, now()->toDateTimeString());
+            // メモリ上でOUTトラフィックをカウントアップ
+            $date = now()->toDateString();
+            Redis::hIncrBy("traffic:out:article:{$date}", (string) $article->id, 1);
+            Redis::hIncrBy("traffic:out:site:{$date}", (string) $article->site_id, 1);
         }
 
         $targetUrl = $request->query('to_site') ? $article->site->url : $article->url;

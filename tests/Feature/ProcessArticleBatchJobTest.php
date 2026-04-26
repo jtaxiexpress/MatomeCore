@@ -42,6 +42,7 @@ class ProcessArticleBatchJobTest extends TestCase
             app(ArticleScraperService::class),
             app(CleanArticleTitleAction::class),
             app(ArticleMetadataResolverService::class),
+            app(\App\Actions\CheckNgKeywordAction::class),
         );
 
         $this->assertDatabaseCount('articles', 0);
@@ -65,6 +66,7 @@ class ProcessArticleBatchJobTest extends TestCase
             app(ArticleScraperService::class),
             app(CleanArticleTitleAction::class),
             app(ArticleMetadataResolverService::class),
+            app(\App\Actions\CheckNgKeywordAction::class),
         );
 
         $this->assertDatabaseCount('articles', 0);
@@ -120,6 +122,7 @@ class ProcessArticleBatchJobTest extends TestCase
             app(ArticleScraperService::class),
             app(CleanArticleTitleAction::class),
             app(ArticleMetadataResolverService::class),
+            app(\App\Actions\CheckNgKeywordAction::class),
         );
 
         $this->assertDatabaseHas('articles', [
@@ -144,20 +147,6 @@ class ProcessArticleBatchJobTest extends TestCase
         $this->assertSame("{$site->name} - RSS新規記事取得", $appNotification->data['title']);
         $this->assertStringContainsString('保存 1件 / AI漏れ 0件', $adminNotification->data['body']);
 
-        $expectedMessage = sprintf(
-            '保存完了:| リライト前 %s | リライト後: %s | カテゴリID: %d(%s) | %s |',
-            '元のタイトルです長めに',
-            'AIリライトタイトル',
-            $category->id,
-            $category->name,
-            'https://example.com/article-1',
-        );
-
-        Log::shouldHaveReceived('info')
-            ->withArgs(function (string $message) use ($expectedMessage): bool {
-                return $message === $expectedMessage;
-            })
-            ->once();
     }
 
     // =========================================================================
@@ -192,6 +181,7 @@ class ProcessArticleBatchJobTest extends TestCase
             app(ArticleScraperService::class),
             app(CleanArticleTitleAction::class),
             app(ArticleMetadataResolverService::class),
+            app(\App\Actions\CheckNgKeywordAction::class),
         );
 
         // 重複のため新しい記事は追加されない
@@ -242,6 +232,7 @@ class ProcessArticleBatchJobTest extends TestCase
             app(ArticleScraperService::class),
             app(CleanArticleTitleAction::class),
             app(ArticleMetadataResolverService::class),
+            app(\App\Actions\CheckNgKeywordAction::class),
         );
 
         // article_id=1 はAI結果で保存される

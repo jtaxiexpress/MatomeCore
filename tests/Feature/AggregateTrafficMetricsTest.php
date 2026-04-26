@@ -9,6 +9,7 @@ use App\Models\Article;
 use App\Models\Site;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Redis;
 use Tests\TestCase;
 
 class AggregateTrafficMetricsTest extends TestCase
@@ -24,17 +25,14 @@ class AggregateTrafficMetricsTest extends TestCase
         $articleA = Article::factory()->recycle([$app, $siteA])->create();
         $articleB = Article::factory()->recycle([$app, $siteB])->create();
 
-        DB::table('article_clicks')->insert([
-            ['article_id' => $articleA->id, 'clicked_at' => now()->subHours(2), 'created_at' => now()->subHours(2), 'updated_at' => now()->subHours(2)],
-            ['article_id' => $articleA->id, 'clicked_at' => now()->subHours(1), 'created_at' => now()->subHours(1), 'updated_at' => now()->subHours(1)],
-            ['article_id' => $articleB->id, 'clicked_at' => now()->subHours(3), 'created_at' => now()->subHours(3), 'updated_at' => now()->subHours(3)],
-        ]);
 
-        DB::table('site_ins')->insert([
-            ['site_id' => $siteA->id, 'visited_at' => now()->subHours(2), 'created_at' => now()->subHours(2), 'updated_at' => now()->subHours(2)],
-            ['site_id' => $siteA->id, 'visited_at' => now()->subHours(1), 'created_at' => now()->subHours(1), 'updated_at' => now()->subHours(1)],
-            ['site_id' => $siteB->id, 'visited_at' => now()->subHours(4), 'created_at' => now()->subHours(4), 'updated_at' => now()->subHours(4)],
-        ]);
+        $today = now()->format('Y-m-d');
+        Redis::hIncrBy("traffic:out:article:{$today}", (string)$articleA->id, 2);
+        Redis::hIncrBy("traffic:out:article:{$today}", (string)$articleB->id, 1);
+        Redis::hIncrBy("traffic:out:site:{$today}", (string)$siteA->id, 2);
+        Redis::hIncrBy("traffic:out:site:{$today}", (string)$siteB->id, 1);
+        Redis::hIncrBy("traffic:in:{$today}", (string)$siteA->id, 2);
+        Redis::hIncrBy("traffic:in:{$today}", (string)$siteB->id, 1);
 
         $this->artisan('traffic:aggregate')->assertExitCode(0);
 
@@ -69,13 +67,9 @@ class AggregateTrafficMetricsTest extends TestCase
         $site = Site::factory()->recycle($app)->create(['name' => 'Old site']);
         $article = Article::factory()->recycle([$app, $site])->create();
 
-        DB::table('article_clicks')->insert([
-            ['article_id' => $article->id, 'clicked_at' => now()->subHours(25), 'created_at' => now()->subHours(25), 'updated_at' => now()->subHours(25)],
-        ]);
-
-        DB::table('site_ins')->insert([
-            ['site_id' => $site->id, 'visited_at' => now()->subHours(25), 'created_at' => now()->subHours(25), 'updated_at' => now()->subHours(25)],
-        ]);
+        $twoDaysAgo = now()->subDays(2)->format('Y-m-d');
+        Redis::hIncrBy("traffic:out:article:{$twoDaysAgo}", (string)$article->id, 1);
+        Redis::hIncrBy("traffic:in:{$twoDaysAgo}", (string)$site->id, 1);
 
         $this->artisan('traffic:aggregate')->assertExitCode(0);
 

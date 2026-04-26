@@ -44,7 +44,9 @@ class AnalyzeArticleAiJob implements ShouldQueue
     public function __construct(
         public readonly int $siteId,
         public readonly string $url,
-    ) {}
+    ) {
+        $this->onQueue('ai');
+    }
 
     /**
      * @return array<int, object>

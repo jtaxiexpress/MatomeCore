@@ -29,8 +29,11 @@ class ProcessArticleJobTest extends TestCase
 
         $job->handle();
 
+        $scrapeJob = new ScrapeArticleJob(1, 'https://example.com/articles/123', ['title' => 'テスト記事']);
+        $scrapeJob->queue = null;
+
         Bus::assertChained([
-            new ScrapeArticleJob(1, 'https://example.com/articles/123', ['title' => 'テスト記事']),
+            $scrapeJob,
             new AnalyzeArticleAiJob(1, 'https://example.com/articles/123'),
             new PublishArticleJob(1, 'https://example.com/articles/123', 'rss'),
         ]);

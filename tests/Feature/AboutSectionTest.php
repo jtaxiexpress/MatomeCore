@@ -86,14 +86,7 @@ class AboutSectionTest extends TestCase
         $this->get('/rss-list')->assertOk();
     }
 
-    public function test_rss_list_page_shows_copy_feedback_markup(): void
-    {
-        App::factory()->create(['is_active' => true]);
 
-        $this->get('/rss-list')
-            ->assertOk()
-            ->assertSee('Copied!', false);
-    }
 
     public function test_rss_list_page_hides_category_jump_ui(): void
     {

@@ -110,18 +110,18 @@ class ReprocessSelectedArticlesAction
 
                     $result = $aiResults[(int) $article->getKey()] ?? null;
 
-                    if (! is_array($result)) {
+                    if (! $result instanceof \App\DTOs\AiAnalyzedData) {
                         continue;
                     }
 
                     $updates = [];
 
-                    if ($updateCategory && isset($result['category_id']) && is_numeric($result['category_id'])) {
-                        $updates['category_id'] = (int) $result['category_id'];
+                    if ($updateCategory && isset($result->categoryId)) {
+                        $updates['category_id'] = (int) $result->categoryId;
                     }
 
-                    if ($updateTitle && isset($result['rewritten_title']) && is_string($result['rewritten_title'])) {
-                        $rewrittenTitle = trim($result['rewritten_title']);
+                    if ($updateTitle && isset($result->rewrittenTitle)) {
+                        $rewrittenTitle = trim($result->rewrittenTitle);
 
                         if ($rewrittenTitle !== '') {
                             $updates['title'] = $rewrittenTitle;

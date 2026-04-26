@@ -20,7 +20,9 @@ class ProcessArticleJob implements ShouldQueue
         public readonly string $url,
         public readonly array $metaData = [],
         public readonly ?string $fetchSource = null
-    ) {}
+    ) {
+        $this->onQueue('default');
+    }
 
     public function handle(): void
     {

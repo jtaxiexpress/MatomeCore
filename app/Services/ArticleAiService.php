@@ -404,10 +404,10 @@ PROMPT;
                 continue;
             }
 
-            $results[$normalizedArticleId] = [
-                'category_id' => $normalizedCategoryId,
-                'rewritten_title' => $rewrittenTitle,
-            ];
+            $results[$normalizedArticleId] = new AiAnalyzedData(
+                categoryId: $normalizedCategoryId,
+                rewrittenTitle: $rewrittenTitle,
+            );
             $resolvedByAi[$normalizedArticleId] = true;
         }
 
@@ -452,10 +452,10 @@ PROMPT;
         $results = [];
 
         foreach ($articles as $article) {
-            $results[$article['id']] = [
-                'category_id' => $fallbackCategoryId,
-                'rewritten_title' => $article['title'],
-            ];
+            $results[$article['id']] = new AiAnalyzedData(
+                categoryId: $fallbackCategoryId,
+                rewrittenTitle: $article['title'],
+            );
         }
 
         return $results;

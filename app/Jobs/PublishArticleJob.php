@@ -31,7 +31,9 @@ class PublishArticleJob implements ShouldQueue
         public readonly int $siteId,
         public readonly string $url,
         public readonly ?string $fetchSource = null
-    ) {}
+    ) {
+        $this->onQueue('default');
+    }
 
     public function handle(): void
     {

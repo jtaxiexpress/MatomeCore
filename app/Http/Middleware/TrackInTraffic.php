@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
-use App\Jobs\ProcessInTraffic;
 use App\Models\Site;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -53,8 +53,8 @@ class TrackInTraffic
                 // 日次リミットをカウントアップ (24時間保持)
                 RateLimiter::hit($dailyLimiterKey, self::DAILY_SECONDS);
 
-                // 非同期で流入を記録
-                ProcessInTraffic::dispatch($siteId, now()->toDateTimeString());
+                // メモリ上でINトラフィックをカウントアップ
+                Redis::hIncrBy('traffic:in:'.now()->toDateString(), (string) $siteId, 1);
             }
         }
 

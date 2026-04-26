@@ -40,15 +40,15 @@ class ArticleAiServiceBatchTest extends TestCase
         });
 
         $result = $this->service->classifyAndRewrite(
-            originalTitle: '元タイトル',
+            articleData: new \App\DTOs\ScrapedArticleData(url: 'https://example.com/1', title: '元タイトル'),
             categories: [
                 ['id' => 10, 'name' => 'テクノロジー'],
                 ['id' => 99, 'name' => '未分類'],
             ],
         );
 
-        $this->assertSame(10, $result['category_id']);
-        $this->assertSame('完成タイトル', $result['rewritten_title']);
+        $this->assertSame(10, $result->categoryId);
+        $this->assertSame('完成タイトル', $result->rewrittenTitle);
 
         Http::assertSent(function ($request): bool {
             $data = $request->data();
@@ -74,15 +74,15 @@ class ArticleAiServiceBatchTest extends TestCase
         });
 
         $result = $this->service->classifyAndRewrite(
-            originalTitle: '元タイトル',
+            articleData: new \App\DTOs\ScrapedArticleData(url: 'https://example.com/1', title: '元タイトル'),
             categories: [
                 ['id' => 10, 'name' => 'テクノロジー'],
                 ['id' => 99, 'name' => '未分類'],
             ],
         );
 
-        $this->assertSame(99, $result['category_id']);
-        $this->assertSame('元タイトル', $result['rewritten_title']);
+        $this->assertSame(99, $result->categoryId);
+        $this->assertSame('元タイトル', $result->rewrittenTitle);
     }
 
     public function test_classify_and_rewrite_batch_throws_when_categories_empty(): void
@@ -137,10 +137,10 @@ class ArticleAiServiceBatchTest extends TestCase
             ],
         );
 
-        $this->assertSame(10, $result[1]['category_id']);
-        $this->assertSame('完成タイトル', $result[1]['rewritten_title']);
-        $this->assertSame(99, $result[2]['category_id']);
-        $this->assertSame('元タイトル2', $result[2]['rewritten_title']);
+        $this->assertSame(10, $result[1]->categoryId);
+        $this->assertSame('完成タイトル', $result[1]->rewrittenTitle);
+        $this->assertSame(99, $result[2]->categoryId);
+        $this->assertSame('元タイトル2', $result[2]->rewrittenTitle);
 
         Http::assertSent(function ($request): bool {
             $data = $request->data();

@@ -40,7 +40,9 @@ class ScrapeArticleJob implements ShouldQueue
         public readonly int $siteId,
         public readonly string $url,
         public readonly array $metaData = []
-    ) {}
+    ) {
+        $this->onQueue('scraping');
+    }
 
     /**
      * @return array<int, object>

@@ -19,14 +19,16 @@ class CrawlSiteJob implements ShouldQueue
 
     public function __construct(
         public readonly int $siteId
-    ) {}
+    ) {
+        $this->onQueue('scraping');
+    }
 
     public function handle(): void
     {
         try {
             Artisan::call('app:crawl-site', ['site_id' => $this->siteId]);
         } catch (Throwable $e) {
-            Log::error("CrawlSiteJob: Site {$this->siteId} failed - " . $e->getMessage());
+            Log::error("CrawlSiteJob: Site {$this->siteId} failed - ".$e->getMessage());
             throw $e;
         }
     }

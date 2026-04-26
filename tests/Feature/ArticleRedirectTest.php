@@ -11,6 +11,7 @@ use App\Models\Site;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Session;
 use Tests\TestCase;
 
@@ -36,9 +37,9 @@ class ArticleRedirectTest extends TestCase
 
         $response->assertRedirect('https://example.com/test-article');
 
-        Queue::assertPushed(ProcessOutTraffic::class, function ($job) use ($article) {
-            return $job->articleId === $article->id;
-        });
+        $today = now()->format('Y-m-d');
+        $this->assertEquals(1, (int) Redis::hGet("traffic:out:article:{$today}", (string) $article->id));
+        $this->assertEquals(1, (int) Redis::hGet("traffic:out:site:{$today}", (string) $site->id));
     }
 
     public function test_article_redirect_uses_session_id_in_cache_key(): void
@@ -78,7 +79,9 @@ class ArticleRedirectTest extends TestCase
         Session::setId('session-two');
         $this->get(route('front.go', ['app' => $app, 'article' => $article]));
 
-        Queue::assertPushedTimes(ProcessOutTraffic::class, 2);
+        $today = now()->format('Y-m-d');
+        $this->assertEquals(2, (int) Redis::hGet("traffic:out:article:{$today}", (string) $article->id));
+        $this->assertEquals(2, (int) Redis::hGet("traffic:out:site:{$today}", (string) $site->id));
     }
 
     public function test_article_redirect_returns_404_if_article_belongs_to_different_app(): void
@@ -96,6 +99,7 @@ class ArticleRedirectTest extends TestCase
         ]));
 
         $response->assertNotFound();
-        $this->assertDatabaseEmpty('article_clicks');
+        $today = now()->format('Y-m-d');
+        $this->assertEquals(0, (int) Redis::hGet("traffic:out:articles:{$today}", (string) $article->id));
     }
 }

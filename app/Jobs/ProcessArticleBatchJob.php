@@ -45,7 +45,9 @@ class ProcessArticleBatchJob implements ShouldQueue
         public readonly int $siteId,
         public readonly array $articles,
         public readonly ?string $fetchSource = null,
-    ) {}
+    ) {
+        $this->onQueue('ai');
+    }
 
     public function handle(
         ArticleAiService $aiService,
@@ -236,7 +238,7 @@ class ProcessArticleBatchJob implements ShouldQueue
 
             $aiResult = $aiResults[$tempId];
 
-            if (empty($aiResult['rewritten_title'])) {
+            if (empty($aiResult->rewrittenTitle)) {
                 Log::warning("[ProcessArticleBatchJob] rewritten_titleが空のためスキップ: {$url}");
                 $missedCount++;
 
@@ -247,8 +249,8 @@ class ProcessArticleBatchJob implements ShouldQueue
                 'url' => $url,
                 'app_id' => $site->app_id,
                 'site_id' => $site->id,
-                'category_id' => $aiResult['category_id'],
-                'title' => $aiResult['rewritten_title'],
+                'category_id' => $aiResult->categoryId,
+                'title' => $aiResult->rewrittenTitle,
                 'original_title' => $article['title'],
                 'thumbnail_url' => $article['metaData']->image,
                 'published_at' => $article['metaData']->date,
@@ -256,14 +258,14 @@ class ProcessArticleBatchJob implements ShouldQueue
                 'updated_at' => now(), // upsertで更新日を反映するため
             ];
 
-            $categoryName = $categoryNames->get($aiResult['category_id'], '不明');
+            $categoryName = $categoryNames->get($aiResult->categoryId, '不明');
             $originalTitle = $article['title'];
 
             $logMessages[] = sprintf(
                 '保存予定:| リライト前 %s | リライト後: %s | カテゴリID: %d(%s) | %s |',
                 $originalTitle,
-                $aiResult['rewritten_title'],
-                $aiResult['category_id'],
+                $aiResult->rewrittenTitle,
+                $aiResult->categoryId,
                 $categoryName,
                 $url,
             );
