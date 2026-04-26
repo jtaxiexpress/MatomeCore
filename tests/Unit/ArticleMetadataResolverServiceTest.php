@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit;
 
+use App\DTOs\ScrapedArticleData;
 use App\Models\Site;
 use App\Services\ArticleMetadataResolverService;
 use App\Services\ArticleScraperService;
@@ -19,20 +20,17 @@ class ArticleMetadataResolverServiceTest extends TestCase
         {
             public bool $called = false;
 
-            public function scrape(string $url, ?string $siteDateSelector = null, array $siteNgImages = []): array
+            public function scrape(string $url, ?string $siteDateSelector = null, array $siteNgImages = []): ScrapedArticleData
             {
                 $this->called = true;
 
-                return [
-                    'success' => true,
-                    'data' => [
-                        'title' => 'スクレイプ済みタイトル',
-                        'url' => $url,
-                        'date' => '2026-04-02 12:00:00',
-                        'image' => 'https://example.com/scraped.jpg',
-                    ],
-                    'error_message' => null,
-                ];
+                return new ScrapedArticleData(
+                    url: $url,
+                    title: 'スクレイプ済みタイトル',
+                    image: 'https://example.com/scraped.jpg',
+                    date: '2026-04-02 12:00:00',
+                    success: true,
+                );
             }
         };
 
@@ -56,9 +54,9 @@ class ArticleMetadataResolverServiceTest extends TestCase
         );
 
         $this->assertFalse($scraper->called);
-        $this->assertSame('既存タイトル', $result['title']);
-        $this->assertSame('https://example.com/existing.jpg', $result['image']);
-        $this->assertSame('2026-04-01 10:20:30', $result['date']);
+        $this->assertSame('既存タイトル', $result->title);
+        $this->assertSame('https://example.com/existing.jpg', $result->image);
+        $this->assertSame('2026-04-01 10:20:30', $result->date);
     }
 
     public function test_it_uses_scraped_values_only_for_missing_fields(): void
@@ -67,20 +65,17 @@ class ArticleMetadataResolverServiceTest extends TestCase
         {
             public bool $called = false;
 
-            public function scrape(string $url, ?string $siteDateSelector = null, array $siteNgImages = []): array
+            public function scrape(string $url, ?string $siteDateSelector = null, array $siteNgImages = []): ScrapedArticleData
             {
                 $this->called = true;
 
-                return [
-                    'success' => true,
-                    'data' => [
-                        'title' => 'スクレイプタイトル',
-                        'url' => $url,
-                        'date' => '2026-04-03 09:30:00',
-                        'image' => 'https://example.com/scraped.jpg',
-                    ],
-                    'error_message' => null,
-                ];
+                return new ScrapedArticleData(
+                    url: $url,
+                    title: 'スクレイプタイトル',
+                    image: 'https://example.com/scraped.jpg',
+                    date: '2026-04-03 09:30:00',
+                    success: true,
+                );
             }
         };
 
@@ -104,9 +99,9 @@ class ArticleMetadataResolverServiceTest extends TestCase
         );
 
         $this->assertTrue($scraper->called);
-        $this->assertSame('既存タイトルを優先', $result['title']);
-        $this->assertSame('https://example.com/scraped.jpg', $result['image']);
-        $this->assertSame('2026-04-03 09:30:00', $result['date']);
+        $this->assertSame('既存タイトルを優先', $result->title);
+        $this->assertSame('https://example.com/scraped.jpg', $result->image);
+        $this->assertSame('2026-04-03 09:30:00', $result->date);
     }
 
     public function test_it_falls_back_to_current_timestamp_when_date_is_unavailable(): void
@@ -116,18 +111,13 @@ class ArticleMetadataResolverServiceTest extends TestCase
         try {
             $scraper = new class(new CrawlHttpClient) extends ArticleScraperService
             {
-                public function scrape(string $url, ?string $siteDateSelector = null, array $siteNgImages = []): array
+                public function scrape(string $url, ?string $siteDateSelector = null, array $siteNgImages = []): ScrapedArticleData
                 {
-                    return [
-                        'success' => false,
-                        'data' => [
-                            'title' => null,
-                            'url' => $url,
-                            'date' => null,
-                            'image' => null,
-                        ],
-                        'error_message' => 'failed',
-                    ];
+                    return new ScrapedArticleData(
+                        url: $url,
+                        success: false,
+                        errorMessage: 'failed',
+                    );
                 }
             };
 
@@ -143,7 +133,7 @@ class ArticleMetadataResolverServiceTest extends TestCase
                 logPrefix: '[UnitTest]',
             );
 
-            $this->assertSame('2026-04-18 12:34:56', $result['date']);
+            $this->assertSame('2026-04-18 12:34:56', $result->date);
         } finally {
             Carbon::setTestNow();
         }

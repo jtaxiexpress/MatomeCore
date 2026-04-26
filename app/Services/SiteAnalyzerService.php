@@ -305,29 +305,29 @@ class SiteAnalyzerService
                     $scrapedCount++;
                     $scrapeResult = $this->articleScraperService->scrape($url);
 
-                    if ($scrapeResult['success']) {
+                    if ($scrapeResult->success) {
                         if ($date === 'なし') {
-                            $date = $scrapeResult['data']['date'] ?? 'なし ('.($scrapeResult['error_message'] ?? '日付見つからず').')';
+                            $date = $scrapeResult->date ?? 'なし ('.($scrapeResult->errorMessage ?? '日付見つからず').')';
                         }
 
                         if ($imageUrl === 'なし') {
-                            $scrapedImage = $scrapeResult['data']['image'] ?? null;
+                            $scrapedImage = $scrapeResult->image ?? null;
 
                             if (! empty($scrapedImage)) {
                                 $imageUrl = in_array($scrapedImage, $ngImageUrls, true)
                                     ? 'なし (NGサムネイル画像として除外)'
                                     : $scrapedImage;
                             } else {
-                                $imageUrl = 'なし ('.($scrapeResult['error_message'] ?? '画像見つからず').')';
+                                $imageUrl = 'なし ('.($scrapeResult->errorMessage ?? '画像見つからず').')';
                             }
                         }
-                    } elseif (! empty($scrapeResult['error_message'])) {
+                    } elseif (! empty($scrapeResult->errorMessage)) {
                         if ($date === 'なし') {
-                            $date = 'なし ('.$scrapeResult['error_message'].')';
+                            $date = 'なし ('.$scrapeResult->errorMessage.')';
                         }
 
                         if ($imageUrl === 'なし') {
-                            $imageUrl = 'なし ('.$scrapeResult['error_message'].')';
+                            $imageUrl = 'なし ('.$scrapeResult->errorMessage.')';
                         }
                     }
                 }
@@ -513,23 +513,23 @@ class SiteAnalyzerService
 
                 $scrapeResult = $this->articleScraperService->scrape($sampleUrl);
 
-                if ($scrapeResult['success']) {
-                    $title = $scrapeResult['data']['title'] ?? '取得失敗(タイトル見つからず)';
+                if ($scrapeResult->success) {
+                    $title = $scrapeResult->title ?? '取得失敗(タイトル見つからず)';
 
-                    $image = $scrapeResult['data']['image'] ?? '';
+                    $image = $scrapeResult->image ?? '';
                     if ($image !== '' && in_array($image, $ngImageUrls, true)) {
                         $image = 'なし (NGサムネイル画像として除外)';
                     }
                     if ($image === '') {
-                        $image = 'なし ('.($scrapeResult['error_message'] ?? '画像見つからず').')';
+                        $image = 'なし ('.($scrapeResult->errorMessage ?? '画像見つからず').')';
                     }
 
-                    $date = $scrapeResult['data']['date'] ?? '';
+                    $date = $scrapeResult->date ?? '';
                     if ($date === '') {
-                        $date = 'なし ('.($scrapeResult['error_message'] ?? '日付見つからず').')';
+                        $date = 'なし ('.($scrapeResult->errorMessage ?? '日付見つからず').')';
                     }
                 } else {
-                    $title = '取得失敗('.($scrapeResult['error_message'] ?? '不明なエラー').')';
+                    $title = '取得失敗('.($scrapeResult->errorMessage ?? '不明なエラー').')';
                 }
 
                 $sampleItems[] = [

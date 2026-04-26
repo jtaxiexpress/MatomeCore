@@ -29,14 +29,15 @@
             <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                 @forelse($rows as $item)
                     @php
-                        $thumbnail = trim((string) ($item['image'] ?? ''));
+                        $itemArray = is_array($item) ? $item : (is_object($item) && method_exists($item, 'toArray') ? $item->toArray() : (array) $item);
+                        $thumbnail = trim((string) ($itemArray['image'] ?? ''));
                         $thumbnailIsUrl = filter_var($thumbnail, FILTER_VALIDATE_URL) !== false;
-                        $fallbackImageUrl = trim((string) ($item['fallback_image_url'] ?? ''));
+                        $fallbackImageUrl = trim((string) ($itemArray['fallback_image_url'] ?? ''));
                         $fallbackImageIsUrl = filter_var($fallbackImageUrl, FILTER_VALIDATE_URL) !== false;
-                        $title = trim((string) ($item['title'] ?? ''));
-                        $articleUrl = trim((string) ($item['url'] ?? ''));
+                        $title = trim((string) ($itemArray['title'] ?? ''));
+                        $articleUrl = trim((string) ($itemArray['url'] ?? ''));
                         $articleUrlIsUrl = filter_var($articleUrl, FILTER_VALIDATE_URL) !== false;
-                        $date = trim((string) ($item['date'] ?? ''));
+                        $date = trim((string) ($itemArray['date'] ?? ''));
                     @endphp
                     <tr class="bg-white dark:bg-gray-900">
                         <td class="px-4 py-3 align-top">

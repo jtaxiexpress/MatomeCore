@@ -26,8 +26,8 @@ class ArticleScraperServiceTest extends TestCase
 
         $result = $service->scrape('https://example.com/with-ogp-date');
 
-        $this->assertTrue($result['success']);
-        $this->assertSame('2026-04-01 10:20:30', $result['data']['date']);
+        $this->assertTrue($result->success);
+        $this->assertSame('2026-04-01 10:20:30', $result->date);
     }
 
     public function test_extracts_date_from_site_specific_date_selector(): void
@@ -45,8 +45,8 @@ class ArticleScraperServiceTest extends TestCase
 
         $result = $service->scrape('https://example.com/with-selector-date', '.entry-meta');
 
-        $this->assertTrue($result['success']);
-        $this->assertSame('2026-04-12 08:10:00', $result['data']['date']);
+        $this->assertTrue($result->success);
+        $this->assertSame('2026-04-12 08:10:00', $result->date);
     }
 
     public function test_does_not_extract_date_from_body_text_only(): void
@@ -64,7 +64,7 @@ class ArticleScraperServiceTest extends TestCase
 
         $result = $service->scrape('https://example.com/body-date-only');
 
-        $this->assertTrue($result['success']);
-        $this->assertNull($result['data']['date']);
+        $this->assertTrue($result->success);
+        $this->assertNull($result->date);
     }
 }

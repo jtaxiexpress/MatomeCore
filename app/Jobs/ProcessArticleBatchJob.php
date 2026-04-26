@@ -7,6 +7,8 @@ namespace App\Jobs;
 use App\Actions\CheckNgKeywordAction;
 use App\Actions\CleanArticleTitleAction;
 use App\Actions\SendArticleFetchResultNotificationAction;
+use App\DTOs\ScrapedArticleData;
+use App\Models\App;
 use App\Models\Article;
 use App\Models\Site;
 use App\Services\ArticleAiService;
@@ -70,7 +72,10 @@ class ProcessArticleBatchJob implements ShouldQueue
 
         $this->shareLogContext($site);
 
-        $categories = $site->app->categories->map(fn ($cat) => [
+        /** @var App $app */
+        $app = $site->app;
+
+        $categories = $app->categories->map(fn ($cat) => [
             'id' => $cat->id,
             'name' => $cat->name,
         ])->toArray();
@@ -101,7 +106,7 @@ class ProcessArticleBatchJob implements ShouldQueue
             Log::info("[ProcessArticleBatchJob] Site ID {$this->siteId}: Ollamaに".count($validArticles).'件の記事をバッチ送信します。');
 
             // ② AIバッチ推論
-            $aiResults = $aiService->classifyAndRewriteBatch($validArticles, $categories, $site->app);
+            $aiResults = $aiService->classifyAndRewriteBatch($validArticles, $categories, $app);
 
             // ③ 結果の保存と漏れ検出
             $summary = $this->persistResults($validArticles, $aiResults, $site);
@@ -120,7 +125,7 @@ class ProcessArticleBatchJob implements ShouldQueue
                 'message' => $e->getMessage(),
             ]);
 
-            if (isset($site) && $site instanceof Site && $site->app) {
+            if (isset($site) && $site->app) {
                 $this->notifyFetchResult(
                     site: $site,
                     savedCount: 0,
@@ -138,7 +143,7 @@ class ProcessArticleBatchJob implements ShouldQueue
      * 各URLのメタデータを解決し、AI処理に進む有効な記事リストを返します。
      * DBに既存のURL・タイトルが短すぎる記事はスキップします。
      *
-     * @return array<int, array{id: int, url: string, title: string, metaData: array{title: string|null, image: string|null, date: string}}>
+     * @return array<int, array{id: int, url: string, title: string, metaData: ScrapedArticleData}>
      */
     private function resolveValidArticles(
         ArticleMetadataResolverService $metadataResolver,
@@ -171,7 +176,7 @@ class ProcessArticleBatchJob implements ShouldQueue
                 site: $site,
                 logPrefix: "[ProcessArticleBatchJob] {$url}",
             );
-            $cleanedTitle = $cleanTitleAction->execute((string) ($metaData['title'] ?? ''), $site->name);
+            $cleanedTitle = $cleanTitleAction->execute((string) ($metaData->title ?? ''), $site->name);
 
             if (empty($cleanedTitle) || mb_strlen($cleanedTitle) < 5) {
                 Log::warning("[ProcessArticleBatchJob] タイトルが空または5文字未満のためスキップ: {$url}");
@@ -179,7 +184,7 @@ class ProcessArticleBatchJob implements ShouldQueue
                 continue;
             }
 
-            if ($checkNgKeywordAction->execute($cleanedTitle) || $checkNgKeywordAction->execute($metaData['title'] ?? '')) {
+            if ($checkNgKeywordAction->execute($cleanedTitle) || $checkNgKeywordAction->execute($metaData->title ?? '')) {
                 Log::warning("[ProcessArticleBatchJob] NGキーワードが含まれているため保存をスキップします: {$url}");
 
                 continue;
@@ -200,7 +205,7 @@ class ProcessArticleBatchJob implements ShouldQueue
      * AIバッチ結果を記事テーブルに保存します。
      * AI返答に含まれなかった記事はLog::warningで記録します。
      *
-     * @param  array<int, array{id: int, url: string, title: string, metaData: array<string, mixed>}>  $validArticles
+     * @param  array<int, array{id: int, url: string, title: string, metaData: ScrapedArticleData}>  $validArticles
      * @param  array<int, array{category_id: int, rewritten_title: string}>  $aiResults
      * @return array{savedCount: int, missedCount: int}
      */
@@ -208,7 +213,9 @@ class ProcessArticleBatchJob implements ShouldQueue
     {
         $savedCount = 0;
         $missedCount = 0;
-        $categoryNames = $site->app->categories->pluck('name', 'id');
+        /** @var App $app */
+        $app = $site->app;
+        $categoryNames = $app->categories->pluck('name', 'id');
         $upsertData = [];
         $logMessages = [];
 
@@ -243,8 +250,8 @@ class ProcessArticleBatchJob implements ShouldQueue
                 'category_id' => $aiResult['category_id'],
                 'title' => $aiResult['rewritten_title'],
                 'original_title' => $article['title'],
-                'thumbnail_url' => $article['metaData']['image'],
-                'published_at' => $article['metaData']['date'],
+                'thumbnail_url' => $article['metaData']->image,
+                'published_at' => $article['metaData']->date,
                 'fetch_source' => $this->fetchSource,
                 'updated_at' => now(), // upsertで更新日を反映するため
             ];

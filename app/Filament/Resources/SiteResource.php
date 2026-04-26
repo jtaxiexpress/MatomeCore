@@ -551,15 +551,13 @@ class SiteResource extends Resource
             $sampleOutput .= "<div style='max-height: 350px; overflow-y: auto; background-color: rgba(255,255,255,0.1); padding: 10px; border-radius: 6px; margin-bottom: 10px;'>";
 
             foreach ($sampleItems as $index => $sample) {
-                if (! is_array($sample)) {
-                    continue;
-                }
+                $sampleArray = is_array($sample) ? $sample : (is_object($sample) && method_exists($sample, 'toArray') ? $sample->toArray() : (array) $sample);
 
                 $num = $index + 1;
-                $title = htmlspecialchars((string) ($sample['title'] ?? '未取得'));
-                $url = (string) ($sample['url'] ?? '');
-                $image = htmlspecialchars((string) ($sample['image'] ?? '未取得'));
-                $date = htmlspecialchars((string) ($sample['date'] ?? '未取得'));
+                $title = htmlspecialchars((string) ($sampleArray['title'] ?? '未取得'));
+                $url = (string) ($sampleArray['url'] ?? '');
+                $image = htmlspecialchars((string) ($sampleArray['image'] ?? '未取得'));
+                $date = htmlspecialchars((string) ($sampleArray['date'] ?? '未取得'));
 
                 $sampleOutput .= "<strong>{$num}件目:</strong><br>";
                 $sampleOutput .= '【タイトル】 '.$title.'<br>';
@@ -603,11 +601,12 @@ class SiteResource extends Resource
         $body = collect($items)
             ->take(10)
             ->values()
-            ->map(function (array $item, int $index): string {
-                $title = htmlspecialchars((string) ($item['title'] ?? 'なし'));
-                $url = (string) ($item['url'] ?? 'なし');
-                $image = htmlspecialchars((string) ($item['image'] ?? 'なし'));
-                $date = htmlspecialchars((string) ($item['date'] ?? 'なし'));
+            ->map(function (mixed $item, int $index): string {
+                $itemArray = is_array($item) ? $item : (is_object($item) && method_exists($item, 'toArray') ? $item->toArray() : (array) $item);
+                $title = htmlspecialchars((string) ($itemArray['title'] ?? 'なし'));
+                $url = (string) ($itemArray['url'] ?? 'なし');
+                $image = htmlspecialchars((string) ($itemArray['image'] ?? 'なし'));
+                $date = htmlspecialchars((string) ($itemArray['date'] ?? 'なし'));
                 $number = $index + 1;
 
                 return "<strong>{$number}件目:</strong><br>".
