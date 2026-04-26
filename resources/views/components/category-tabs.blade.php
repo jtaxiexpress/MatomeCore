@@ -1,48 +1,44 @@
-@props([
-    'categories',
-    'selected' => null,
-])
+@props(['categories', 'selected' => null])
 
-<div class="category-nav -mx-4 overflow-x-auto px-4 pb-2" role="tablist" aria-label="カテゴリ">
-    <div class="flex items-center gap-6 border-b border-border/40 dark:border-border-dark/40 pb-2">
+<div class="relative -mx-4" aria-label="カテゴリナビゲーション">
+    <!-- 左エッジフェード -->
+    <div
+        class="absolute left-0 top-0 bottom-[12px] w-8 sm:w-12 bg-gradient-to-r from-surface dark:from-surface-dark to-transparent pointer-events-none z-10">
+    </div>
+
+    <!-- 右エッジフェード -->
+    <div
+        class="absolute right-0 top-0 bottom-[12px] w-8 sm:w-12 bg-gradient-to-l from-surface dark:from-surface-dark to-transparent pointer-events-none z-10">
+    </div>
+
+    <div class="category-nav scrollbar-default flex items-center whitespace-nowrap overflow-x-auto px-4 pb-3 gap-2.5 sm:gap-3"
+        style="-webkit-overflow-scrolling: touch;" role="tablist">
         {{-- All (総合) tab --}}
-        <button
-            type="button"
-            wire:click="selectCategory(null)"
-            role="tab"
-            aria-selected="{{ $selected === null ? 'true' : 'false' }}"
-            @class([
-                'shrink-0 text-sm transition-colors hover:text-text-primary dark:hover:text-white relative',
-                'text-text-primary dark:text-white font-bold' => $selected === null,
-                'text-text-secondary dark:text-text-tertiary font-medium' => $selected !== null,
+        <button type="button" wire:click="selectCategory(null)" role="tab"
+            aria-selected="{{ $selected === null ? 'true' : 'false' }}" @class([
+                'shrink-0 text-sm transition-all rounded-full px-5 min-h-[44px] flex items-center justify-center select-none',
+                'bg-accent text-white dark:bg-white dark:text-black font-bold shadow-sm' =>
+                    $selected === null,
+                'bg-black/5 text-text-primary hover:bg-black/10 dark:bg-white/10 dark:text-white dark:hover:bg-white/20 font-medium' =>
+                    $selected !== null,
             ])
-            id="category-tab-all"
-        >
+            id="category-tab-all">
             総合
-            @if($selected === null)
-                <div class="absolute -bottom-[9px] left-0 right-0 h-[2px] rounded-t-full bg-text-primary dark:bg-white"></div>
-            @endif
         </button>
 
         {{-- Category tabs --}}
         @foreach ($categories as $category)
-            <button
-                type="button"
-                wire:click="selectCategory('{{ $category->api_slug }}')"
-                wire:key="cat-{{ $category->id }}"
-                role="tab"
-                aria-selected="{{ $selected === $category->api_slug ? 'true' : 'false' }}"
-                @class([
-                    'shrink-0 text-sm transition-colors hover:text-text-primary dark:hover:text-white relative',
-                    'text-text-primary dark:text-white font-bold' => $selected === $category->api_slug,
-                    'text-text-secondary dark:text-text-tertiary font-medium' => $selected !== $category->api_slug,
+            <button type="button" wire:click="selectCategory('{{ $category->api_slug }}')"
+                wire:key="cat-{{ $category->id }}" role="tab"
+                aria-selected="{{ $selected === $category->api_slug ? 'true' : 'false' }}" @class([
+                    'shrink-0 text-sm transition-all rounded-full px-5 min-h-[44px] flex items-center justify-center select-none',
+                    'bg-accent text-white dark:bg-white dark:text-black font-bold shadow-sm' =>
+                        $selected === $category->api_slug,
+                    'bg-black/5 text-text-primary hover:bg-black/10 dark:bg-white/10 dark:text-white dark:hover:bg-white/20 font-medium' =>
+                        $selected !== $category->api_slug,
                 ])
-                id="category-tab-{{ $category->api_slug }}"
-            >
+                id="category-tab-{{ $category->api_slug }}">
                 {{ $category->name }}
-                @if($selected === $category->api_slug)
-                    <div class="absolute -bottom-[9px] left-0 right-0 h-[2px] rounded-t-full bg-text-primary dark:bg-white"></div>
-                @endif
             </button>
         @endforeach
     </div>

@@ -79,26 +79,31 @@
 }
 
 /* ============================================================
-   Category nav — always-visible thin grey scrollbar (WebKit)
+   Category nav / Scrollbar Default — always-visible thin grey scrollbar (WebKit)
    ============================================================ */
+.scrollbar-default::-webkit-scrollbar,
 .category-nav::-webkit-scrollbar {
     height: 3px;
 }
 
+.scrollbar-default::-webkit-scrollbar-track,
 .category-nav::-webkit-scrollbar-track {
     background: rgba(0, 0, 0, 0.05);
     border-radius: 999px;
 }
 
+.scrollbar-default::-webkit-scrollbar-thumb,
 .category-nav::-webkit-scrollbar-thumb {
     background: rgba(0, 0, 0, 0.18);
     border-radius: 999px;
 }
 
+.dark .scrollbar-default::-webkit-scrollbar-track,
 .dark .category-nav::-webkit-scrollbar-track {
     background: rgba(255, 255, 255, 0.05);
 }
 
+.dark .scrollbar-default::-webkit-scrollbar-thumb,
 .dark .category-nav::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.18);
 }
