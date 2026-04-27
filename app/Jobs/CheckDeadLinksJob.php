@@ -46,51 +46,61 @@ class CheckDeadLinksJob implements ShouldQueue
         Article::orderByRaw('last_checked_at IS NOT NULL ASC')
             ->orderBy('published_at', 'asc')
             ->limit(100)
-            ->chunk(25, function ($articles) use ($crawlHttpClient) {
-                foreach ($articles as $article) {
-                    $this->checkArticle($article, $crawlHttpClient);
-                }
+            ->chunk(25, function ($articles) {
+                $this->checkArticlesConcurrent($articles);
             });
     }
 
     /**
-     * 1記事のリンク切れ判定を行い、削除またはチェック日時更新を実行する。
+     * チャンク内の記事を完全に並列でリンク切れ判定する。
+     *
+     * @param  \Illuminate\Database\Eloquent\Collection  $articles
      */
-    private function checkArticle(Article $article, CrawlHttpClient $crawlHttpClient): void
+    private function checkArticlesConcurrent(\Illuminate\Database\Eloquent\Collection $articles): void
     {
-        try {
-            // 一般的なブラウザを偽装して通信（Soft 404検知のため中身を取得）
-            $response = $crawlHttpClient->get(
-                url: $article->url,
-                timeoutSeconds: 10,
-            );
+        $responses = \Illuminate\Support\Facades\Http::pool(function (\Illuminate\Http\Client\Pool $pool) use ($articles) {
+            $poolRequests = [];
+            foreach ($articles as $article) {
+                // 一般的なブラウザのUser-Agentを偽装して設定
+                $poolRequests[] = $pool->as((string) $article->id)
+                    ->withHeaders([
+                        'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+                    ])
+                    ->timeout(10)
+                    ->get($article->url);
+            }
+            return $poolRequests;
+        });
 
-            $isDead = false;
+        foreach ($articles as $article) {
+            $response = $responses[(string) $article->id] ?? null;
 
-            // ハード404 (完全に削除されている)
-            if ($response->status() === 404 || $response->status() === 410) {
-                $isDead = true;
-            } elseif ($response->successful()) {
-                // ソフト404 (ステータスは200等だが、中身がエラー画面)
-                $body = $response->body();
-                foreach ($this->soft404Phrases as $phrase) {
-                    if (str_contains($body, $phrase)) {
-                        $isDead = true;
-                        break;
+            if ($response instanceof \Illuminate\Http\Client\Response) {
+                $isDead = false;
+
+                // ハード404 (完全に削除されている)
+                if ($response->status() === 404 || $response->status() === 410) {
+                    $isDead = true;
+                } elseif ($response->successful()) {
+                    // ソフト404 (ステータスは200等だが、中身がエラー画面)
+                    $body = $response->body();
+                    foreach ($this->soft404Phrases as $phrase) {
+                        if (str_contains($body, $phrase)) {
+                            $isDead = true;
+                            break;
+                        }
                     }
+                }
+
+                if ($isDead) {
+                    $article->delete();
+                    continue;
                 }
             }
 
-            if ($isDead) {
-                $article->delete();
-
-                return;
-            }
-        } catch (\Exception $e) {
-            // タイムアウト・ネットワークエラー等は一時的な障害の可能性があるため削除しない
+            // 正常、または一時的な相手サーバーの500エラー等はスキップして後回し
+            // 例外（タイムアウト等）が発生した場合も、$response が Response オブジェクトではないのでここへ来る
+            $article->update(['last_checked_at' => now()]);
         }
-
-        // 正常、または一時的な相手サーバーの500エラー等はスキップして後回し
-        $article->update(['last_checked_at' => now()]);
     }
 }

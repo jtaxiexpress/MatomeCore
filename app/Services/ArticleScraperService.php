@@ -7,6 +7,8 @@ namespace App\Services;
 use App\DTOs\ScrapedArticleData;
 use App\Support\DateParser;
 use Exception;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\DomCrawler\Crawler;
 
@@ -74,7 +76,7 @@ class ArticleScraperService
 
             $errorMessage = $this->buildErrorMessage(['image' => $image, 'date' => $date]);
 
-        } catch (\Illuminate\Http\Client\ConnectionException | \Illuminate\Http\Client\RequestException $e) {
+        } catch (ConnectionException|RequestException $e) {
             $errorMessage = 'HTTPリクエストエラー: '.$e->getMessage();
             Log::warning('ArticleScraperService: HTTP Request Error - '.$e->getMessage()." [URL: {$url}]");
         } catch (Exception $e) {

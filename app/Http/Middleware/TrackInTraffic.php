@@ -53,8 +53,10 @@ class TrackInTraffic
                 // 日次リミットをカウントアップ (24時間保持)
                 RateLimiter::hit($dailyLimiterKey, self::DAILY_SECONDS);
 
-                // メモリ上でINトラフィックをカウントアップ
-                Redis::hIncrBy('traffic:in:'.now()->toDateString(), (string) $siteId, 1);
+                defer(function () use ($siteId) {
+                    // メモリ上でINトラフィックをカウントアップ
+                    Redis::hIncrBy('traffic:in:'.now()->toDateString(), (string) $siteId, 1);
+                });
             }
         }
 

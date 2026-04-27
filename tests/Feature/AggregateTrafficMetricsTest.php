@@ -8,7 +8,6 @@ use App\Models\App;
 use App\Models\Article;
 use App\Models\Site;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
 use Tests\TestCase;
 
@@ -25,14 +24,13 @@ class AggregateTrafficMetricsTest extends TestCase
         $articleA = Article::factory()->recycle([$app, $siteA])->create();
         $articleB = Article::factory()->recycle([$app, $siteB])->create();
 
-
         $today = now()->format('Y-m-d');
-        Redis::hIncrBy("traffic:out:article:{$today}", (string)$articleA->id, 2);
-        Redis::hIncrBy("traffic:out:article:{$today}", (string)$articleB->id, 1);
-        Redis::hIncrBy("traffic:out:site:{$today}", (string)$siteA->id, 2);
-        Redis::hIncrBy("traffic:out:site:{$today}", (string)$siteB->id, 1);
-        Redis::hIncrBy("traffic:in:{$today}", (string)$siteA->id, 2);
-        Redis::hIncrBy("traffic:in:{$today}", (string)$siteB->id, 1);
+        Redis::hIncrBy("traffic:out:article:{$today}", (string) $articleA->id, 2);
+        Redis::hIncrBy("traffic:out:article:{$today}", (string) $articleB->id, 1);
+        Redis::hIncrBy("traffic:out:site:{$today}", (string) $siteA->id, 2);
+        Redis::hIncrBy("traffic:out:site:{$today}", (string) $siteB->id, 1);
+        Redis::hIncrBy("traffic:in:{$today}", (string) $siteA->id, 2);
+        Redis::hIncrBy("traffic:in:{$today}", (string) $siteB->id, 1);
 
         $this->artisan('traffic:aggregate')->assertExitCode(0);
 
@@ -68,8 +66,8 @@ class AggregateTrafficMetricsTest extends TestCase
         $article = Article::factory()->recycle([$app, $site])->create();
 
         $twoDaysAgo = now()->subDays(2)->format('Y-m-d');
-        Redis::hIncrBy("traffic:out:article:{$twoDaysAgo}", (string)$article->id, 1);
-        Redis::hIncrBy("traffic:in:{$twoDaysAgo}", (string)$site->id, 1);
+        Redis::hIncrBy("traffic:out:article:{$twoDaysAgo}", (string) $article->id, 1);
+        Redis::hIncrBy("traffic:in:{$twoDaysAgo}", (string) $site->id, 1);
 
         $this->artisan('traffic:aggregate')->assertExitCode(0);
 

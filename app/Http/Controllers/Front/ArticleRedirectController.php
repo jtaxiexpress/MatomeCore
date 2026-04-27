@@ -31,10 +31,12 @@ class ArticleRedirectController extends Controller
             // 連続クリックを1時間防止
             Cache::put($cacheKey, true, 3600);
 
-            // メモリ上でOUTトラフィックをカウントアップ
-            $date = now()->toDateString();
-            Redis::hIncrBy("traffic:out:article:{$date}", (string) $article->id, 1);
-            Redis::hIncrBy("traffic:out:site:{$date}", (string) $article->site_id, 1);
+            defer(function () use ($article) {
+                // メモリ上でOUTトラフィックをカウントアップ
+                $date = now()->toDateString();
+                Redis::hIncrBy("traffic:out:article:{$date}", (string) $article->id, 1);
+                Redis::hIncrBy("traffic:out:site:{$date}", (string) $article->site_id, 1);
+            });
         }
 
         $targetUrl = $request->query('to_site') ? $article->site->url : $article->url;

@@ -103,6 +103,7 @@ class ArticleResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['category', 'site']))
             ->columns([
                 // Filament の defaultImageUrl() でフォールバックを実装
                 // display_thumbnail_url アクセサは API 側で引き続き使用するため削除しない

@@ -18,9 +18,9 @@ class SiteFactory extends Factory
     public function definition(): array
     {
         return [
-            'app_id'    => App::factory(),
-            'name'      => fake()->company(),
-            'url'       => fake()->url(),
+            'app_id' => App::factory(),
+            'name' => fake()->company(),
+            'url' => fake()->url(),
             'is_active' => true,
         ];
     }

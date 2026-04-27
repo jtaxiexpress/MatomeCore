@@ -302,6 +302,7 @@ class SiteResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(fn (Builder $query) => $query->with('app'))
             ->columns([
                 TextColumn::make('name')->label('サイト名')->searchable(),
                 TextColumn::make('url')

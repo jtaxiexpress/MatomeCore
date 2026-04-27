@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Actions\CheckNgKeywordAction;
 use App\Actions\CleanArticleTitleAction;
 use App\Jobs\ProcessArticleBatchJob;
 use App\Models\App as AppModel;
@@ -42,7 +43,7 @@ class ProcessArticleBatchJobTest extends TestCase
             app(ArticleScraperService::class),
             app(CleanArticleTitleAction::class),
             app(ArticleMetadataResolverService::class),
-            app(\App\Actions\CheckNgKeywordAction::class),
+            app(CheckNgKeywordAction::class),
         );
 
         $this->assertDatabaseCount('articles', 0);
@@ -66,7 +67,7 @@ class ProcessArticleBatchJobTest extends TestCase
             app(ArticleScraperService::class),
             app(CleanArticleTitleAction::class),
             app(ArticleMetadataResolverService::class),
-            app(\App\Actions\CheckNgKeywordAction::class),
+            app(CheckNgKeywordAction::class),
         );
 
         $this->assertDatabaseCount('articles', 0);
@@ -122,7 +123,7 @@ class ProcessArticleBatchJobTest extends TestCase
             app(ArticleScraperService::class),
             app(CleanArticleTitleAction::class),
             app(ArticleMetadataResolverService::class),
-            app(\App\Actions\CheckNgKeywordAction::class),
+            app(CheckNgKeywordAction::class),
         );
 
         $this->assertDatabaseHas('articles', [
@@ -181,7 +182,7 @@ class ProcessArticleBatchJobTest extends TestCase
             app(ArticleScraperService::class),
             app(CleanArticleTitleAction::class),
             app(ArticleMetadataResolverService::class),
-            app(\App\Actions\CheckNgKeywordAction::class),
+            app(CheckNgKeywordAction::class),
         );
 
         // 重複のため新しい記事は追加されない
@@ -232,7 +233,7 @@ class ProcessArticleBatchJobTest extends TestCase
             app(ArticleScraperService::class),
             app(CleanArticleTitleAction::class),
             app(ArticleMetadataResolverService::class),
-            app(\App\Actions\CheckNgKeywordAction::class),
+            app(CheckNgKeywordAction::class),
         );
 
         // article_id=1 はAI結果で保存される
