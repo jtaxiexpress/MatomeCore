@@ -65,6 +65,14 @@ class ScrapeArticleJob implements ShouldQueue
         $this->shareLogContext();
 
         try {
+            // サーキットブレーカーの確認: 対象サイトの連続失敗回数が多すぎる場合はスキップ
+            $breakerKey = "circuit_breaker:site:{$this->siteId}";
+            if (Cache::get($breakerKey, 0) >= 5) {
+                Log::critical("[ScrapeArticleJob] サーキットブレーカー発動中: Site ID {$this->siteId} へのリクエストを遮断します。");
+                $this->markAsSkip();
+                return;
+            }
+
             if (Cache::get('is_bulk_paused', false)) {
                 $this->release(60);
 
@@ -130,7 +138,18 @@ class ScrapeArticleJob implements ShouldQueue
             Cache::put("article_scrape_data_{$hash}", $aiData, now()->addHours(2));
             Cache::put("article_original_title_{$hash}", $title, now()->addHours(2));
 
+            // 成功した場合はサーキットブレーカーのリセット
+            Cache::forget($breakerKey);
+
         } catch (Throwable $e) {
+            // エラーが発生した場合はサーキットブレーカーの失敗カウントをインクリメント
+            $breakerKey = "circuit_breaker:site:{$this->siteId}";
+            Cache::increment($breakerKey);
+            // 最初のエラー時に有効期限（例: 1時間）を設定
+            if (Cache::get($breakerKey) === 1) {
+                Cache::put($breakerKey, 1, now()->addHours(1));
+            }
+
             report($e);
 
             Log::error('[ScrapeArticleJob] Job Error', [
