@@ -30,10 +30,18 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->dontReportDuplicates();
 
         $exceptions->report(function (Throwable $exception): void {
-            if (! app()->environment(['production', 'staging'])) {
-                return;
-            }
+            try {
+                $isTargetEnv = app()->bound('env')
+                    ? app()->environment(['production', 'staging'])
+                    : in_array(env('APP_ENV'), ['production', 'staging'], true);
 
-            app(ExceptionAlertReporter::class)->report($exception);
+                if (! $isTargetEnv) {
+                    return;
+                }
+
+                app(ExceptionAlertReporter::class)->report($exception);
+            } catch (Throwable $reportError) {
+                // Ignore reporting errors to allow the original exception to bubble up
+            }
         });
     })->create();
