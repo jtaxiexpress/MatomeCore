@@ -1,5 +1,6 @@
 <?php
-$f = __DIR__ . '/app/Filament/Resources/SiteResource.php';
+
+$f = __DIR__.'/app/Filament/Resources/SiteResource.php';
 $c = file_get_contents($f);
 
 $s1 = <<< 'SEARCH'
@@ -60,7 +61,7 @@ $c = str_replace($s2, $r2, $c);
 file_put_contents($f, $c);
 echo "SiteResource.php validation & test_crawl fallback applied.\n";
 
-$f2 = __DIR__ . '/app/Console/Commands/CrawlSiteCommand.php';
+$f2 = __DIR__.'/app/Console/Commands/CrawlSiteCommand.php';
 $c2 = file_get_contents($f2);
 
 $s3 = <<< 'SEARCH'

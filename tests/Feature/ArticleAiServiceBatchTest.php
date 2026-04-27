@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\DTOs\ScrapedArticleData;
 use App\Services\ArticleAiService;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
@@ -40,7 +41,7 @@ class ArticleAiServiceBatchTest extends TestCase
         });
 
         $result = $this->service->classifyAndRewrite(
-            articleData: new \App\DTOs\ScrapedArticleData(url: 'https://example.com/1', title: '元タイトル'),
+            articleData: new ScrapedArticleData(url: 'https://example.com/1', title: '元タイトル'),
             categories: [
                 ['id' => 10, 'name' => 'テクノロジー'],
                 ['id' => 99, 'name' => '未分類'],
@@ -74,7 +75,7 @@ class ArticleAiServiceBatchTest extends TestCase
         });
 
         $result = $this->service->classifyAndRewrite(
-            articleData: new \App\DTOs\ScrapedArticleData(url: 'https://example.com/1', title: '元タイトル'),
+            articleData: new ScrapedArticleData(url: 'https://example.com/1', title: '元タイトル'),
             categories: [
                 ['id' => 10, 'name' => 'テクノロジー'],
                 ['id' => 99, 'name' => '未分類'],

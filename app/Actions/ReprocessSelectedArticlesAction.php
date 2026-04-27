@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Actions;
 
+use App\DTOs\AiAnalyzedData;
 use App\Models\Article;
 use App\Models\Category;
 use App\Services\ArticleAiService;
@@ -110,7 +111,7 @@ class ReprocessSelectedArticlesAction
 
                     $result = $aiResults[(int) $article->getKey()] ?? null;
 
-                    if (! $result instanceof \App\DTOs\AiAnalyzedData) {
+                    if (! $result instanceof AiAnalyzedData) {
                         continue;
                     }
 
