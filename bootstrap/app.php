@@ -13,7 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
         then: function (): void {
-            Route::middleware('api')
+            Route::middleware(['api', 'throttle:api'])
                 ->prefix('api')
                 ->name('api.')
                 ->group(base_path('routes/api.php'));

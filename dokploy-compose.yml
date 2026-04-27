@@ -20,6 +20,7 @@ services:
     environment:
       - APP_ENV=production
     restart: unless-stopped
+    stop_grace_period: 130s
 
   worker-scraping:
     build:
@@ -29,6 +30,7 @@ services:
     environment:
       - APP_ENV=production
     restart: unless-stopped
+    stop_grace_period: 130s
 
   scheduler:
     build:
