@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=production
+      - OCTANE_SERVER=frankenphp
+    restart: unless-stopped
+
+  worker-ai:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    command: php artisan queue:work --queue=ai --timeout=120 --tries=3
+    environment:
+      - APP_ENV=production
+    restart: unless-stopped
+
+  worker-scraping:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    command: php artisan queue:work --queue=scraping,default --timeout=60
+    environment:
+      - APP_ENV=production
+    restart: unless-stopped
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    command: php artisan schedule:work
+    environment:
+      - APP_ENV=production
+    restart: unless-stopped

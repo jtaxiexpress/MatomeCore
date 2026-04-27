@@ -2,10 +2,10 @@
 
 namespace App\Console\Commands;
 
+use App\Jobs\CrawlSiteJob;
 use App\Models\App;
 use App\Models\Site;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 
 class CrawlAllSitesCommand extends Command
@@ -68,7 +68,7 @@ class CrawlAllSitesCommand extends Command
             try {
                 // 2秒ずつ間隔を空けてキューに積む
                 $delay = now()->addSeconds($delayIndex * 2);
-                \App\Jobs\CrawlSiteJob::dispatch($site->id)->delay($delay);
+                CrawlSiteJob::dispatch($site->id)->delay($delay);
                 $this->info("Queued for execution at {$delay->toDateTimeString()}");
                 $delayIndex++;
             } catch (\Exception $e) {

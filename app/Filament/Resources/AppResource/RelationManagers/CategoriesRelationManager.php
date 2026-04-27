@@ -92,6 +92,7 @@ class CategoriesRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(fn (Builder $query) => $query->with('parent'))
             ->recordTitleAttribute('name')
             ->columns([
                 // 親カテゴリ名を先頭に表示（親なしの場合は「—」を表示）

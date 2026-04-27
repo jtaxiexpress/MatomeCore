@@ -152,6 +152,7 @@ class CategoryResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(fn (Builder $query) => $query->with('parent'))
             ->columns([
                 TextColumn::make('name')
                     ->label('カテゴリ名')

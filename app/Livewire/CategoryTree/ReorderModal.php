@@ -3,8 +3,8 @@
 namespace App\Livewire\CategoryTree;
 
 use App\Models\Category;
-use Livewire\Component;
 use Filament\Notifications\Notification;
+use Livewire\Component;
 
 class ReorderModal extends Component
 {
@@ -39,7 +39,7 @@ class ReorderModal extends Component
             ]);
 
             // 子カテゴリがある場合は再帰的に処理
-            if (!empty($item['children'])) {
+            if (! empty($item['children'])) {
                 $this->saveTree($item['children'], $item['id']);
             }
         }
@@ -71,6 +71,7 @@ class ReorderModal extends Component
                 $branch[] = $category;
             }
         }
+
         return $branch;
     }
 }

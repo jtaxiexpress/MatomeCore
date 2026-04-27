@@ -1,0 +1,38 @@
+FROM dunglas/frankenphp:php8.5-alpine AS builder
+
+# Install required extensions
+RUN install-php-extensions pdo_mysql redis pcntl opcache bcmath
+
+# Install composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+WORKDIR /app
+
+# Copy application files
+COPY . .
+
+# Install dependencies and optimize autoloader
+RUN composer install --no-dev --optimize-autoloader --no-interaction
+
+# Install node dependencies and build assets
+RUN apk add --no-cache npm \
+    && npm ci \
+    && npm run build \
+    && rm -rf node_modules
+
+FROM dunglas/frankenphp:php8.5-alpine
+
+# Install required extensions
+RUN install-php-extensions pdo_mysql redis pcntl opcache bcmath
+
+WORKDIR /app
+
+# Copy built application
+COPY --from=builder /app /app
+
+# Copy entrypoint script
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["php", "artisan", "octane:start", "--server=frankenphp", "--host=0.0.0.0", "--port=8000"]

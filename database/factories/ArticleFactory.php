@@ -20,11 +20,11 @@ class ArticleFactory extends Factory
     public function definition(): array
     {
         return [
-            'app_id'      => App::factory(),
-            'site_id'     => Site::factory(),
+            'app_id' => App::factory(),
+            'site_id' => Site::factory(),
             'category_id' => Category::factory(),
-            'title'       => fake()->sentence(),
-            'url'         => fake()->unique()->url(),
+            'title' => fake()->sentence(),
+            'url' => fake()->unique()->url(),
             'published_at' => now(),
         ];
     }
