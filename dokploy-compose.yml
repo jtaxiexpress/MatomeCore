@@ -16,19 +16,21 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.prod
-    command: php artisan queue:work --queue=ai --timeout=120 --tries=3
+    command: php artisan queue:work --queue=ai --timeout=120 --tries=3 --max-jobs=500 --max-time=3600
     environment:
       - APP_ENV=production
     restart: unless-stopped
+    stop_grace_period: 130s
 
   worker-scraping:
     build:
       context: .
       dockerfile: Dockerfile.prod
-    command: php artisan queue:work --queue=scraping,default --timeout=60
+    command: php artisan queue:work --queue=scraping,default --timeout=60 --max-jobs=1000 --max-time=3600
     environment:
       - APP_ENV=production
     restart: unless-stopped
+    stop_grace_period: 130s
 
   scheduler:
     build:
