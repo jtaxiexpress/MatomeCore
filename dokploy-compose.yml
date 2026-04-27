@@ -5,8 +5,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.prod
+    # For production, Traefik/Dokploy will route traffic directly to the internal 8000 port
+    # Remove public exposed port to avoid bypassing reverse proxy.
     ports:
-      - "8000:8000"
+      - "8000"
     environment:
       - APP_ENV=production
       - OCTANE_SERVER=frankenphp
