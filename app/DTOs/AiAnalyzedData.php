@@ -8,7 +8,7 @@ use ArrayAccess;
 use Illuminate\Contracts\Support\Arrayable;
 use InvalidArgumentException;
 
-readonly class AiAnalyzedData implements ArrayAccess, Arrayable
+readonly class AiAnalyzedData implements Arrayable, ArrayAccess
 {
     public function __construct(
         public int $categoryId,

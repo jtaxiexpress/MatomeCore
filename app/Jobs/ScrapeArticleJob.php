@@ -22,6 +22,7 @@ use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Redis;
 use Throwable;
 
 class ScrapeArticleJob implements ShouldQueue
@@ -65,81 +66,89 @@ class ScrapeArticleJob implements ShouldQueue
         $this->shareLogContext();
 
         try {
-            // サーキットブレーカーの確認: 対象サイトの連続失敗回数が多すぎる場合はスキップ
-            $breakerKey = "circuit_breaker:site:{$this->siteId}";
-            if (Cache::get($breakerKey, 0) >= 5) {
-                Log::critical("[ScrapeArticleJob] サーキットブレーカー発動中: Site ID {$this->siteId} へのリクエストを遮断します。");
-                $this->markAsSkip();
-                return;
-            }
+            Redis::funnel('scrape:'.$this->siteId)->limit(1)->then(function () use (
+                $scraper, $cleanTitleAction, $metadataResolver, $checkNgKeywordAction
+            ) {
+                // サーキットブレーカーの確認: 対象サイトの連続失敗回数が多すぎる場合はスキップ
+                $breakerKey = "circuit_breaker:site:{$this->siteId}";
+                if (Cache::get($breakerKey, 0) >= 5) {
+                    Log::critical("[ScrapeArticleJob] サーキットブレーカー発動中: Site ID {$this->siteId} へのリクエストを遮断します。");
+                    $this->markAsSkip();
 
-            if (Cache::get('is_bulk_paused', false)) {
-                $this->release(60);
+                    return;
+                }
 
-                return;
-            }
+                if (Cache::get('is_bulk_paused', false)) {
+                    $this->release(60);
 
-            $site = Site::with('app.categories')->find($this->siteId);
-            if (! $site || ! $site->app instanceof AppModel) {
-                Log::warning("ScrapeArticleJob: Site ID {$this->siteId} or App not found.");
-                $this->markAsSkip();
+                    return;
+                }
 
-                return;
-            }
+                $site = Site::with('app.categories')->find($this->siteId);
+                if (! $site || ! $site->app instanceof AppModel) {
+                    Log::warning("ScrapeArticleJob: Site ID {$this->siteId} or App not found.");
+                    $this->markAsSkip();
 
-            $this->site = $site;
-            $this->shareLogContext($site);
+                    return;
+                }
 
-            if (Article::where('url', $this->url)->exists()) {
-                $this->markAsSkip();
+                $this->site = $site;
+                $this->shareLogContext($site);
 
-                return;
-            }
+                if (Article::where('url', $this->url)->exists()) {
+                    $this->markAsSkip();
 
-            $metaData = $metadataResolver->resolve(
-                scraper: $scraper,
-                url: $this->url,
-                rawMetaData: $this->metaData,
-                site: $this->site,
-                logPrefix: "[Process: {$this->url}]",
-            );
+                    return;
+                }
 
-            $title = $cleanTitleAction->execute((string) $metaData->title, $this->site->name);
+                $metaData = $metadataResolver->resolve(
+                    scraper: $scraper,
+                    url: $this->url,
+                    rawMetaData: $this->metaData,
+                    site: $this->site,
+                    logPrefix: "[Process: {$this->url}]",
+                );
 
-            // ② AI APIの無駄打ち防止: タイトルが短すぎる場合はAI呼び出し自体をスキップ
-            if (empty($title) || mb_strlen($title) < 5) {
-                Log::warning("[Process: {$this->url}] タイトルが空または5文字未満のためAI呼び出しをスキップします");
-                $this->markAsSkip();
+                $title = $cleanTitleAction->execute((string) $metaData->title, $this->site->name);
 
-                return;
-            }
+                // ② AI APIの無駄打ち防止: タイトルが短すぎる場合はAI呼び出し自体をスキップ
+                if (empty($title) || mb_strlen($title) < 5) {
+                    Log::warning("[Process: {$this->url}] タイトルが空または5文字未満のためAI呼び出しをスキップします");
+                    $this->markAsSkip();
 
-            // ③ NGキーワードのチェック
-            if ($checkNgKeywordAction->execute($title) || $checkNgKeywordAction->execute($metaData->title)) {
-                Log::warning("[Process: {$this->url}] NGキーワードが含まれているため保存をスキップします");
-                $this->markAsSkip();
+                    return;
+                }
 
-                return;
-            }
+                // ③ NGキーワードのチェック
+                if ($checkNgKeywordAction->execute($title) || $checkNgKeywordAction->execute($metaData->title)) {
+                    Log::warning("[Process: {$this->url}] NGキーワードが含まれているため保存をスキップします");
+                    $this->markAsSkip();
 
-            Log::info("[Process: {$this->url}] タイトル洗浄: 》前「{$metaData->title} -> 」後「{$title}");
+                    return;
+                }
 
-            $aiData = new ScrapedArticleData(
-                url: $metaData->url,
-                title: $title,
-                image: $metaData->image,
-                date: $metaData->date,
-                success: $metaData->success,
-                errorMessage: $metaData->errorMessage,
-            );
+                Log::info("[Process: {$this->url}] タイトル洗浄: 》前「{$metaData->title} -> 」後「{$title}");
 
-            // チェーン後続処理のためにキャッシュにデータを保存 (有効期限2時間)
-            $hash = md5($this->url);
-            Cache::put("article_scrape_data_{$hash}", $aiData, now()->addHours(2));
-            Cache::put("article_original_title_{$hash}", $title, now()->addHours(2));
+                $aiData = new ScrapedArticleData(
+                    url: $metaData->url,
+                    title: $title,
+                    image: $metaData->image,
+                    date: $metaData->date,
+                    success: $metaData->success,
+                    errorMessage: $metaData->errorMessage,
+                );
 
-            // 成功した場合はサーキットブレーカーのリセット
-            Cache::forget($breakerKey);
+                // チェーン後続処理のためにキャッシュにデータを保存 (有効期限2時間)
+                $hash = md5($this->url);
+                Cache::put("article_scrape_data_{$hash}", $aiData, now()->addHours(2));
+                Cache::put("article_original_title_{$hash}", $title, now()->addHours(2));
+
+                // 成功した場合はサーキットブレーカーのリセット
+                Cache::forget($breakerKey);
+            }, function () {
+                // ロックを取得できなかった場合は数秒後に再試行
+                $this->release(5);
+            });
 
         } catch (Throwable $e) {
             // エラーが発生した場合はサーキットブレーカーの失敗カウントをインクリメント
@@ -171,6 +180,8 @@ class ScrapeArticleJob implements ShouldQueue
             }
 
             $this->fail($e);
+        } finally {
+            gc_collect_cycles();
         }
     }
 

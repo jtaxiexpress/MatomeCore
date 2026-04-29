@@ -21,15 +21,17 @@ class FeedController extends Controller
 
         $cacheKey = 'rss_feed_index_articles';
 
-        $articles = Cache::tags(['articles'])->flexible($cacheKey, [300, 600], function () use ($activeAppIds) {
-            return Article::query()
-                ->whereIn('app_id', $activeAppIds)
-                ->with(['app:id,api_slug', 'site:id,name'])
-                ->trafficFiltered()
-                ->orderByDesc('published_at')
-                ->orderByDesc('id')
-                ->limit(50)
-                ->get();
+        $articles = Cache::tags(['articles'])->flexible($cacheKey, [300, 600], function () use ($activeAppIds, $cacheKey) {
+            return Cache::lock($cacheKey.'_lock', 10)->block(10, function () use ($activeAppIds) {
+                return Article::query()
+                    ->whereIn('app_id', $activeAppIds)
+                    ->with(['app:id,api_slug', 'site:id,name'])
+                    ->trafficFiltered()
+                    ->orderByDesc('published_at')
+                    ->orderByDesc('id')
+                    ->limit(50)
+                    ->get();
+            });
         });
 
         $content = view('rss', [
@@ -48,15 +50,17 @@ class FeedController extends Controller
 
         $cacheKey = "rss_feed_app_{$app->id}_articles";
 
-        $articles = Cache::tags(['articles'])->flexible($cacheKey, [300, 600], function () use ($app) {
-            return Article::query()
-                ->whereBelongsTo($app)
-                ->with(['app:id,api_slug', 'site:id,name'])
-                ->trafficFiltered()
-                ->orderByDesc('published_at')
-                ->orderByDesc('id')
-                ->limit(50)
-                ->get();
+        $articles = Cache::tags(['articles'])->flexible($cacheKey, [300, 600], function () use ($app, $cacheKey) {
+            return Cache::lock($cacheKey.'_lock', 10)->block(10, function () use ($app) {
+                return Article::query()
+                    ->whereBelongsTo($app)
+                    ->with(['app:id,api_slug', 'site:id,name'])
+                    ->trafficFiltered()
+                    ->orderByDesc('published_at')
+                    ->orderByDesc('id')
+                    ->limit(50)
+                    ->get();
+            });
         });
 
         $content = view('rss', [
@@ -76,16 +80,18 @@ class FeedController extends Controller
 
         $cacheKey = "rss_feed_category_{$category->id}_articles";
 
-        $articles = Cache::tags(['articles'])->flexible($cacheKey, [300, 600], function () use ($app, $category) {
-            return Article::query()
-                ->whereBelongsTo($app)
-                ->whereBelongsTo($category)
-                ->with(['app:id,api_slug', 'site:id,name'])
-                ->trafficFiltered()
-                ->orderByDesc('published_at')
-                ->orderByDesc('id')
-                ->limit(50)
-                ->get();
+        $articles = Cache::tags(['articles'])->flexible($cacheKey, [300, 600], function () use ($app, $category, $cacheKey) {
+            return Cache::lock($cacheKey.'_lock', 10)->block(10, function () use ($app, $category) {
+                return Article::query()
+                    ->whereBelongsTo($app)
+                    ->whereBelongsTo($category)
+                    ->with(['app:id,api_slug', 'site:id,name'])
+                    ->trafficFiltered()
+                    ->orderByDesc('published_at')
+                    ->orderByDesc('id')
+                    ->limit(50)
+                    ->get();
+            });
         });
 
         $content = view('rss', [

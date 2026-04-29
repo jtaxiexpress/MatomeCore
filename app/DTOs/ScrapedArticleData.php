@@ -8,7 +8,7 @@ use ArrayAccess;
 use Illuminate\Contracts\Support\Arrayable;
 use InvalidArgumentException;
 
-readonly class ScrapedArticleData implements ArrayAccess, Arrayable
+readonly class ScrapedArticleData implements Arrayable, ArrayAccess
 {
     public function __construct(
         public string $url,

@@ -142,28 +142,30 @@ class PublicFeedController extends Controller
 
             $cacheKey = "articles.app_{$app->id}.category_{$category->id}.page_{$page}.perPage_{$perPage}";
 
-            $articles = Cache::tags(['articles'])->flexible($cacheKey, [600, 1200], function () use ($category, $perPage) {
-                return $category->articles()
-                    ->select([
-                        'id',
-                        'app_id',
-                        'category_id',
-                        'site_id',
-                        'title',
-                        'summary',
-                        'lead_text',
-                        'url',
-                        'thumbnail_url',
-                        'fetch_source',
-                        'published_at',
-                        'created_at',
-                        'updated_at',
-                    ])
-                    ->with(['category:id,default_image_path'])
-                    ->orderByDesc('published_at')
-                    ->orderByDesc('id')
-                    ->paginate($perPage)
-                    ->withQueryString();
+            $articles = Cache::tags(['articles'])->flexible($cacheKey, [600, 1200], function () use ($category, $perPage, $cacheKey) {
+                return Cache::lock($cacheKey.'_lock', 10)->block(10, function () use ($category, $perPage) {
+                    return $category->articles()
+                        ->select([
+                            'id',
+                            'app_id',
+                            'category_id',
+                            'site_id',
+                            'title',
+                            'summary',
+                            'lead_text',
+                            'url',
+                            'thumbnail_url',
+                            'fetch_source',
+                            'published_at',
+                            'created_at',
+                            'updated_at',
+                        ])
+                        ->with(['category:id,default_image_path'])
+                        ->orderByDesc('published_at')
+                        ->orderByDesc('id')
+                        ->paginate($perPage)
+                        ->withQueryString();
+                });
             });
 
             return ArticleResource::collection($articles);

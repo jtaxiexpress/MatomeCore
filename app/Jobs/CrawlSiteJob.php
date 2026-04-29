@@ -11,6 +11,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Redis;
 use Throwable;
 
 class CrawlSiteJob implements ShouldQueue
@@ -26,7 +27,11 @@ class CrawlSiteJob implements ShouldQueue
     public function handle(): void
     {
         try {
-            Artisan::call('app:crawl-site', ['site_id' => $this->siteId]);
+            Redis::funnel('crawl:'.$this->siteId)->limit(1)->then(function () {
+                Artisan::call('app:crawl-site', ['site_id' => $this->siteId]);
+            }, function () {
+                $this->release(5);
+            });
         } catch (Throwable $e) {
             Log::error("CrawlSiteJob: Site {$this->siteId} failed - ".$e->getMessage());
             throw $e;

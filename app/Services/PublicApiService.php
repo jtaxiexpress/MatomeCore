@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Collection as SupportCollection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class PublicApiService
@@ -99,39 +100,45 @@ class PublicApiService
 
     public function trending(App $app, string $period, int $limit): Collection
     {
-        $periodStartAt = $this->periodStartAt($period);
+        $cacheKey = "api_trending_app_{$app->id}_period_{$period}_limit_{$limit}";
 
-        $clickStatisticsSubQuery = ArticleClick::query()
-            ->select([
-                'article_id',
-                DB::raw('COUNT(*) as click_count'),
-            ])
-            ->when($periodStartAt, fn (Builder $query) => $query->where('clicked_at', '>=', $periodStartAt))
-            ->groupBy('article_id');
+        return Cache::tags(['articles'])->flexible($cacheKey, [600, 1800], function () use ($app, $period, $limit, $cacheKey) {
+            return Cache::lock($cacheKey.'_lock', 10)->block(10, function () use ($app, $period, $limit) {
+                $periodStartAt = $this->periodStartAt($period);
 
-        return Article::query()
-            ->select([
-                'articles.id',
-                'articles.app_id',
-                'articles.category_id',
-                'articles.site_id',
-                'articles.title',
-                'articles.original_title',
-                'articles.url',
-                'articles.thumbnail_url',
-                'articles.published_at',
-                'click_stats.click_count',
-            ])
-            ->joinSub($clickStatisticsSubQuery, 'click_stats', function (JoinClause $join): void {
-                $join->on('click_stats.article_id', '=', 'articles.id');
-            })
-            ->whereBelongsTo($app)
-            ->with(['category:id,default_image_path', 'site:id,name'])
-            ->orderByDesc('click_stats.click_count')
-            ->orderByDesc('articles.published_at')
-            ->orderByDesc('articles.id')
-            ->limit($limit)
-            ->get();
+                $clickStatisticsSubQuery = ArticleClick::query()
+                    ->select([
+                        'article_id',
+                        DB::raw('COUNT(*) as click_count'),
+                    ])
+                    ->when($periodStartAt, fn (Builder $query) => $query->where('clicked_at', '>=', $periodStartAt))
+                    ->groupBy('article_id');
+
+                return Article::query()
+                    ->select([
+                        'articles.id',
+                        'articles.app_id',
+                        'articles.category_id',
+                        'articles.site_id',
+                        'articles.title',
+                        'articles.original_title',
+                        'articles.url',
+                        'articles.thumbnail_url',
+                        'articles.published_at',
+                        'click_stats.click_count',
+                    ])
+                    ->joinSub($clickStatisticsSubQuery, 'click_stats', function (JoinClause $join): void {
+                        $join->on('click_stats.article_id', '=', 'articles.id');
+                    })
+                    ->whereBelongsTo($app)
+                    ->with(['category:id,default_image_path', 'site:id,name'])
+                    ->orderByDesc('click_stats.click_count')
+                    ->orderByDesc('articles.published_at')
+                    ->orderByDesc('articles.id')
+                    ->limit($limit)
+                    ->get();
+            });
+        });
     }
 
     private function baseArticlesQuery(App $app): Builder

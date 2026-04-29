@@ -5,7 +5,11 @@ namespace App\Jobs;
 use App\Models\Article;
 use App\Services\CrawlHttpClient;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Http\Client\Pool;
+use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\Http;
 
 class CheckDeadLinksJob implements ShouldQueue
 {
@@ -53,12 +57,10 @@ class CheckDeadLinksJob implements ShouldQueue
 
     /**
      * チャンク内の記事を完全に並列でリンク切れ判定する。
-     *
-     * @param  \Illuminate\Database\Eloquent\Collection  $articles
      */
-    private function checkArticlesConcurrent(\Illuminate\Database\Eloquent\Collection $articles): void
+    private function checkArticlesConcurrent(Collection $articles): void
     {
-        $responses = \Illuminate\Support\Facades\Http::pool(function (\Illuminate\Http\Client\Pool $pool) use ($articles) {
+        $responses = Http::pool(function (Pool $pool) use ($articles) {
             $poolRequests = [];
             foreach ($articles as $article) {
                 // 一般的なブラウザのUser-Agentを偽装して設定
@@ -69,13 +71,14 @@ class CheckDeadLinksJob implements ShouldQueue
                     ->timeout(10)
                     ->get($article->url);
             }
+
             return $poolRequests;
         });
 
         foreach ($articles as $article) {
             $response = $responses[(string) $article->id] ?? null;
 
-            if ($response instanceof \Illuminate\Http\Client\Response) {
+            if ($response instanceof Response) {
                 $isDead = false;
 
                 // ハード404 (完全に削除されている)
@@ -94,6 +97,7 @@ class CheckDeadLinksJob implements ShouldQueue
 
                 if ($isDead) {
                     $article->delete();
+
                     continue;
                 }
             }
