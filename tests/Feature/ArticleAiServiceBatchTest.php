@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\DTOs\ScrapedArticleData;
+use App\Models\App as AppModel;
 use App\Services\ArticleAiService;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
@@ -18,14 +19,18 @@ class ArticleAiServiceBatchTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        Cache::put('ai_prompt_template', "{categories}\nタイトル:{title}");
-        Cache::put('ai_base_prompt', 'PROMPT {app_prompt} {categories} {articles_json} {count}');
         Cache::put('ollama_model', 'gemma4:e2b');
         $this->service = app(ArticleAiService::class);
     }
 
     public function test_classify_and_rewrite_returns_structured_result_with_ollama_json_format(): void
     {
+        $app = AppModel::factory()->create([
+            'ai_prompt_template' => 'ゲームアプリ向けの個別ルール',
+        ]);
+
+        Cache::put('ai_prompt_template', 'legacy-global-prompt');
+
         Http::preventStrayRequests();
         Http::fake(function ($request) {
             if (str_ends_with($request->url(), '/api/generate')) {
@@ -46,6 +51,7 @@ class ArticleAiServiceBatchTest extends TestCase
                 ['id' => 10, 'name' => 'テクノロジー'],
                 ['id' => 99, 'name' => '未分類'],
             ],
+            app: $app,
         );
 
         $this->assertSame(10, $result->categoryId);
@@ -53,11 +59,15 @@ class ArticleAiServiceBatchTest extends TestCase
 
         Http::assertSent(function ($request): bool {
             $data = $request->data();
+            $prompt = (string) ($data['prompt'] ?? '');
 
             return str_ends_with($request->url(), '/api/generate')
                 && $data['stream'] === false
                 && $data['format'] === 'json'
-                && $data['model'] === 'gemma4:e2b';
+                && $data['model'] === 'gemma4:e2b'
+                && str_contains($prompt, 'ゲームアプリ向けの個別ルール')
+                && str_contains($prompt, '元タイトル')
+                && ! str_contains($prompt, 'legacy-global-prompt');
         });
     }
 
@@ -108,6 +118,12 @@ class ArticleAiServiceBatchTest extends TestCase
 
     public function test_classify_and_rewrite_batch_uses_json_schema_and_fills_missing_items_by_fallback(): void
     {
+        $app = AppModel::factory()->create([
+            'ai_prompt_template' => 'ゲームアプリ向けの個別ルール',
+        ]);
+
+        Cache::put('ai_prompt_template', 'legacy-global-prompt');
+
         Http::preventStrayRequests();
         Http::fake(function ($request) {
             if (str_ends_with($request->url(), '/api/generate')) {
@@ -136,6 +152,7 @@ class ArticleAiServiceBatchTest extends TestCase
                 ['id' => 10, 'name' => 'テクノロジー'],
                 ['id' => 99, 'name' => '未分類'],
             ],
+            app: $app,
         );
 
         $this->assertSame(10, $result[1]->categoryId);
@@ -145,12 +162,17 @@ class ArticleAiServiceBatchTest extends TestCase
 
         Http::assertSent(function ($request): bool {
             $data = $request->data();
+            $prompt = (string) ($data['prompt'] ?? '');
 
             return str_ends_with($request->url(), '/api/generate')
                 && $data['stream'] === false
                 && is_array($data['format'])
                 && ($data['format']['type'] ?? null) === 'object'
-                && ($data['format']['required'] ?? []) === ['results'];
+                && ($data['format']['required'] ?? []) === ['results']
+                && str_contains($prompt, 'ゲームアプリ向けの個別ルール')
+                && str_contains($prompt, '元タイトル1')
+                && str_contains($prompt, '元タイトル2')
+                && ! str_contains($prompt, 'legacy-global-prompt');
         });
     }
 

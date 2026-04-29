@@ -128,6 +128,7 @@ class ProcessArticleBatchJobTest extends TestCase
 
         $this->assertDatabaseHas('articles', [
             'url' => 'https://example.com/article-1',
+            'url_hash' => hash('sha256', 'https://example.com/article-1'),
             'title' => 'AIリライトタイトル',
             'site_id' => $site->id,
             'category_id' => $category->id,

@@ -30,12 +30,16 @@ class ArticleAiService
     ) {}
 
     private const DEFAULT_SINGLE_PROMPT_TEMPLATE = <<<'PROMPT'
-以下のカテゴリ一覧から最も適切な category_id を1つ選び、元タイトルを自然な日本語でリライトしてください。
+あなたは日本語のアンテナサイト向けに単一記事の分類とリライトを行う優秀な編集者です。
+以下の記事を分析し、最適なカテゴリを選び、クリックしたくなる魅力的な日本語タイトルにリライトしてください。
+
+【アプリ個別要件】
+{app_prompt}
 
 カテゴリ一覧:
 {categories}
 
-元タイトル:
+【処理対象記事データ】
 {title}
 
 必ず JSON で以下の形式のみを返してください:
@@ -98,13 +102,15 @@ PROMPT;
         ?App $app = null
     ): string {
         $categoryList = $this->formatCategoriesForPrompt($categories);
+        $appPrompt = $this->resolveAppPromptTemplate($app);
 
-        // アプリ設定 > Cache > DB(system_settings) > デフォルトの順で取得する
-        $template = ($app instanceof App && filled($app->ai_prompt_template))
-            ? $app->ai_prompt_template
-            : $this->singlePromptTemplate();
+        $prompt = str_replace(
+            ['{app_prompt}', '{categories}', '{title}'],
+            [$appPrompt, $categoryList, (string) $articleData->title],
+            self::DEFAULT_SINGLE_PROMPT_TEMPLATE,
+        );
 
-        return str_replace(['{categories}', '{title}'], [$categoryList, (string) $articleData->title], $template);
+        return $this->removeEmptyAppPromptSection($prompt, $appPrompt);
     }
 
     // =========================================================================
@@ -164,6 +170,7 @@ PROMPT;
     private function buildBatchPrompt(array $articles, array $categories, ?App $app = null): string
     {
         $categoryList = $this->formatCategoriesForPrompt($categories);
+        $appPrompt = $this->resolveAppPromptTemplate($app);
 
         $articlesJson = json_encode(
             array_map(fn (array $a): array => ['article_id' => $a['id'], 'title' => $a['title']], $articles),
@@ -171,9 +178,6 @@ PROMPT;
         );
 
         $basePrompt = $this->basePromptTemplate();
-        $appPrompt = ($app instanceof App && is_string($app->ai_prompt_template))
-            ? $app->ai_prompt_template
-            : '';
 
         $count = count($articles);
 
@@ -183,7 +187,7 @@ PROMPT;
             $basePrompt
         );
 
-        return trim($prompt);
+        return $this->removeEmptyAppPromptSection($prompt, $appPrompt);
     }
 
     /**
@@ -284,20 +288,34 @@ PROMPT;
         ];
     }
 
-    private function singlePromptTemplate(): string
-    {
-        return $this->readStringSetting(
-            cacheKey: 'ai_prompt_template',
-            default: self::DEFAULT_SINGLE_PROMPT_TEMPLATE,
-        );
-    }
-
     private function basePromptTemplate(): string
     {
         return $this->readStringSetting(
             cacheKey: 'ai_base_prompt',
             default: SystemSettings::getDefaultPromptTemplate(),
         );
+    }
+
+    private function resolveAppPromptTemplate(?App $app): string
+    {
+        if (! $app instanceof App || ! filled($app->ai_prompt_template)) {
+            return '';
+        }
+
+        return trim((string) $app->ai_prompt_template);
+    }
+
+    private function removeEmptyAppPromptSection(string $prompt, string $appPrompt): string
+    {
+        $prompt = trim($prompt);
+
+        if ($appPrompt !== '') {
+            return $prompt;
+        }
+
+        $prompt = preg_replace('/^【アプリ個別要件】\R+\s*/mu', '', $prompt, 1) ?? $prompt;
+
+        return trim($prompt);
     }
 
     private function readStringSetting(string $cacheKey, string $default): string

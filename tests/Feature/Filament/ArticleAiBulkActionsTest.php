@@ -28,8 +28,6 @@ class ArticleAiBulkActionsTest extends TestCase
     {
         parent::setUp();
 
-        Cache::put('ai_prompt_template', '{categories}|{title}');
-        Cache::put('ai_base_prompt', 'PROMPT {app_prompt} {categories} {articles_json} {count}');
         Cache::put('ollama_model', 'gemma4:e2b');
         Cache::put('is_bulk_paused', false);
     }

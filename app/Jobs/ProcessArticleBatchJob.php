@@ -247,6 +247,7 @@ class ProcessArticleBatchJob implements ShouldQueue
 
             $upsertData[] = [
                 'url' => $url,
+                'url_hash' => hash('sha256', $url),
                 'app_id' => $site->app_id,
                 'site_id' => $site->id,
                 'category_id' => $aiResult->categoryId,
@@ -276,7 +277,7 @@ class ProcessArticleBatchJob implements ShouldQueue
             Article::upsert(
                 $upsertData,
                 ['url'],
-                ['title', 'thumbnail_url', 'updated_at', 'category_id']
+                ['url_hash', 'title', 'thumbnail_url', 'updated_at', 'category_id']
             );
 
             Log::info("[ProcessArticleBatchJob] Site ID {$site->id}: バルクUpsert実行完了({$savedCount}件)");
